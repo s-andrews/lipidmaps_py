@@ -1,0 +1,47 @@
+{
+  "elements": {
+    "nodes": [
+      {
+        "data": {
+          "id": "LMFA01010001",
+          "name": "Palmitic acid",
+          "type": "lipid",
+          "formula": "C16H32O2",
+          "mass": 256.24
+        },
+        "selected": false,
+        "selectable": true,
+        "locked": false,
+        "grabbed": false,
+        "grabbable": true
+      },
+      {
+        "data": {
+          "id": "rxn_123",
+          "name": "Fatty acid synthesis",
+          "type": "reaction",
+          "reaction_id": "123",
+          "pathway": "Lipid metabolism"
+        },
+        "selected": false,
+        "selectable": true,
+        "locked": false,
+        "grabbed": false,
+        "grabbable": true
+      }
+    ],
+    "edges": [
+      {
+        "data": {
+          "id": "edge_LMFA01010001_to_rxn_123",
+          "source": "LMFA01010001",
+          "target": "rxn_123",
+          "label": "substrate",
+          "interaction": "substrate"
+        },
+        "selected": false,
+        "selectable": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,1524 @@
+{
+  "elements": {
+    "nodes": [
+      {
+        "data": {
+          "id": "DG",
+          "name": "DG",
+          "raw_name": "DG"
+        }
+      },
+      {
+        "data": {
+          "id": "PA",
+          "name": "PA",
+          "raw_name": "PA"
+        }
+      },
+      {
+        "data": {
+          "id": "CDP-DG",
+          "name": "CDP-DG",
+          "raw_name": "CDP-DG"
+        }
+      },
+      {
+        "data": {
+          "id": "PG",
+          "name": "PG",
+          "raw_name": "PG"
+        }
+      },
+      {
+        "data": {
+          "id": "PI",
+          "name": "PI",
+          "raw_name": "PI"
+        }
+      },
+      {
+        "data": {
+          "id": "PS",
+          "name": "PS",
+          "raw_name": "PS"
+        }
+      },
+      {
+        "data": {
+          "id": "PE",
+          "name": "PE",
+          "raw_name": "PE"
+        }
+      },
+      {
+        "data": {
+          "id": "PC",
+          "name": "PC",
+          "raw_name": "PC"
+        }
+      },
+      {
+        "data": {
+          "id": "TG",
+          "name": "TG",
+          "raw_name": "TG"
+        }
+      },
+      {
+        "data": {
+          "id": "CL",
+          "name": "CL",
+          "raw_name": "CL"
+        }
+      },
+      {
+        "data": {
+          "id": "SPBP",
+          "name": "SPBP",
+          "raw_name": "SPBP"
+        }
+      },
+      {
+        "data": {
+          "id": "SPB",
+          "name": "SPB",
+          "raw_name": "SPB"
+        }
+      },
+      {
+        "data": {
+          "id": "Cer",
+          "name": "Cer",
+          "raw_name": "Cer"
+        }
+      },
+      {
+        "data": {
+          "id": "SM",
+          "name": "SM",
+          "raw_name": "SM"
+        }
+      },
+      {
+        "data": {
+          "id": "dhCer",
+          "name": "dhCer",
+          "raw_name": "dhCer"
+        }
+      },
+      {
+        "data": {
+          "id": "dhSM",
+          "name": "dhSM",
+          "raw_name": "dhSM"
+        }
+      },
+      {
+        "data": {
+          "id": "LPC",
+          "name": "LPC",
+          "raw_name": "LPC"
+        }
+      },
+      {
+        "data": {
+          "id": "LPA",
+          "name": "LPA",
+          "raw_name": "LPA"
+        }
+      },
+      {
+        "data": {
+          "id": "LPE",
+          "name": "LPE",
+          "raw_name": "LPE"
+        }
+      },
+      {
+        "data": {
+          "id": "LPI",
+          "name": "LPI",
+          "raw_name": "LPI"
+        }
+      },
+      {
+        "data": {
+          "id": "LPS",
+          "name": "LPS",
+          "raw_name": "LPS"
+        }
+      },
+      {
+        "data": {
+          "id": "LPG",
+          "name": "LPG",
+          "raw_name": "LPG"
+        }
+      },
+      {
+        "data": {
+          "id": "PIP2",
+          "name": "PIP2",
+          "raw_name": "PIP2"
+        }
+      },
+      {
+        "data": {
+          "id": "MG",
+          "name": "MG",
+          "raw_name": "MG"
+        }
+      },
+      {
+        "data": {
+          "id": "Cer1P",
+          "name": "Cer1P",
+          "raw_name": "Cer1P"
+        }
+      },
+      {
+        "data": {
+          "id": "PIP",
+          "name": "PIP",
+          "raw_name": "PIP"
+        }
+      },
+      {
+        "data": {
+          "id": "PIP3",
+          "name": "PIP3",
+          "raw_name": "PIP3"
+        }
+      },
+      {
+        "data": {
+          "id": "O-DG",
+          "name": "O-DG",
+          "raw_name": "O-DG"
+        }
+      },
+      {
+        "data": {
+          "id": "O-PC",
+          "name": "O-PC",
+          "raw_name": "O-PC"
+        }
+      },
+      {
+        "data": {
+          "id": "O-PE",
+          "name": "O-PE",
+          "raw_name": "O-PE"
+        }
+      },
+      {
+        "data": {
+          "id": "P-PE",
+          "name": "P-PE",
+          "raw_name": "P-PE"
+        }
+      },
+      {
+        "data": {
+          "id": "P-PC",
+          "name": "P-PC",
+          "raw_name": "P-PC"
+        }
+      },
+      {
+        "data": {
+          "id": "O-LPC",
+          "name": "O-LPC",
+          "raw_name": "O-LPC"
+        }
+      },
+      {
+        "data": {
+          "id": "P-LPC",
+          "name": "P-LPC",
+          "raw_name": "P-LPC"
+        }
+      },
+      {
+        "data": {
+          "id": "O-LPE",
+          "name": "O-LPE",
+          "raw_name": "O-LPE"
+        }
+      },
+      {
+        "data": {
+          "id": "P-LPE",
+          "name": "P-LPE",
+          "raw_name": "P-LPE"
+        }
+      },
+      {
+        "data": {
+          "id": "O-LPA",
+          "name": "O-LPA",
+          "raw_name": "O-LPA"
+        }
+      },
+      {
+        "data": {
+          "id": "P-LPA",
+          "name": "P-LPA",
+          "raw_name": "P-LPA"
+        }
+      },
+      {
+        "data": {
+          "id": "dhSPB",
+          "name": "dhSPB",
+          "raw_name": "dhSPB"
+        }
+      },
+      {
+        "data": {
+          "id": "dhSPBP",
+          "name": "dhSPBP",
+          "raw_name": "dhSPBP"
+        }
+      },
+      {
+        "data": {
+          "id": "dhCer1P",
+          "name": "dhCer1P",
+          "raw_name": "dhCer1P"
+        }
+      },
+      {
+        "data": {
+          "id": "Hex-dhCer",
+          "name": "Hex-dhCer",
+          "raw_name": "Hex-dhCer"
+        }
+      },
+      {
+        "data": {
+          "id": "Hex-Cer",
+          "name": "Hex-Cer",
+          "raw_name": "Hex-Cer"
+        }
+      },
+      {
+        "data": {
+          "id": "Lac-Cer",
+          "name": "Lac-Cer",
+          "raw_name": "Lac-Cer"
+        }
+      },
+      {
+        "data": {
+          "id": "Acetyl-CoA",
+          "name": "Acetyl-CoA",
+          "raw_name": "Acetyl-CoA"
+        }
+      },
+      {
+        "data": {
+          "id": "Acetoacetyl-CoA",
+          "name": "Acetoacetyl-CoA",
+          "raw_name": "Acetoacetyl-CoA"
+        }
+      },
+      {
+        "data": {
+          "id": "acetoacetyl-Co-A",
+          "name": "acetoacetyl-Co-A",
+          "raw_name": "acetoacetyl-Co-A"
+        }
+      },
+      {
+        "data": {
+          "id": "3-HMG-CoA",
+          "name": "3-HMG-CoA",
+          "raw_name": "3-HMG-CoA"
+        }
+      },
+      {
+        "data": {
+          "id": "MA",
+          "name": "MA",
+          "raw_name": "MA"
+        }
+      },
+      {
+        "data": {
+          "id": "M5P",
+          "name": "M5P",
+          "raw_name": "M5P"
+        }
+      },
+      {
+        "data": {
+          "id": "M5PP",
+          "name": "M5PP",
+          "raw_name": "M5PP"
+        }
+      },
+      {
+        "data": {
+          "id": "IPP",
+          "name": "IPP",
+          "raw_name": "IPP"
+        }
+      },
+      {
+        "data": {
+          "id": "DMAPP",
+          "name": "DMAPP",
+          "raw_name": "DMAPP"
+        }
+      },
+      {
+        "data": {
+          "id": "GPP",
+          "name": "GPP",
+          "raw_name": "GPP"
+        }
+      },
+      {
+        "data": {
+          "id": "FPP",
+          "name": "FPP",
+          "raw_name": "FPP"
+        }
+      },
+      {
+        "data": {
+          "id": "SQ",
+          "name": "SQ",
+          "raw_name": "SQ"
+        }
+      },
+      {
+        "data": {
+          "id": "2_3-epoxySQ",
+          "name": "2_3-epoxySQ",
+          "raw_name": "2_3-epoxySQ"
+        }
+      },
+      {
+        "data": {
+          "id": "lanosterol",
+          "name": "lanosterol",
+          "raw_name": "lanosterol"
+        }
+      },
+      {
+        "data": {
+          "id": "7-dehydrodesmosterol",
+          "name": "7-dehydrodesmosterol",
+          "raw_name": "7-dehydrodesmosterol"
+        }
+      },
+      {
+        "data": {
+          "id": "7-DHC",
+          "name": "7-DHC",
+          "raw_name": "7-DHC"
+        }
+      },
+      {
+        "data": {
+          "id": "2_3;24_25-diepoxySQ",
+          "name": "2_3;24_25-diepoxySQ",
+          "raw_name": "2_3;24_25-diepoxySQ"
+        }
+      },
+      {
+        "data": {
+          "id": "24_25-epoxylanosterol",
+          "name": "24_25-epoxylanosterol",
+          "raw_name": "24_25-epoxylanosterol"
+        }
+      },
+      {
+        "data": {
+          "id": "24_25-epoxycholesterol",
+          "name": "24_25-epoxycholesterol",
+          "raw_name": "24_25-epoxycholesterol"
+        }
+      },
+      {
+        "data": {
+          "id": "desmosterol",
+          "name": "desmosterol",
+          "raw_name": "desmosterol"
+        }
+      },
+      {
+        "data": {
+          "id": "ST",
+          "name": "ST",
+          "raw_name": "ST"
+        }
+      },
+      {
+        "data": {
+          "id": "25-HC",
+          "name": "25-HC",
+          "raw_name": "25-HC"
+        }
+      },
+      {
+        "data": {
+          "id": "4beta-HC",
+          "name": "4beta-HC",
+          "raw_name": "4beta-HC"
+        }
+      },
+      {
+        "data": {
+          "id": "7alpha-HC",
+          "name": "7alpha-HC",
+          "raw_name": "7alpha-HC"
+        }
+      },
+      {
+        "data": {
+          "id": "24-HC",
+          "name": "24-HC",
+          "raw_name": "24-HC"
+        }
+      },
+      {
+        "data": {
+          "id": "27-HC",
+          "name": "27-HC",
+          "raw_name": "27-HC"
+        }
+      },
+      {
+        "data": {
+          "id": "CE",
+          "name": "CE",
+          "raw_name": "CE"
+        }
+      },
+      {
+        "data": {
+          "id": "SPC",
+          "name": "SPC",
+          "raw_name": "SPC"
+        }
+      },
+      {
+        "data": {
+          "id": "Gal-SPB",
+          "name": "Gal-SPB",
+          "raw_name": "Gal-SPB"
+        }
+      },
+      {
+        "data": {
+          "id": "Gal-Cer",
+          "name": "Gal-Cer",
+          "raw_name": "Gal-Cer"
+        }
+      },
+      {
+        "data": {
+          "id": "Glc-Cer",
+          "name": "Glc-Cer",
+          "raw_name": "Glc-Cer"
+        }
+      },
+      {
+        "data": {
+          "id": "lathosterol",
+          "name": "lathosterol",
+          "raw_name": "lathosterol"
+        }
+      },
+      {
+        "data": {
+          "id": "zymosterol",
+          "name": "zymosterol",
+          "raw_name": "zymosterol"
+        }
+      },
+      {
+        "data": {
+          "id": "cholesterol",
+          "name": "cholesterol",
+          "raw_name": "cholesterol"
+        }
+      },
+      {
+        "data": {
+          "id": "T-MAS",
+          "name": "T-MAS",
+          "raw_name": "T-MAS"
+        }
+      },
+      {
+        "data": {
+          "id": "zymostenol",
+          "name": "zymostenol",
+          "raw_name": "zymostenol"
+        }
+      },
+      {
+        "data": {
+          "id": "8-DHC",
+          "name": "8-DHC",
+          "raw_name": "8-DHC"
+        }
+      },
+      {
+        "data": {
+          "id": "Cer-PE",
+          "name": "Cer-PE",
+          "raw_name": "Cer-PE"
+        }
+      },
+      {
+        "data": {
+          "id": "Lac-dhCer",
+          "name": "Lac-dhCer",
+          "raw_name": "Lac-dhCer"
+        }
+      },
+      {
+        "data": {
+          "id": "Propionyl-CoA",
+          "name": "Propionyl-CoA",
+          "raw_name": "Propionyl-CoA"
+        }
+      },
+      {
+        "data": {
+          "id": "Methylmalonyl-CoA",
+          "name": "Methylmalonyl-CoA",
+          "raw_name": "Methylmalonyl-CoA"
+        }
+      },
+      {
+        "data": {
+          "id": "Butyryl-CoA",
+          "name": "Butyryl-CoA",
+          "raw_name": "Butyryl-CoA"
+        }
+      },
+      {
+        "data": {
+          "id": "Ethylmalonyl-CoA",
+          "name": "Ethylmalonyl-CoA",
+          "raw_name": "Ethylmalonyl-CoA"
+        }
+      },
+      {
+        "data": {
+          "id": "Crotonoyl-CoA",
+          "name": "Crotonoyl-CoA",
+          "raw_name": "Crotonoyl-CoA"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "data": {
+          "id": "e0",
+          "source": "DG",
+          "target": "PA",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e1",
+          "source": "DG",
+          "target": "TG",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e2",
+          "source": "DG",
+          "target": "PIP2",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e3",
+          "source": "DG",
+          "target": "PC",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e4",
+          "source": "DG",
+          "target": "PE",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e5",
+          "source": "DG",
+          "target": "MG",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e6",
+          "source": "PA",
+          "target": "PS",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e7",
+          "source": "PA",
+          "target": "LPA",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e8",
+          "source": "PA",
+          "target": "PC",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e9",
+          "source": "PA",
+          "target": "CDP-DG",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e10",
+          "source": "CDP-DG",
+          "target": "PG",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e11",
+          "source": "CDP-DG",
+          "target": "PI",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e12",
+          "source": "PG",
+          "target": "CL",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e13",
+          "source": "PG",
+          "target": "LPG",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e14",
+          "source": "PI",
+          "target": "LPI",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e15",
+          "source": "PI",
+          "target": "PIP",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e16",
+          "source": "PS",
+          "target": "PE",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e17",
+          "source": "PS",
+          "target": "PC",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e18",
+          "source": "PS",
+          "target": "LPS",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e19",
+          "source": "PE",
+          "target": "PC",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e20",
+          "source": "PE",
+          "target": "LPE",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e21",
+          "source": "PC",
+          "target": "LPC",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e22",
+          "source": "SPBP",
+          "target": "SPB",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e23",
+          "source": "SPB",
+          "target": "Cer",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e24",
+          "source": "SPB",
+          "target": "SPC",
+          "weight": 1,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e25",
+          "source": "SPB",
+          "target": "Gal-SPB",
+          "weight": 1,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e26",
+          "source": "Cer",
+          "target": "SM",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e27",
+          "source": "Cer",
+          "target": "dhCer",
+          "weight": 1,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e28",
+          "source": "Cer",
+          "target": "Cer1P",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e29",
+          "source": "Cer",
+          "target": "Hex-Cer",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e30",
+          "source": "Cer",
+          "target": "Glc-Cer",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e31",
+          "source": "Cer",
+          "target": "Gal-Cer",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e32",
+          "source": "Cer",
+          "target": "Cer-PE",
+          "weight": 1,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e33",
+          "source": "SM",
+          "target": "SPC",
+          "weight": 1,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e34",
+          "source": "dhCer",
+          "target": "dhSM",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e35",
+          "source": "dhCer",
+          "target": "dhSPB",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e36",
+          "source": "dhCer",
+          "target": "dhCer1P",
+          "weight": 1,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e37",
+          "source": "dhCer",
+          "target": "Hex-dhCer",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e38",
+          "source": "LPC",
+          "target": "LPA",
+          "weight": 1,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e39",
+          "source": "PIP2",
+          "target": "PIP",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e40",
+          "source": "PIP2",
+          "target": "PIP3",
+          "weight": 2,
+          "pathways": "Glycerolipids and Glycerophospholipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e41",
+          "source": "O-DG",
+          "target": "O-PC",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e42",
+          "source": "O-DG",
+          "target": "O-PE",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e43",
+          "source": "O-PC",
+          "target": "O-LPC",
+          "weight": 2,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e44",
+          "source": "O-PE",
+          "target": "P-PE",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e45",
+          "source": "O-PE",
+          "target": "O-LPE",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e46",
+          "source": "P-PE",
+          "target": "P-PC",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e47",
+          "source": "P-PE",
+          "target": "P-LPE",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e48",
+          "source": "P-PC",
+          "target": "P-LPC",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e49",
+          "source": "O-LPC",
+          "target": "O-LPA",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e50",
+          "source": "P-LPC",
+          "target": "P-LPA",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e51",
+          "source": "O-LPE",
+          "target": "O-LPA",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e52",
+          "source": "P-LPE",
+          "target": "P-LPA",
+          "weight": 1,
+          "pathways": "Ether lipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e53",
+          "source": "dhSPB",
+          "target": "dhSPBP",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e54",
+          "source": "Hex-dhCer",
+          "target": "Lac-dhCer",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e55",
+          "source": "Hex-Cer",
+          "target": "Lac-Cer",
+          "weight": 2,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e56",
+          "source": "Lac-Cer",
+          "target": "Glc-Cer",
+          "weight": 1,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e57",
+          "source": "Acetyl-CoA",
+          "target": "Acetoacetyl-CoA",
+          "weight": 2,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e58",
+          "source": "Acetyl-CoA",
+          "target": "3-HMG-CoA",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e59",
+          "source": "acetoacetyl-Co-A",
+          "target": "3-HMG-CoA",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e60",
+          "source": "3-HMG-CoA",
+          "target": "MA",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e61",
+          "source": "3-HMG-CoA",
+          "target": "ST",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e62",
+          "source": "3-HMG-CoA",
+          "target": "SQ",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e63",
+          "source": "3-HMG-CoA",
+          "target": "2_3-epoxySQ",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e64",
+          "source": "MA",
+          "target": "M5P",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e65",
+          "source": "M5P",
+          "target": "M5PP",
+          "weight": 2,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e66",
+          "source": "M5PP",
+          "target": "IPP",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e67",
+          "source": "IPP",
+          "target": "DMAPP",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e68",
+          "source": "DMAPP",
+          "target": "GPP",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e69",
+          "source": "GPP",
+          "target": "FPP",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e70",
+          "source": "FPP",
+          "target": "SQ",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e71",
+          "source": "SQ",
+          "target": "2_3-epoxySQ",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e72",
+          "source": "2_3-epoxySQ",
+          "target": "lanosterol",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e73",
+          "source": "2_3-epoxySQ",
+          "target": "2_3;24_25-diepoxySQ",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis (Shunt)"
+        }
+      },
+      {
+        "data": {
+          "id": "e74",
+          "source": "lanosterol",
+          "target": "7-dehydrodesmosterol",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e75",
+          "source": "lanosterol",
+          "target": "7-DHC",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e76",
+          "source": "lanosterol",
+          "target": "lathosterol",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e77",
+          "source": "lanosterol",
+          "target": "zymosterol",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e78",
+          "source": "lanosterol",
+          "target": "T-MAS",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e79",
+          "source": "lanosterol",
+          "target": "8-DHC",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e80",
+          "source": "7-dehydrodesmosterol",
+          "target": "desmosterol",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e81",
+          "source": "7-DHC",
+          "target": "ST",
+          "weight": 1,
+          "pathways": "Cholesterol metabolism"
+        }
+      },
+      {
+        "data": {
+          "id": "e82",
+          "source": "7-DHC",
+          "target": "lathosterol",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e83",
+          "source": "7-DHC",
+          "target": "8-DHC",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e84",
+          "source": "2_3;24_25-diepoxySQ",
+          "target": "24_25-epoxylanosterol",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e85",
+          "source": "24_25-epoxylanosterol",
+          "target": "24_25-epoxycholesterol",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e86",
+          "source": "desmosterol",
+          "target": "ST",
+          "weight": 1,
+          "pathways": "Cholesterol metabolism"
+        }
+      },
+      {
+        "data": {
+          "id": "e87",
+          "source": "ST",
+          "target": "25-HC",
+          "weight": 1,
+          "pathways": "Cholesterol metabolism"
+        }
+      },
+      {
+        "data": {
+          "id": "e88",
+          "source": "ST",
+          "target": "4beta-HC",
+          "weight": 1,
+          "pathways": "Cholesterol metabolism"
+        }
+      },
+      {
+        "data": {
+          "id": "e89",
+          "source": "ST",
+          "target": "7alpha-HC",
+          "weight": 1,
+          "pathways": "Cholesterol metabolism"
+        }
+      },
+      {
+        "data": {
+          "id": "e90",
+          "source": "ST",
+          "target": "24-HC",
+          "weight": 1,
+          "pathways": "Cholesterol metabolism"
+        }
+      },
+      {
+        "data": {
+          "id": "e91",
+          "source": "ST",
+          "target": "27-HC",
+          "weight": 1,
+          "pathways": "Cholesterol metabolism"
+        }
+      },
+      {
+        "data": {
+          "id": "e92",
+          "source": "ST",
+          "target": "CE",
+          "weight": 2,
+          "pathways": "Cholesterol ester metabolism"
+        }
+      },
+      {
+        "data": {
+          "id": "e93",
+          "source": "Gal-SPB",
+          "target": "Gal-Cer",
+          "weight": 1,
+          "pathways": "Sphingolipids"
+        }
+      },
+      {
+        "data": {
+          "id": "e94",
+          "source": "zymosterol",
+          "target": "cholesterol",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e95",
+          "source": "zymosterol",
+          "target": "T-MAS",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e96",
+          "source": "zymostenol",
+          "target": "8-DHC",
+          "weight": 1,
+          "pathways": "Cholesterol biosynthesis"
+        }
+      },
+      {
+        "data": {
+          "id": "e97",
+          "source": "Propionyl-CoA",
+          "target": "Methylmalonyl-CoA",
+          "weight": 1,
+          "pathways": "TCA cycle"
+        }
+      },
+      {
+        "data": {
+          "id": "e98",
+          "source": "Butyryl-CoA",
+          "target": "Ethylmalonyl-CoA",
+          "weight": 1,
+          "pathways": "TCA cyle"
+        }
+      },
+      {
+        "data": {
+          "id": "e99",
+          "source": "Ethylmalonyl-CoA",
+          "target": "Crotonoyl-CoA",
+          "weight": 1,
+          "pathways": "TCA cycle"
+        }
+      }
+    ]
+  }
+}
