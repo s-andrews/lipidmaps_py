@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset
 from .models.refmet import RefMet
 
+# import new ingestion and validation modules
+from .ingestion.csv_reader import CSVIngestion, RawDataFrame, CSVFormat
+from .validation.data_validator import DataValidator, ValidationReport
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +22,17 @@ logger = logging.getLogger(__name__)
 class DataManager(BaseModel):
     """Pydantic v2 DataManager: reads CSVs into LipidDataset objects.
 
+    Now uses CSVIngestion for file reading and DataValidator for quality checks.
+
     Usage:
         mgr = DataManager()
         dataset = mgr.process_csv("tests/inputs/quantified_test_file.csv")
+        
+        # With validation:
+        mgr = DataManager(validate_data=True)
+        dataset = mgr.process_csv("tests/inputs/quantified_test_file.csv")
+        if mgr.validation_report and not mgr.validation_report.passed:
+            mgr.validation_report.print_report()
 
     The CSV is expected to have a first column with lipid name (e.g. NAME)
     and subsequent columns one column per sample (sample ids as headers).
@@ -28,29 +40,57 @@ class DataManager(BaseModel):
 
     dataset: Optional[LipidDataset] = Field(default=None)
     lipid_species: List[Any] = Field(default_factory=list)
+    validation_report: Optional[ValidationReport] = Field(default=None)
+    
+    # Configuration for ingestion and validation
+    validate_data: bool = Field(default=False)
+    csv_format: CSVFormat = Field(default=CSVFormat.AUTO)
 
     model_config = {"arbitrary_types_allowed": True}
 
     def model_post_init(self, __context: dict) -> None:
-        logger.info("Initialized DataManager")
+        logger.info("Initialized DataManager (validation=%s)", self.validate_data)
 
     def process_csv(self, csv_path: Union[str, Path]) -> LipidDataset:
-        """Read CSV and populate SampleMetadata, QuantifiedLipid and LipidDataset."""
+        """Read CSV and populate SampleMetadata, QuantifiedLipid and LipidDataset.
+        
+        Now uses CSVIngestion for reading and DataValidator for quality checks.
+        
+        Args:
+            csv_path: Path to CSV file
+            
+        Returns:
+            LipidDataset with processed data
+        """
         csv_path = Path(csv_path)
         logger.info("Loading CSV file: %s", csv_path)
-        if not csv_path.exists():
-            raise FileNotFoundError(f"CSV file not found: {csv_path}")
-
-        rows, fieldnames = self.read_csv_rows(csv_path)
-        if not rows:
+        
+        # Use CSVIngestion to read file
+        ingestion = CSVIngestion()
+        raw_df = ingestion.read_csv(csv_path, format_type=self.csv_format)
+        
+        # Validate data if requested
+        if self.validate_data:
+            validator = DataValidator()
+            self.validation_report = validator.validate(raw_df)
+            
+            if not self.validation_report.passed:
+                logger.warning(
+                    f"Validation found {len(self.validation_report.issues)} issues"
+                )
+                # Optionally print report
+                # self.validation_report.print_report()
+        
+        # Process the raw data
+        if raw_df.is_empty():
             ds = LipidDataset(samples=[], lipids=[])
             self.dataset = ds
             return ds
 
-        name_col = fieldnames[0]
-        sample_ids = [sid for sid in fieldnames[1:] if sid and sid.strip()]
+        name_col = raw_df.fieldnames[0]
+        sample_ids = [sid for sid in raw_df.fieldnames[1:] if sid and sid.strip()]
         samples_meta = self.extract_sample_metadata(sample_ids)
-        quantified = self.extract_quantified_lipids(rows, name_col, sample_ids)
+        quantified = self.extract_quantified_lipids(raw_df.rows, name_col, sample_ids)
         self.annotate_lipids_with_refmet(quantified)
 
         dataset = LipidDataset(samples=samples_meta, lipids=quantified)
@@ -61,7 +101,12 @@ class DataManager(BaseModel):
         return dataset
 
     def read_csv_rows(self, csv_path: Path) -> Tuple[List[Dict], List[str]]:
-        """Read CSV and return rows and fieldnames."""
+        """Read CSV and return rows and fieldnames.
+        
+        DEPRECATED: Use CSVIngestion directly instead.
+        Kept for backward compatibility.
+        """
+        logger.debug("Using legacy read_csv_rows (consider using CSVIngestion)")
         with csv_path.open(newline="") as fh:
             reader = csv.DictReader(fh)
             rows = list(reader)
