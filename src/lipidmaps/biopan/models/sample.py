@@ -67,59 +67,10 @@ class LipidDataset(BaseModel):
             ]
         return result
 
-    # def normalize(self) -> None:
-    #     # Normalize concentrations across samples
-    #     totals = {sid: sum(lipid.values.get(sid, 0) for lipid in self.lipids) for sid in self.sample_ids()}
-    #     for lipid in self.lipids:
-    #         lipid.values = {sid: val / totals[sid] if totals[sid] != 0 else 0 for sid, val in lipid.values.items()}
 
-    # def sample_ids(self) -> List[str]:
-    #     return [s.sample_id for s in self.samples]
-
-    # def compute_weights(self, reactions: List[Dict[str, str]]) -> None:
-    #     # reactions: [{"reactant": "PC", "product": "LPC", "type": "class-level"}]
-    #     for r in reactions:
-    #         reactant_sum = sum(l.values.get(sid, 0) for l in self.lipids if r["reactant"] in l.input_name for sid in self.sample_ids())
-    #         product_sum = sum(l.values.get(sid, 0) for l in self.lipids if r["product"] in l.input_name for sid in self.sample_ids())
-    #         weight = product_sum / reactant_sum if reactant_sum != 0 else None
-    #         # Store weight at dataset or reaction level
-
-
-class Sample(BaseModel):
-    sample_name: str
-    conditions: Dict[str, Any]
-    level: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-    refmet_result: Optional[Dict[str, Any]] = None
-    processed: bool = False
-
-    def model_post_init(self, __context: dict) -> None:
-        logger.info("Initialized Sample: %s", self.sample_name)
-
-    @property
-    def recognized(self):
-        return bool(self.refmet_result and self.refmet_result.get("lm_id"))
-
-    def to_dict(self):
-        return {
-            "sample_name": self.sample_name,
-            "conditions": self.conditions,
-            "level": self.level,
-            "recognized": self.recognized,
-            "metadata": self.metadata,
-            "refmet_result": self.refmet_result,
-        }
 
 
 if __name__ == "__main__":
-    # Example usage
-    sample = Sample(
-        sample_name="Sample1",
-        conditions={"group": "Control", "condition": "Fasted"},
-        level="species",
-        metadata={"experiment_date": "2024-06-01"},
-    )
-    print(sample.to_dict())
 
     lipid = QuantifiedLipid(
         input_name="PC(16:0/18:1)",

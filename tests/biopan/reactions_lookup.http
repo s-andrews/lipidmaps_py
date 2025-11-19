@@ -1,0 +1,9 @@
+POST http://localhost/api/reactions HTTP/1.1
+content-type: application/json
+
+{
+    "search_source": "biopan",
+    "search_type": "lm_id",
+    "lm_ids": ["LMGP02010000"],
+    "lmsd_names": ["Dihydroceramide"],
+}

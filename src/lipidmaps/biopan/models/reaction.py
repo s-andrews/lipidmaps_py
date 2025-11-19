@@ -62,10 +62,3 @@ class Reaction(BaseModel):
             "products": [_serialize_item(p) for p in self.products],
         }
 
-
-# class ReactionMapping(BaseModel):
-#     reactant: str
-#     product: str
-#     type: str  # "species-level" or "class-level"
-#     pathway_id: Optional[str]
-#     enzyme_id: Optional[str]

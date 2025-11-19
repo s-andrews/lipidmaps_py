@@ -5,7 +5,7 @@ from typing import List, Tuple, Dict, Any, Union, Optional
 from pathlib import Path
 import pandas as pd
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # import the data models we will produce
 from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset
@@ -25,8 +25,25 @@ class DataManager(BaseModel):
     Now uses CSVIngestion for file reading and DataValidator for quality checks.
 
     Usage:
+        # Default behavior - first column is lipid names, rest are samples
         mgr = DataManager()
         dataset = mgr.process_csv("tests/inputs/quantified_test_file.csv")
+        
+        # Specify custom columns:
+        mgr = DataManager(
+            lipid_name_column=0,  # or column name as string
+            sample_columns=[1, 2, 3],  # or column names as list of strings
+        )
+        dataset = mgr.process_csv("data.csv")
+        
+        # Specify group-to-sample mapping:
+        mgr = DataManager(
+            group_mapping={
+                "Control": ["Sample1", "Sample2"],
+                "Treatment": ["Sample3", "Sample4"]
+            }
+        )
+        dataset = mgr.process_csv("data.csv")
         
         # With validation:
         mgr = DataManager(validate_data=True)
@@ -45,11 +62,43 @@ class DataManager(BaseModel):
     # Configuration for ingestion and validation
     validate_data: bool = Field(default=False)
     csv_format: CSVFormat = Field(default=CSVFormat.AUTO)
+    
+    # User-specified column configuration
+    lipid_name_column: Optional[Union[int, str]] = Field(
+        default=None,
+        description="Column index (0-based) or name for lipid names. Default: first column (0)"
+    )
+    sample_columns: Optional[Union[List[int], List[str]]] = Field(
+        default=None,
+        description="List of column indices or names for sample data. Default: all columns after lipid column"
+    )
+    
+    # Group-to-sample mapping
+    group_mapping: Optional[Dict[str, List[str]]] = Field(
+        default=None,
+        description="Map group names to sample IDs. Example: {'Control': ['S1', 'S2'], 'Treatment': ['S3', 'S4']}"
+    )
 
     model_config = {"arbitrary_types_allowed": True}
+    
+    @field_validator('sample_columns', mode='before')
+    @classmethod
+    def validate_sample_columns(cls, v):
+        """Ensure sample_columns is a list if provided."""
+        if v is None:
+            return None
+        if isinstance(v, (int, str)):
+            return [v]
+        return v
 
     def model_post_init(self, __context: dict) -> None:
-        logger.info("Initialized DataManager (validation=%s)", self.validate_data)
+        logger.info(
+            "Initialized DataManager (validation=%s, lipid_col=%s, sample_cols=%s, groups=%s)",
+            self.validate_data,
+            self.lipid_name_column,
+            len(self.sample_columns) if self.sample_columns else 'auto',
+            len(self.group_mapping) if self.group_mapping else 'auto'
+        )
 
     def process_csv(self, csv_path: Union[str, Path]) -> LipidDataset:
         """Read CSV and populate SampleMetadata, QuantifiedLipid and LipidDataset.
@@ -87,9 +136,16 @@ class DataManager(BaseModel):
             self.dataset = ds
             return ds
 
-        name_col = raw_df.fieldnames[0]
-        sample_ids = [sid for sid in raw_df.fieldnames[1:] if sid and sid.strip()]
+        # Determine lipid name column
+        name_col = self._resolve_lipid_column(raw_df.fieldnames)
+        
+        # Determine sample columns
+        sample_ids = self._resolve_sample_columns(raw_df.fieldnames, name_col)
+        
+        # Create sample metadata with group mapping if provided
         samples_meta = self.extract_sample_metadata(sample_ids)
+        
+        # Extract quantified lipids
         quantified = self.extract_quantified_lipids(raw_df.rows, name_col, sample_ids)
         self.annotate_lipids_with_refmet(quantified)
 
@@ -99,6 +155,75 @@ class DataManager(BaseModel):
             f"Created LipidDataset: {len(samples_meta)} samples, {len(quantified)} lipids"
         )
         return dataset
+    
+    def _resolve_lipid_column(self, fieldnames: List[str]) -> str:
+        """Resolve the lipid name column from user specification or default.
+        
+        Args:
+            fieldnames: List of column names from CSV
+            
+        Returns:
+            Column name to use for lipid names
+        """
+        if self.lipid_name_column is None:
+            # Default: first column
+            return fieldnames[0]
+        
+        if isinstance(self.lipid_name_column, int):
+            # Column index specified
+            if 0 <= self.lipid_name_column < len(fieldnames):
+                return fieldnames[self.lipid_name_column]
+            else:
+                raise ValueError(
+                    f"lipid_name_column index {self.lipid_name_column} out of range. "
+                    f"CSV has {len(fieldnames)} columns."
+                )
+        
+        # Column name specified
+        if self.lipid_name_column in fieldnames:
+            return self.lipid_name_column
+        else:
+            raise ValueError(
+                f"lipid_name_column '{self.lipid_name_column}' not found in CSV. "
+                f"Available columns: {fieldnames}"
+            )
+    
+    def _resolve_sample_columns(self, fieldnames: List[str], lipid_col: str) -> List[str]:
+        """Resolve sample columns from user specification or default.
+        
+        Args:
+            fieldnames: List of column names from CSV
+            lipid_col: The lipid name column (to exclude)
+            
+        Returns:
+            List of column names to use for sample data
+        """
+        if self.sample_columns is None:
+            # Default: all columns except lipid column
+            return [col for col in fieldnames if col != lipid_col and col and col.strip()]
+        
+        resolved = []
+        for spec in self.sample_columns:
+            if isinstance(spec, int):
+                # Column index specified
+                if 0 <= spec < len(fieldnames):
+                    resolved.append(fieldnames[spec])
+                else:
+                    raise ValueError(
+                        f"sample_columns index {spec} out of range. "
+                        f"CSV has {len(fieldnames)} columns."
+                    )
+            else:
+                # Column name specified
+                if spec in fieldnames:
+                    resolved.append(spec)
+                else:
+                    raise ValueError(
+                        f"sample_columns name '{spec}' not found in CSV. "
+                        f"Available columns: {fieldnames}"
+                    )
+        
+        return [col for col in resolved if col and col.strip()]
 
     def read_csv_rows(self, csv_path: Path) -> Tuple[List[Dict], List[str]]:
         """Read CSV and return rows and fieldnames.
@@ -114,9 +239,24 @@ class DataManager(BaseModel):
         return rows, fieldnames
 
     def extract_sample_metadata(self, sample_ids: List[str]) -> List[SampleMetadata]:
-        """Create SampleMetadata for each sample id."""
+        """Create SampleMetadata for each sample id.
+        
+        If group_mapping is provided, uses it to assign groups.
+        Otherwise, extracts group from sample ID using pattern matching.
+        """
+        # Build reverse mapping: sample_id -> group_name
+        sample_to_group = {}
+        if self.group_mapping:
+            for group_name, samples in self.group_mapping.items():
+                for sample_id in samples:
+                    sample_to_group[sample_id] = group_name
 
         def extract_group(sample_id: str) -> str:
+            # First check explicit mapping
+            if sample_id in sample_to_group:
+                return sample_to_group[sample_id]
+            
+            # Fall back to pattern extraction
             if not sample_id or not sample_id.strip():
                 return "unknown"
             match = re.match(r"^(\D+)", sample_id)
@@ -125,10 +265,18 @@ class DataManager(BaseModel):
                 return group if group else "unknown"
             return "unknown"
 
-        return [
+        samples = [
             SampleMetadata(sample_id=sid, group=extract_group(sid))
             for sid in sample_ids
         ]
+        
+        if self.group_mapping:
+            logger.info(
+                f"Applied group_mapping: {len(self.group_mapping)} groups, "
+                f"mapped {len(sample_to_group)} samples"
+            )
+        
+        return samples
 
     def extract_quantified_lipids(
         self, rows: List[Dict], name_col: str, sample_ids: List[str]

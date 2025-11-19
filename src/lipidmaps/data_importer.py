@@ -8,13 +8,15 @@ import logging
 from typing import Union, Optional, List, Dict, Any
 from pathlib import Path
 
+from pydantic import BaseModel, Field, computed_field, ConfigDict
+
 from .biopan.data_manager import DataManager
 from .biopan.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
 
 logger = logging.getLogger(__name__)
 
 
-class LipidData:
+class LipidData(BaseModel):
     """High-level interface for lipid data imported from CSV files.
     
     This class wraps DataManager and LipidDataset to provide a simple API
@@ -25,16 +27,24 @@ class LipidData:
         dataset: The underlying LipidDataset object
         manager: The DataManager instance used for processing
     """
+    
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    dataset: LipidDataset = Field(default_factory=lambda: LipidDataset(samples=[], lipids=[]))
+    manager: Optional[DataManager] = Field(default=None)
+    
+    def model_post_init(self, __context: Any) -> None:
+        """Initialize manager if not provided."""
+        if self.manager is None:
+            object.__setattr__(self, 'manager', DataManager(dataset=self.dataset))
 
-    def __init__(self, dataset: Optional[LipidDataset] = None, manager: Optional[DataManager] = None):
-        self.dataset = dataset or LipidDataset(samples=[], lipids=[])
-        self.manager = manager or DataManager(dataset=self.dataset)
-
+    @computed_field  # type: ignore[misc]
     @property
     def lipids_list(self) -> List[QuantifiedLipid]:
         """Return list of QuantifiedLipid objects."""
         return self.dataset.lipids
 
+    @computed_field  # type: ignore[misc]
     @property
     def failed_lipids(self) -> List[str]:
         """Return list of lipid names that failed to import or annotate."""
@@ -45,6 +55,7 @@ class LipidData:
             if lipid.standardized_name is None
         ]
 
+    @computed_field  # type: ignore[misc]
     @property
     def sample_names(self) -> List[str]:
         """Return list of sample IDs."""
@@ -157,7 +168,9 @@ class LipidData:
         Returns:
             Dictionary representation of the dataset
         """
-        return self.manager.dataset_dict()
+        if self.manager:
+            return self.manager.dataset_dict()
+        return self.model_dump()
 
     # TODO: Future methods for reactions integration
     def get_reactions(self, species: str = "human", complete: bool = True):
@@ -198,39 +211,68 @@ class LipidData:
 
 def import_data(
     filename: Union[str, Path],
-    lipid_col: Optional[int] = None,
-    sample_cols: Optional[List[int]] = None
+    lipid_col: Optional[Union[int, str]] = None,
+    sample_cols: Optional[Union[List[int], List[str]]] = None,
+    group_mapping: Optional[Dict[str, List[str]]] = None,
+    validate: bool = False
 ) -> LipidData:
     """
-    Import lipid data from a CSV file.
+    Import lipid data from a CSV file with flexible column specification.
     
-    The CSV file should have lipid names in the first column (or specified by lipid_col)
-    and quantitation values in subsequent columns (one per sample).
+    The CSV file should have lipid names in one column (default: first column)
+    and quantitation values in other columns (one per sample).
     
     The function automatically:
     - Validates and parses the CSV structure
     - Calls RefMet API to standardize lipid names and retrieve metadata
-    - Creates sample metadata with automatic group extraction
+    - Creates sample metadata with automatic or user-specified group assignments
     - Returns a LipidData object with full annotation
 
     Args:
         filename: Path to CSV file
-        lipid_col: Column index for lipid names (default: 0, first column)
-        sample_cols: List of column indices for sample data (default: all columns after lipid_col)
+        lipid_col: Column index (0-based) or column name for lipid names (default: first column)
+        sample_cols: List of column indices or names for sample data (default: all columns after lipid_col)
+        group_mapping: Dict mapping group names to lists of sample IDs.
+            Example: {"Control": ["S1", "S2"], "Treatment": ["S3", "S4"]}
+            If not provided, groups are auto-extracted from sample IDs.
+        validate: Whether to run data quality validation (default: False)
 
     Returns:
         LipidData object containing the imported and annotated data
         
-    Example:
+    Examples:
+        >>> # Basic import (auto-detect columns)
         >>> data = import_data("lipids.csv")
-        >>> print(f"Imported {data.successful_import_count()} lipids")
-        >>> print(f"Sample names: {data.samples()}")
-        >>> df = data.as_dataframe()
+        
+        >>> # Specify columns by index
+        >>> data = import_data("lipids.csv", lipid_col=0, sample_cols=[1, 2, 3])
+        
+        >>> # Specify columns by name
+        >>> data = import_data("lipids.csv", lipid_col="Name", sample_cols=["Control1", "Control2"])
+        
+        >>> # Specify group mapping
+        >>> data = import_data(
+        ...     "lipids.csv",
+        ...     group_mapping={
+        ...         "Control": ["Sample1", "Sample2"],
+        ...         "Treatment": ["Sample3", "Sample4"]
+        ...     }
+        ... )
+        
+        >>> # With validation
+        >>> data = import_data("lipids.csv", validate=True)
+        >>> if data.manager.validation_report and not data.manager.validation_report.passed:
+        ...     data.manager.validation_report.print_report()
     """
     logger.info(f"Importing lipid data from {filename}")
     
-    # Create DataManager and process CSV
-    manager = DataManager()
+    # Create DataManager with configuration
+    manager = DataManager(
+        lipid_name_column=lipid_col,
+        sample_columns=sample_cols,
+        group_mapping=group_mapping,
+        validate_data=validate
+    )
     dataset = manager.process_csv(filename)
     
     # Wrap in LipidData for high-level API

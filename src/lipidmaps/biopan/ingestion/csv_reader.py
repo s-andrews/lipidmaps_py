@@ -8,8 +8,9 @@ import csv
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
-from dataclasses import dataclass
 from enum import Enum
+
+from pydantic import BaseModel, Field, computed_field
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,7 @@ class CSVFormat(Enum):
     AUTO = "auto"
 
 
-@dataclass
-class RawDataFrame:
+class RawDataFrame(BaseModel):
     """Container for raw CSV data before processing.
     
     Attributes:
@@ -31,16 +31,18 @@ class RawDataFrame:
         format_type: Detected or specified format type
         metadata: Additional metadata about the file
     """
-    rows: List[Dict[str, str]]
-    fieldnames: List[str]
+    rows: List[Dict[str, str]] = Field(default_factory=list)
+    fieldnames: List[str] = Field(default_factory=list)
     format_type: CSVFormat
-    metadata: Dict[str, Any]
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     
+    @computed_field  # type: ignore[misc]
     @property
     def row_count(self) -> int:
         """Return number of data rows."""
         return len(self.rows)
     
+    @computed_field  # type: ignore[misc]
     @property
     def column_count(self) -> int:
         """Return number of columns."""
@@ -51,7 +53,7 @@ class RawDataFrame:
         return len(self.rows) == 0
 
 
-class CSVIngestion:
+class CSVIngestion(BaseModel):
     """Handle CSV file ingestion with format detection and basic validation.
     
     This class is responsible for:
@@ -66,18 +68,26 @@ class CSVIngestion:
     - API calls for annotation
     """
     
-    SUPPORTED_DELIMITERS = [',', '\t', ';', '|']
-    SUPPORTED_ENCODINGS = ['utf-8', 'latin-1', 'iso-8859-1']
+    delimiter: Optional[str] = Field(
+        default=None,
+        description="CSV delimiter (default: auto-detect)"
+    )
+    encoding: str = Field(
+        default='utf-8',
+        description="File encoding"
+    )
     
-    def __init__(self, delimiter: Optional[str] = None, encoding: str = 'utf-8'):
-        """Initialize CSV reader.
-        
-        Args:
-            delimiter: CSV delimiter (default: auto-detect)
-            encoding: File encoding (default: utf-8)
-        """
-        self.delimiter = delimiter
-        self.encoding = encoding
+    # Class-level constants
+    SUPPORTED_DELIMITERS: List[str] = Field(
+        default=[',', '\t', ';', '|'],
+        init=False,
+        repr=False
+    )
+    SUPPORTED_ENCODINGS: List[str] = Field(
+        default=['utf-8', 'latin-1', 'iso-8859-1'],
+        init=False,
+        repr=False
+    )
     
     def read_csv(
         self,
