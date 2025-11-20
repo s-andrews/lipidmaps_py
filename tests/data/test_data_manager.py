@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from lipidmaps.biopan.data_manager import DataManager
+from lipidmaps.data.data_manager import DataManager
 
 
 class TestDataManager(unittest.TestCase):
@@ -9,7 +9,7 @@ class TestDataManager(unittest.TestCase):
         self.data_manager = DataManager()
 
     def test_process_csv_populates_dataset(self):
-        csv_path = Path(__file__).parent / "inputs" / "biopan_small_demo.csv"
+        csv_path = Path(__file__).parent / "inputs" / "small_demo.csv"
         dataset = self.data_manager.process_csv(csv_path)
         # dataset should be populated
         self.assertIsNotNone(dataset)

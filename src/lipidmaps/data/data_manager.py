@@ -449,7 +449,7 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO)
     mgr = DataManager()
-    csv_path = Path(__file__).parents[1] / "tests" / "inputs" / "biopan_test_input.csv"
+    csv_path = Path(__file__).parents[1] / "tests" / "inputs" / "test_input.csv"
     print(f"Using CSV: {csv_path}")
     try:
         ds = mgr.process_csv(csv_path)

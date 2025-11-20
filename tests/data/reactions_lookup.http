@@ -2,8 +2,8 @@ POST http://localhost/api/reactions HTTP/1.1
 content-type: application/json
 
 {
-    "search_source": "biopan",
+    "search_source": "lipidmaps_py",
     "search_type": "lm_id",
     "lm_ids": ["LMGP02010000"],
-    "lmsd_names": ["Dihydroceramide"],
+    "lmsd_names": ["Dihydroceramide"]
 }

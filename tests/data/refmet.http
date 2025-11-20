@@ -2,7 +2,7 @@ POST https://www.metabolomicsworkbench.org/databases/refmet/name_to_refmet_new_m
 content-type: application/json
 
 {
-    {"metabolite_name":"Butyrylcarnitine"}
+    {"metabolite_name":"Cholesterol"}
 }
 
 

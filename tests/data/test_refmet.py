@@ -3,14 +3,14 @@ import os
 from types import SimpleNamespace
 import logging
 import unittest
-from lipidmaps.biopan.models.refmet import RefMet, RefMetResult
-from lipidmaps.biopan.models.sample import QuantifiedLipid
+from lipidmaps.data.models.refmet import RefMet, RefMetResult
+from lipidmaps.data.models.sample import QuantifiedLipid
 
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 current_dir = os.path.dirname(os.path.abspath(__file__))
-biopan_test_file = os.path.join(current_dir, "inputs", "biopan_small_demo.csv")
-
+test_file = os.path.join(current_dir, "inputs", "small_demo.csv")
+# We should also display the result when we get the annotation of this file
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

@@ -116,7 +116,7 @@ if data.manager.validation_report:
 For more control, use `DataManager` directly:
 
 ```python
-from lipidmaps.biopan.data_manager import DataManager
+from lipidmaps.data.data_manager import DataManager
 
 manager = DataManager(
     lipid_name_column="LipidName",

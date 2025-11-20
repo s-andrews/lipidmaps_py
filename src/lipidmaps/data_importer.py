@@ -10,8 +10,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, computed_field, ConfigDict
 
-from .biopan.data_manager import DataManager
-from .biopan.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
+from .data.data_manager import DataManager
+from .data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
 
 logger = logging.getLogger(__name__)
 

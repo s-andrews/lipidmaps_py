@@ -6,8 +6,8 @@ import tempfile
 import logging
 from pathlib import Path
 
-from lipidmaps.biopan.ingestion import CSVIngestion, RawDataFrame
-from lipidmaps.biopan.validation import DataValidator, ValidationReport, IssueSeverity
+from lipidmaps.data.ingestion import CSVIngestion, RawDataFrame
+from lipidmaps.data.validation import DataValidator, ValidationReport, IssueSeverity
 
 
 logging.basicConfig(level=logging.WARNING)
@@ -25,7 +25,7 @@ class TestDataValidator(unittest.TestCase):
 
     def test_validate_good_data(self):
         """Test validation on a good dataset."""
-        test_file = self.test_data_dir / "biopan_small_demo.csv"
+        test_file = self.test_data_dir / "small_demo.csv"
         raw_df = self.ingestion.read_csv(test_file)
         
         report = self.validator.validate(raw_df)
@@ -132,7 +132,7 @@ class TestDataValidator(unittest.TestCase):
 
     def test_validation_report_properties(self):
         """Test ValidationReport properties and methods."""
-        test_file = self.test_data_dir / "biopan_small_demo.csv"
+        test_file = self.test_data_dir / "small_demo.csv"
         raw_df = self.ingestion.read_csv(test_file)
         
         report = self.validator.validate(raw_df)
@@ -196,7 +196,7 @@ class TestDataValidator(unittest.TestCase):
 
     def test_validation_summary(self):
         """Test that validation summary contains expected keys."""
-        test_file = self.test_data_dir / "biopan_small_demo.csv"
+        test_file = self.test_data_dir / "small_demo.csv"
         raw_df = self.ingestion.read_csv(test_file)
         
         report = self.validator.validate(raw_df)

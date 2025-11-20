@@ -2,8 +2,8 @@ import os
 import csv
 import unittest
 
-from lipidmaps.biopan.data_manager import DataManager
-from lipidmaps.biopan.models.sample import SampleMetadata, QuantifiedLipid
+from lipidmaps.data.data_manager import DataManager
+from lipidmaps.data.models.sample import SampleMetadata, QuantifiedLipid
 
 
 class TestPopulateManager(unittest.TestCase):
@@ -14,7 +14,7 @@ class TestPopulateManager(unittest.TestCase):
         with SampleMetadata and QuantifiedLipid instances.
         """
         csv_path = os.path.join(
-            os.path.dirname(__file__), "inputs", "biopan_small_demo.csv"
+            os.path.dirname(__file__), "inputs", "small_demo.csv"
         )
         assert os.path.exists(csv_path), f"CSV not found: {csv_path}"
 

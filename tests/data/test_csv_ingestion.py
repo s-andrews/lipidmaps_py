@@ -6,7 +6,7 @@ import tempfile
 import logging
 from pathlib import Path
 
-from lipidmaps.biopan.ingestion import CSVIngestion, RawDataFrame, CSVFormat
+from lipidmaps.data.ingestion import CSVIngestion, RawDataFrame, CSVFormat
 
 
 logging.basicConfig(level=logging.WARNING)
@@ -23,7 +23,7 @@ class TestCSVIngestion(unittest.TestCase):
 
     def test_read_standard_csv(self):
         """Test reading a standard CSV file."""
-        test_file = self.test_data_dir / "biopan_small_demo.csv"
+        test_file = self.test_data_dir / "small_demo.csv"
         
         raw_df = self.ingestion.read_csv(test_file, CSVFormat.STANDARD)
         
@@ -35,7 +35,7 @@ class TestCSVIngestion(unittest.TestCase):
 
     def test_auto_detect_format(self):
         """Test automatic format detection."""
-        test_file = self.test_data_dir / "biopan_small_demo.csv"
+        test_file = self.test_data_dir / "small_demo.csv"
         
         raw_df = self.ingestion.read_csv(test_file, CSVFormat.AUTO)
         
@@ -81,7 +81,7 @@ class TestCSVIngestion(unittest.TestCase):
 
     def test_raw_dataframe_properties(self):
         """Test RawDataFrame properties."""
-        test_file = self.test_data_dir / "biopan_small_demo.csv"
+        test_file = self.test_data_dir / "small_demo.csv"
         raw_df = self.ingestion.read_csv(test_file)
         
         # Test properties
@@ -92,7 +92,7 @@ class TestCSVIngestion(unittest.TestCase):
 
     def test_get_column_info(self):
         """Test getting column information."""
-        test_file = self.test_data_dir / "biopan_small_demo.csv"
+        test_file = self.test_data_dir / "small_demo.csv"
         raw_df = self.ingestion.read_csv(test_file)
         
         col_info = self.ingestion.get_column_info(raw_df)
@@ -105,7 +105,7 @@ class TestCSVIngestion(unittest.TestCase):
     def test_read_batch(self):
         """Test reading multiple files at once."""
         test_files = [
-            self.test_data_dir / "biopan_small_demo.csv",
+            self.test_data_dir / "small_demo.csv",
         ]
         
         results = self.ingestion.read_batch(test_files)

@@ -40,7 +40,7 @@ After installation, you can import the package as shown in `lipidmaps_reactions_
 
 ```python
 import lipidmaps
-from lipidmaps import biopan, tools
+from lipidmaps import data, tools
 
 # Import data
 lipid_data = lipidmaps.import_data("mydata.csv", lipid_col=1, sample_cols=[4,5,6,7])
@@ -55,9 +55,7 @@ print(f"Unrecognised Lipids: {lipid_data.failed_import_count()}")
 # Get reactions
 reactions = lipid_data.get_reactions(species="human", complete=True)
 
-# Use biopan subpackage
-import lipidmaps.biopan as biopan
-# Or: from lipidmaps.biopan import data_manager
+
 ```
 
 ## Project Structure
@@ -69,7 +67,7 @@ lipidmaps_py/
 │   └── lipidmaps/       # Main package
 │       ├── __init__.py
 │       ├── data_importer.py
-│       ├── biopan/      # BioPAN framework (subpackage)
+│       ├── data/      # Data handling framework (subpackage)
 │       │   ├── __init__.py
 │       │   ├── data_manager.py
 │       │   ├── reaction_checker.py

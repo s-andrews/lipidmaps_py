@@ -21,9 +21,6 @@ class LMNameResult(BaseModel):
         return self.model_dump()  # Pydantic v2 method instead of .dict()
 
 
-""" Refmet LMSD mapping is not providing enough information. We should also check LipidMaps by name"""
-
-
 class LipidMapsNameChecker:
     LMBaseURL = "https://www.lipidmaps.org/api/lm_lookup"
 

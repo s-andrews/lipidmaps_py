@@ -96,7 +96,7 @@ class ReactionChecker(BaseModel):
             ReactionResponse with filtered reactions containing only lm_main components
         """
         payload = {
-            "search_source": "biopan",
+            "search_source": "lipidmaps_py",
             "search_type": search_type,
             "lm_ids": lm_ids,
         }

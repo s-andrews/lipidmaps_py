@@ -1,10 +1,10 @@
 """
-Configuration settings for BioPAN tool
+Configuration settings for LIPID MAPS python tool
 UI should allow users to modify these settings as needed.
 """
 
 LEVEL = "MS"  # Class, Species, Molecular Species
-LOG_FILE = "biopan.log"
+LOG_FILE = "lipidmaps_py.log"
 MAX_RETRIES = 3
 TIMEOUT = 30  # seconds
 CONDITIONS = {

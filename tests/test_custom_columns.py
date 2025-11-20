@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from lipidmaps.data_importer import import_data
-from lipidmaps.biopan.data_manager import DataManager
+from lipidmaps.data.data_manager import DataManager
 
 
 class TestCustomColumns(unittest.TestCase):

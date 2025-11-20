@@ -21,7 +21,7 @@ class TestDataImporter(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test fixtures."""
-        cls.test_file = Path(__file__).parent / "biopan" / "inputs" / "biopan_small_demo.csv"
+        cls.test_file = Path(__file__).parent / "data" / "inputs" / "small_demo.csv"
         if not cls.test_file.exists():
             raise FileNotFoundError(f"Test file not found: {cls.test_file}")
 

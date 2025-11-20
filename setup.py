@@ -4,7 +4,7 @@ setup(
     name='lipidmaps-suite',  # Umbrella package name
     version='0.1.0',
     author='LIPID MAPS',
-    description='LIPID MAPS Python API suite including reactions, BioPAN, and data processing tools',
+    description='LIPID MAPS Python API suite for data input, normalization, data processing and LIPID MAPS reactions',
     packages=find_packages(where='src'),  # This will find ALL packages under src/
     package_dir={'': 'src'},
     install_requires=[
