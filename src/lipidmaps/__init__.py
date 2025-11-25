@@ -21,7 +21,6 @@ from .data_importer import import_data, import_msdial, LipidData
 
 # Import subpackages to make them accessible
 from . import data
-from . import tools
 
 __version__ = "0.1.0"
-__all__ = ["import_data", "import_msdial", "LipidData", "data", "tools"]
+__all__ = ["import_data", "import_msdial", "LipidData", "data"]
