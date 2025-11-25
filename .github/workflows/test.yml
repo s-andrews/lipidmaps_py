@@ -26,7 +26,7 @@ jobs:
           pip install pytest pytest-html pytest-cov
       - name: Run tests with coverage and HTML report
         run: |
-          pytest --cov=lipidmaps_py --cov-report=term --cov-report=html --html=report.html --self-contained-html
+          pytest --cov=lipidmaps --cov-report=term --cov-report=html --html=report.html --self-contained-html
       - name: Upload HTML report
         uses: actions/upload-artifact@v4
         with:
