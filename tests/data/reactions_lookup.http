@@ -2,8 +2,9 @@ POST http://localhost/api/reactions HTTP/1.1
 content-type: application/json
 
 {
-    "search_source": "lipidmaps_py",
-    "search_type": "lm_id",
-    "lm_ids": ["LMGP02010000"],
-    "lmsd_names": ["Dihydroceramide"]
+    "search_mode": "default",
+    "search_type": "lipids",
+    "generic_reactions": true,
+    "lmsd_ids" : ["LMPR01010008","LMFA01050415"],
+    "time": "Wed, 21 Oct 2015 18:27:50 GMT"
 }

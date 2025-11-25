@@ -1,0 +1,5 @@
+sample_name,lm_id,quant1,quant2
+PC(16:0/18:1),LMGP01050001,100,200
+Cholesterol,,300,400
+TAG(16:0/18:1/18:2),LMGL01010001,not_a_number,600
+MissingCol,LMST01010001,700

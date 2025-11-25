@@ -45,11 +45,8 @@ class RefMet:
             response.raise_for_status()
         except requests.RequestException as e:
             logger.error("RefMet API call failed: %s", e)
-            # Return fallback results
-            return [
-                RefMetResult(input_name=name, standardized_name=name)
-                for name in metabolite_names
-            ]
+            # Return empty list on failure
+            return {"error": str(e)}
 
         lines = [ln for ln in response.text.splitlines() if ln.strip()]
         if not lines:
