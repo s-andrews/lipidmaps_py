@@ -57,33 +57,41 @@ Test that the package is correctly installed:
 python -c "import lipidmaps; print('Installation successful')"
 ```
 
-## Running Tests
+## Running Tests & Reports
 
-The package includes a comprehensive test suite. To run all tests:
+The package ships with a comprehensive pytest configuration (`pytest.ini`) that automatically:
+
+- Runs tests in `importlib` mode (fixes relative-import issues)
+- Collects coverage for the `lipidmaps` package
+- Writes a terminal coverage summary and an HTML coverage site (`htmlcov/index.html`)
+- Generates a standalone HTML test report (`report.html`) you can archive or share
+
+Running the full suite is therefore as simple as:
 
 ```bash
-# Run all tests
+# Inside the repo (venv recommended)
 pytest
-
-# Run tests with verbose output
-pytest -v
-
-# Run tests for specific module
-pytest tests/data/
-
-# Run specific test file
-pytest tests/data/test_data_manager.py
-
-# Run with coverage report (requires SQLite support)
-pytest --cov=lipidmaps --cov-report=html
-
-# If coverage fails due to SQLite issues, run tests without coverage
-pytest -v
 ```
 
-### Test Coverage
+### Targeted Test Runs
 
-View test coverage by opening `htmlcov/index.html` in your browser after running with coverage.
+```bash
+# Verbose output
+pytest -v
+
+# Specific directory or file
+pytest tests/data/
+pytest tests/data/test_csv_ingestion.py
+
+# Disable reporting add-ons if you need a quicker loop
+PYTEST_ADDOPTS="" pytest -q
+```
+
+### Viewing Reports
+
+- **Test results**: open `report.html` in any browser for per-test details, logs, and attachments.
+- **Coverage**: open `htmlcov/index.html` for annotated source along with percentage metrics.
+- Both artifacts are produced on every `pytest` run locally and in CI (uploaded as workflow artifacts).
 
 ## Quick Start
 
@@ -174,7 +182,7 @@ For more detailed documentation, see:
 ```
 lipidmaps_py/
 ├── src/lipidmaps/           # Main package code
-│   ├── data/                # Data analysis module (formerly biopan)
+│   ├── data/                # Data analysis module
 │   │   ├── models/         # Data models
 │   │   ├── ingestion/      # Data import
 │   │   ├── validation/     # Data validation

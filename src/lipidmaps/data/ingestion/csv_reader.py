@@ -2,7 +2,8 @@
 CSV Ingestion Module
 
 Handles reading CSV files in various formats and provides basic structural validation.
-Supports standard CSV, MS-DIAL, and auto-detection of common lipidomics formats.
+Supports standard CSV and auto-detection of common lipidomics formats.
+Will support MS-DIAL 
 """
 import csv
 import logging
@@ -64,8 +65,6 @@ class CSVIngestion(BaseModel):
     
     Does NOT handle:
     - Data quality validation (use DataValidator)
-    - Business logic transformations
-    - API calls for annotation
     """
     
     delimiter: Optional[str] = Field(
@@ -151,12 +150,15 @@ class CSVIngestion(BaseModel):
                 reader = csv.DictReader(fh, delimiter=delimiter)
                 fieldnames = reader.fieldnames or []
                 rows = list(reader)
+
+        rows, row_structure_issues = self._sanitize_rows(fieldnames, rows)
         
         metadata = {
             'source_file': str(path),
             'delimiter': delimiter,
             'encoding': self.encoding,
-            'file_size_bytes': path.stat().st_size
+            'file_size_bytes': path.stat().st_size,
+            'row_structure_issues': row_structure_issues
         }
         
         logger.info(
@@ -254,6 +256,41 @@ class CSVIngestion(BaseModel):
         logger.debug(f"Detected delimiter: {repr(detected)}")
         
         return detected
+
+    def _sanitize_rows(self, fieldnames: List[str], rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, str]], Dict[int, Dict[str, Any]]]:
+        """Normalize row values and record structural anomalies."""
+        sanitized_rows: List[Dict[str, str]] = []
+        row_structure: Dict[int, Dict[str, Any]] = {}
+        for idx, row in enumerate(rows, start=1):
+            clean_row: Dict[str, str] = {}
+            missing_columns = []
+            for column in fieldnames:
+                value = row.get(column)
+                if value is None:
+                    missing_columns.append(column)
+                    clean_row[column] = ''
+                elif isinstance(value, str):
+                    clean_row[column] = value.strip()
+                else:
+                    clean_row[column] = str(value)
+
+            extra_values: List[str] = []
+            if None in row:
+                extras = row.get(None) or []
+                if not isinstance(extras, list):
+                    extras = [extras]
+                extra_values = [str(v).strip() for v in extras if v is not None]
+
+            if missing_columns or extra_values:
+                row_structure[idx] = {}
+                if missing_columns:
+                    row_structure[idx]['missing_columns'] = missing_columns
+                if extra_values:
+                    row_structure[idx]['extra_fields'] = extra_values
+
+            sanitized_rows.append(clean_row)
+
+        return sanitized_rows, row_structure
     
     def read_batch(
         self,

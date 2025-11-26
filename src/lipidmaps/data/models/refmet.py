@@ -40,7 +40,7 @@ class RefMet:
         try:
             logger.info("Sending request to RefMet API")
             response = requests.post(
-                RefMet.MWBaseURL, data=data, verify=False, timeout=20
+                RefMet.MWBaseURL, data=data, verify=True, timeout=20
             )
             response.raise_for_status()
         except requests.RequestException as e:

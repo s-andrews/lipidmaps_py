@@ -164,6 +164,16 @@ class DataValidator:
         self.min_lipids = min_lipids
         self.allow_missing_values = allow_missing_values
         self.max_missing_percent = max_missing_percent
+
+    @staticmethod
+    def _get_cell_value(row: Dict[str, Any], column: str) -> str:
+        """Return a normalized string value for a cell, handling None gracefully."""
+        value = row.get(column, '')
+        if value is None:
+            return ''
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
     
     def validate(self, raw_df: RawDataFrame) -> ValidationReport:
         """Run complete validation on raw data frame.
@@ -238,6 +248,9 @@ class DataValidator:
                 suggestion='All columns should have meaningful names'
             ))
         
+        # Validate row-level structure (consistent field counts)
+        self._validate_row_structure(raw_df, report)
+
         # Validate sample count
         sample_cols = len(raw_df.fieldnames) - 1  # Assuming first col is lipid names
         if sample_cols < self.min_samples:
@@ -268,7 +281,7 @@ class DataValidator:
         # Check for missing lipid names
         missing_names = 0
         for i, row in enumerate(raw_df.rows):
-            name = row.get(name_col, '').strip()
+            name = self._get_cell_value(row, name_col)
             if not name:
                 missing_names += 1
                 report.issues.append(ValidationIssue(
@@ -282,7 +295,7 @@ class DataValidator:
         for col in sample_cols:
             missing_count = 0
             for i, row in enumerate(raw_df.rows):
-                value = row.get(col, '').strip()
+                value = self._get_cell_value(row, col)
                 if not value:
                     missing_count += 1
             
@@ -321,7 +334,7 @@ class DataValidator:
             values = []
             
             for i, row in enumerate(raw_df.rows):
-                value_str = row.get(col, '').strip()
+                value_str = self._get_cell_value(row, col)
                 if not value_str:
                     continue  # Skip missing values (handled separately)
                 
@@ -426,7 +439,7 @@ class DataValidator:
         empty_rows = []
         
         for i, row in enumerate(raw_df.rows):
-            values = [row.get(col, '').strip() for col in sample_cols]
+            values = [self._get_cell_value(row, col) for col in sample_cols]
             if not any(values):
                 empty_rows.append(i + 1)
         
@@ -449,7 +462,7 @@ class DataValidator:
         
         for row in raw_df.rows:
             for col in sample_cols:
-                if not row.get(col, '').strip():
+                if not self._get_cell_value(row, col):
                     missing_cells += 1
         
         completeness = ((total_cells - missing_cells) / total_cells * 100) if total_cells > 0 else 0
@@ -465,3 +478,29 @@ class DataValidator:
             'warnings': len(report.get_issues_by_severity(IssueSeverity.WARNING)),
             'info': len(report.get_issues_by_severity(IssueSeverity.INFO))
         }
+
+    def _validate_row_structure(self, raw_df: RawDataFrame, report: ValidationReport) -> None:
+        """Ensure every row has the same number of fields as the header."""
+        if raw_df.is_empty():
+            return
+
+        issues = raw_df.metadata.get('row_structure_issues', {}) if isinstance(raw_df.metadata, dict) else {}
+        for idx, info in issues.items():
+            extra_values = info.get('extra_fields')
+            missing_columns = info.get('missing_columns')
+            if extra_values:
+                report.issues.append(ValidationIssue(
+                    severity=IssueSeverity.ERROR,
+                    category='structure',
+                    message=f'Row {idx} has extra fields beyond declared columns',
+                    location={'row': idx, 'extra_fields': extra_values},
+                    suggestion='Ensure each row has the same number of delimiters as the header'
+                ))
+            if missing_columns:
+                report.issues.append(ValidationIssue(
+                    severity=IssueSeverity.ERROR,
+                    category='structure',
+                    message=f'Row {idx} is missing values for columns: {missing_columns}',
+                    location={'row': idx, 'missing_columns': missing_columns},
+                    suggestion='Add placeholders or values for every column'
+                ))

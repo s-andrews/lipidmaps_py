@@ -1,5 +1,4 @@
 from typing import List, Optional, Union, Any, Dict
-from .lipid_species import LipidSpecies
 import logging
 
 from pydantic import BaseModel, Field, field_validator
@@ -7,20 +6,19 @@ from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
-
+""" IN TEMPLATE PHASE"""
 class Reaction(BaseModel):
     """
-    Pydantic Reaction model.
     - reaction_id: identifier for the reaction
     - reaction_level: numeric or string level/score
-    - reactants / products: lists of LipidSpecies, dicts convertible to LipidSpecies, or raw items
+    - reactants / products: lists of dicts describing lipid species or raw items convertible to dicts
     """
 
     reaction_id: str
     reaction_name: str
     reaction_level: Union[int, float, str]
-    reactants: List[Union[LipidSpecies, Dict, Any]] = Field(default_factory=list)
-    products: List[Union[LipidSpecies, Dict, Any]] = Field(default_factory=list)
+    reactants: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
+    products: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
     type: str  # "species-level" or "class-level"
     pathway_id: Optional[str]
     enzyme_id: Optional[str]
@@ -44,8 +42,8 @@ class Reaction(BaseModel):
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Serialize reaction to a plain dict. LipidSpecies entries are converted
-        to dicts if they implement .dict() or .to_dict().
+        Serialize reaction to a plain dict. Entries that expose .dict()/.to_dict()
+        are converted automatically.
         """
 
         def _serialize_item(item):

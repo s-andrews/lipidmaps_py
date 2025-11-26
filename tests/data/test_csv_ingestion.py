@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from lipidmaps.data.ingestion import CSVIngestion, RawDataFrame, CSVFormat
+from lipidmaps.data.validation.data_validator import DataValidator, IssueSeverity
 
 
 logging.basicConfig(level=logging.WARNING)
@@ -149,6 +150,50 @@ class TestCSVIngestion(unittest.TestCase):
             self.assertEqual(raw_df.rows[1]['sample1'], '')
         finally:
             temp_path.unlink()
+
+
+class TestCSVStructureValidation(unittest.TestCase):
+    """Validate CSV structural rules."""
+
+    def setUp(self):
+        self.test_data_dir = Path(__file__).parent / "inputs"
+        self.ingestion = CSVIngestion()
+        self.validator = DataValidator(min_samples=2, min_lipids=1)
+
+    def _validate_file(self, filename: str):
+        path = self.test_data_dir / filename
+        raw_df = self.ingestion.read_csv(path)
+        return self.validator.validate(raw_df)
+
+    def test_input_positive_structure_passes(self):
+        report = self._validate_file("input_positive.csv")
+        self.assertTrue(report.passed, "Expected positive input file to pass validation")
+        self.assertEqual(len(report.get_issues_by_severity(IssueSeverity.ERROR)), 0)
+        self.assertEqual(len(report.get_issues_by_severity(IssueSeverity.CRITICAL)), 0)
+
+    def test_input_empty_file_reports_error(self):
+        report = self._validate_file("input_empty.csv")
+        self.assertFalse(report.passed)
+        critical_issues = report.get_issues_by_severity(IssueSeverity.CRITICAL)
+        self.assertTrue(any("Dataset is empty" in issue.message for issue in critical_issues))
+
+    def test_missing_lipid_names_are_flagged(self):
+        report = self._validate_file("input_missing_names.csv")
+        name_issues = [issue for issue in report.issues if issue.category == "missing_data"]
+        self.assertGreater(len(name_issues), 0, "Expected missing lipid names to be reported")
+        self.assertFalse(report.passed)
+
+    def test_inconsistent_field_counts_detected(self):
+        report = self._validate_file("input_inconsistent_fields.csv")
+        structure_errors = [issue for issue in report.issues if issue.category == "structure"]
+        self.assertGreater(len(structure_errors), 0)
+        self.assertTrue(any("missing values" in issue.message or "extra fields" in issue.message for issue in structure_errors))
+
+    def test_non_numeric_quantitation_values_flagged(self):
+        report = self._validate_file("input_non_numeric.csv")
+        invalid_value_errors = [issue for issue in report.issues if issue.category == "invalid_value"]
+        self.assertGreater(len(invalid_value_errors), 0)
+        self.assertFalse(report.passed)
 
 
 if __name__ == "__main__":
