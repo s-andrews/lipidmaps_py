@@ -3,7 +3,7 @@ import csv
 import unittest
 
 from lipidmaps.data.data_manager import DataManager
-from lipidmaps.data.models.sample import SampleMetadata, QuantifiedLipid
+from lipidmaps.data.models.sample import QuantifiedLipid
 
 
 class TestPopulateManager(unittest.TestCase):
@@ -13,9 +13,7 @@ class TestPopulateManager(unittest.TestCase):
         remaining columns = sample ids with numeric values) and populate a DataManager
         with SampleMetadata and QuantifiedLipid instances.
         """
-        csv_path = os.path.join(
-            os.path.dirname(__file__), "inputs", "small_demo.csv"
-        )
+        csv_path = os.path.join(os.path.dirname(__file__), "inputs", "small_demo.csv")
         assert os.path.exists(csv_path), f"CSV not found: {csv_path}"
 
         with open(csv_path, newline="") as fh:
@@ -30,11 +28,6 @@ class TestPopulateManager(unittest.TestCase):
 
         first_col = fieldnames[0]
         sample_ids = fieldnames[1:]
-
-        # build sample metadata
-        samples_meta = [
-            SampleMetadata(sample_id=sid, group="unknown") for sid in sample_ids
-        ]
 
         # build quantified lipids
         lipid_data = []

@@ -1,6 +1,7 @@
 """
 Tests for lipidmaps.import_data() and LipidData high-level API
 """
+
 import unittest
 import logging
 from pathlib import Path
@@ -146,6 +147,7 @@ class TestDataImporter(unittest.TestCase):
 
         # Verify DataFrame structure
         import pandas as pd
+
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), len(data.lipids()))
         # Columns should be samples
@@ -227,6 +229,7 @@ class TestDataImporter(unittest.TestCase):
         # Export to pandas
         df = data.as_dataframe()
         import pandas as pd
+
         self.assertIsInstance(df, pd.DataFrame)
 
         # Group statistics

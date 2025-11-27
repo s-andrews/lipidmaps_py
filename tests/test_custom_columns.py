@@ -1,6 +1,7 @@
 """
 Tests for custom column specification and group mapping in DataManager and import_data.
 """
+
 import unittest
 import tempfile
 from pathlib import Path
@@ -15,14 +16,18 @@ class TestCustomColumns(unittest.TestCase):
     def setUp(self):
         """Create temporary test CSV files."""
         # Standard CSV with default layout
-        self.standard_csv = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv')
+        self.standard_csv = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".csv"
+        )
         self.standard_csv.write("Lipid,Sample1,Sample2,Sample3\n")
         self.standard_csv.write("PC(16:0/18:1),100,110,105\n")
         self.standard_csv.write("TAG(54:3),200,210,205\n")
         self.standard_csv.close()
 
         # CSV with custom column order
-        self.custom_csv = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv')
+        self.custom_csv = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".csv"
+        )
         self.custom_csv.write("ID,Extra,LipidName,Value1,Value2,Ignore\n")
         self.custom_csv.write("1,foo,PC(16:0/18:1),100,110,bar\n")
         self.custom_csv.write("2,baz,TAG(54:3),200,210,qux\n")
@@ -36,7 +41,7 @@ class TestCustomColumns(unittest.TestCase):
     def test_default_column_behavior(self):
         """Test default behavior: first column is lipid, rest are samples."""
         data = import_data(self.standard_csv.name)
-        
+
         self.assertEqual(len(data.lipids()), 2)
         self.assertEqual(len(data.samples()), 3)
         self.assertIn("Sample1", data.sample_names)
@@ -48,9 +53,9 @@ class TestCustomColumns(unittest.TestCase):
         data = import_data(
             self.custom_csv.name,
             lipid_col=2,  # LipidName column
-            sample_cols=[3, 4]  # Value1, Value2
+            sample_cols=[3, 4],  # Value1, Value2
         )
-        
+
         self.assertEqual(len(data.lipids()), 2)
         self.assertEqual(len(data.samples()), 2)
         self.assertIn("Value1", data.sample_names)
@@ -61,9 +66,9 @@ class TestCustomColumns(unittest.TestCase):
         data = import_data(
             self.custom_csv.name,
             lipid_col="LipidName",
-            sample_cols=["Value1", "Value2"]
+            sample_cols=["Value1", "Value2"],
         )
-        
+
         self.assertEqual(len(data.lipids()), 2)
         self.assertEqual(len(data.samples()), 2)
         self.assertIn("Value1", data.sample_names)
@@ -74,9 +79,9 @@ class TestCustomColumns(unittest.TestCase):
         data = import_data(
             self.custom_csv.name,
             lipid_col=2,  # Index for LipidName
-            sample_cols=["Value1", "Value2"]  # Names for samples
+            sample_cols=["Value1", "Value2"],  # Names for samples
         )
-        
+
         self.assertEqual(len(data.lipids()), 2)
         self.assertEqual(len(data.samples()), 2)
 
@@ -84,15 +89,12 @@ class TestCustomColumns(unittest.TestCase):
         """Test explicit group-to-sample mapping."""
         data = import_data(
             self.standard_csv.name,
-            group_mapping={
-                "Control": ["Sample1", "Sample2"],
-                "Treatment": ["Sample3"]
-            }
+            group_mapping={"Control": ["Sample1", "Sample2"], "Treatment": ["Sample3"]},
         )
-        
+
         self.assertEqual(len(data.lipids()), 2)
         self.assertEqual(len(data.samples()), 3)
-        
+
         # Check group assignments
         samples_dict = {s.sample_id: s.group for s in data.dataset.samples}
         self.assertEqual(samples_dict["Sample1"], "Control")
@@ -105,15 +107,12 @@ class TestCustomColumns(unittest.TestCase):
             self.custom_csv.name,
             lipid_col="LipidName",
             sample_cols=["Value1", "Value2"],
-            group_mapping={
-                "GroupA": ["Value1"],
-                "GroupB": ["Value2"]
-            }
+            group_mapping={"GroupA": ["Value1"], "GroupB": ["Value2"]},
         )
-        
+
         self.assertEqual(len(data.lipids()), 2)
         self.assertEqual(len(data.samples()), 2)
-        
+
         samples_dict = {s.sample_id: s.group for s in data.dataset.samples}
         self.assertEqual(samples_dict["Value1"], "GroupA")
         self.assertEqual(samples_dict["Value2"], "GroupB")
@@ -147,17 +146,14 @@ class TestCustomColumns(unittest.TestCase):
         manager = DataManager(
             lipid_name_column="LipidName",
             sample_columns=["Value1", "Value2"],
-            group_mapping={
-                "Control": ["Value1"],
-                "Treatment": ["Value2"]
-            }
+            group_mapping={"Control": ["Value1"], "Treatment": ["Value2"]},
         )
-        
+
         dataset = manager.process_csv(self.custom_csv.name)
-        
+
         self.assertEqual(len(dataset.lipids), 2)
         self.assertEqual(len(dataset.samples), 2)
-        
+
         # Verify group assignments
         samples_dict = {s.sample_id: s.group for s in dataset.samples}
         self.assertEqual(samples_dict["Value1"], "Control")
@@ -170,9 +166,9 @@ class TestCustomColumns(unittest.TestCase):
             group_mapping={
                 "Control": ["Sample1"],
                 # Sample2 and Sample3 not mapped
-            }
+            },
         )
-        
+
         samples_dict = {s.sample_id: s.group for s in data.dataset.samples}
         self.assertEqual(samples_dict["Sample1"], "Control")
         # Sample2 and Sample3 should use auto-detection
@@ -183,19 +179,16 @@ class TestCustomColumns(unittest.TestCase):
         """Test that group statistics work correctly with custom group mapping."""
         data = import_data(
             self.standard_csv.name,
-            group_mapping={
-                "Control": ["Sample1", "Sample2"],
-                "Treatment": ["Sample3"]
-            }
+            group_mapping={"Control": ["Sample1", "Sample2"], "Treatment": ["Sample3"]},
         )
-        
+
         stats = data.get_group_statistics()
-        
+
         self.assertIn("Control", stats)
         self.assertIn("Treatment", stats)
         self.assertEqual(stats["Control"]["sample_count"], 2)
         self.assertEqual(stats["Treatment"]["sample_count"], 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

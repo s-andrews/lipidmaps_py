@@ -3,8 +3,9 @@ CSV Ingestion Module
 
 Handles reading CSV files in various formats and provides basic structural validation.
 Supports standard CSV and auto-detection of common lipidomics formats.
-Will support MS-DIAL 
+Will support MS-DIAL
 """
+
 import csv
 import logging
 from pathlib import Path
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class CSVFormat(Enum):
     """Supported CSV formats."""
+
     STANDARD = "standard"
     MSDIAL = "msdial"
     AUTO = "auto"
@@ -25,30 +27,31 @@ class CSVFormat(Enum):
 
 class RawDataFrame(BaseModel):
     """Container for raw CSV data before processing.
-    
+
     Attributes:
         rows: List of dictionaries, one per data row
         fieldnames: List of column headers
         format_type: Detected or specified format type
         metadata: Additional metadata about the file
     """
+
     rows: List[Dict[str, str]] = Field(default_factory=list)
     fieldnames: List[str] = Field(default_factory=list)
     format_type: CSVFormat
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+
     @computed_field  # type: ignore[misc]
     @property
     def row_count(self) -> int:
         """Return number of data rows."""
         return len(self.rows)
-    
+
     @computed_field  # type: ignore[misc]
     @property
     def column_count(self) -> int:
         """Return number of columns."""
         return len(self.fieldnames)
-    
+
     def is_empty(self) -> bool:
         """Check if data frame has no rows."""
         return len(self.rows) == 0
@@ -56,208 +59,194 @@ class RawDataFrame(BaseModel):
 
 class CSVIngestion(BaseModel):
     """Handle CSV file ingestion with format detection and basic validation.
-    
+
     This class is responsible for:
     - Reading CSV files with various delimiters and encodings
     - Detecting common lipidomics data formats
     - Basic structural validation
     - Converting raw CSV to RawDataFrame objects
-    
+
     Does NOT handle:
     - Data quality validation (use DataValidator)
     """
-    
+
     delimiter: Optional[str] = Field(
-        default=None,
-        description="CSV delimiter (default: auto-detect)"
+        default=None, description="CSV delimiter (default: auto-detect)"
     )
-    encoding: str = Field(
-        default='utf-8',
-        description="File encoding"
-    )
-    
+    encoding: str = Field(default="utf-8", description="File encoding")
+
     # Class-level constants
     SUPPORTED_DELIMITERS: List[str] = Field(
-        default=[',', '\t', ';', '|'],
-        init=False,
-        repr=False
+        default=[",", "\t", ";", "|"], init=False, repr=False
     )
     SUPPORTED_ENCODINGS: List[str] = Field(
-        default=['utf-8', 'latin-1', 'iso-8859-1'],
-        init=False,
-        repr=False
+        default=["utf-8", "latin-1", "iso-8859-1"], init=False, repr=False
     )
-    
+
     def read_csv(
-        self,
-        path: Union[str, Path],
-        format_type: CSVFormat = CSVFormat.AUTO
+        self, path: Union[str, Path], format_type: CSVFormat = CSVFormat.AUTO
     ) -> RawDataFrame:
         """Read CSV file and return raw data frame.
-        
+
         Args:
             path: Path to CSV file
             format_type: Format type (AUTO, STANDARD, MSDIAL)
-            
+
         Returns:
             RawDataFrame containing raw data
-            
+
         Raises:
             FileNotFoundError: If file doesn't exist
             ValueError: If file cannot be parsed
         """
         path = Path(path)
         logger.info(f"Reading CSV file: {path}")
-        
+
         if not path.exists():
             raise FileNotFoundError(f"CSV file not found: {path}")
-        
+
         # Detect format if AUTO
         if format_type == CSVFormat.AUTO:
             format_type = self.detect_format(path)
             logger.info(f"Detected format: {format_type.value}")
-        
+
         # Read based on format
         if format_type == CSVFormat.MSDIAL:
             return self.read_msdial(path)
         else:
             return self.read_standard_csv(path)
-    
+
     def read_standard_csv(self, path: Path) -> RawDataFrame:
         """Read standard CSV file.
-        
+
         Args:
             path: Path to CSV file
-            
+
         Returns:
             RawDataFrame with parsed data
         """
         # Auto-detect delimiter if not specified
         delimiter = self.delimiter or self._detect_delimiter(path)
-        
+
         rows = []
         fieldnames = []
-        
+
         try:
-            with path.open('r', encoding=self.encoding, newline='') as fh:
+            with path.open("r", encoding=self.encoding, newline="") as fh:
                 reader = csv.DictReader(fh, delimiter=delimiter)
                 fieldnames = reader.fieldnames or []
                 rows = list(reader)
         except UnicodeDecodeError:
             # Try alternative encoding
             logger.warning(f"Failed to decode with {self.encoding}, trying latin-1")
-            with path.open('r', encoding='latin-1', newline='') as fh:
+            with path.open("r", encoding="latin-1", newline="") as fh:
                 reader = csv.DictReader(fh, delimiter=delimiter)
                 fieldnames = reader.fieldnames or []
                 rows = list(reader)
 
         rows, row_structure_issues = self._sanitize_rows(fieldnames, rows)
-        
+
         metadata = {
-            'source_file': str(path),
-            'delimiter': delimiter,
-            'encoding': self.encoding,
-            'file_size_bytes': path.stat().st_size,
-            'row_structure_issues': row_structure_issues
+            "source_file": str(path),
+            "delimiter": delimiter,
+            "encoding": self.encoding,
+            "file_size_bytes": path.stat().st_size,
+            "row_structure_issues": row_structure_issues,
         }
-        
+
         logger.info(
             f"Read {len(rows)} rows, {len(fieldnames)} columns from {path.name}"
         )
-        
+
         return RawDataFrame(
             rows=rows,
             fieldnames=fieldnames,
             format_type=CSVFormat.STANDARD,
-            metadata=metadata
+            metadata=metadata,
         )
-    
+
     def read_msdial(self, path: Path) -> RawDataFrame:
         """Read MS-DIAL formatted CSV file.
-        
+
         MS-DIAL files may have special headers or metadata rows.
         For now, this treats them as standard CSV but can be extended.
-        
+
         Args:
             path: Path to MS-DIAL file
-            
+
         Returns:
             RawDataFrame with parsed data
         """
         logger.info(f"Reading MS-DIAL format from {path}")
-        
+
         # TODO: Add MS-DIAL specific parsing logic
         # - Skip metadata rows
         # - Handle special column names
         # - Parse retention time, mass, etc.
-        
+
         # For now, read as standard CSV with tab delimiter
         original_delimiter = self.delimiter
-        self.delimiter = '\t'
-        
+        self.delimiter = "\t"
+
         result = self.read_standard_csv(path)
         result.format_type = CSVFormat.MSDIAL
-        result.metadata['format_notes'] = 'MS-DIAL format (basic parsing)'
-        
+        result.metadata["format_notes"] = "MS-DIAL format (basic parsing)"
+
         self.delimiter = original_delimiter
-        
+
         return result
-    
+
     def detect_format(self, path: Path) -> CSVFormat:
         """Detect CSV format by inspecting file contents.
-        
+
         Args:
             path: Path to CSV file
-            
+
         Returns:
             Detected CSVFormat
         """
         # Read first few lines to detect format
-        with path.open('r', encoding=self.encoding) as fh:
+        with path.open("r", encoding=self.encoding) as fh:
             lines = [fh.readline() for _ in range(5)]
-        
+
         # Check for MS-DIAL indicators
-        header = lines[0].lower() if lines else ''
-        
-        msdial_indicators = [
-            'alignment id',
-            'average rt',
-            'metabolite name',
-            'ms-dial'
-        ]
-        
+        header = lines[0].lower() if lines else ""
+
+        msdial_indicators = ["alignment id", "average rt", "metabolite name", "ms-dial"]
+
         if any(indicator in header for indicator in msdial_indicators):
             logger.debug("Detected MS-DIAL format")
             return CSVFormat.MSDIAL
-        
+
         logger.debug("Defaulting to STANDARD format")
         return CSVFormat.STANDARD
-    
+
     def _detect_delimiter(self, path: Path) -> str:
         """Detect CSV delimiter by analyzing first few lines.
-        
+
         Args:
             path: Path to CSV file
-            
+
         Returns:
             Most likely delimiter character
         """
-        with path.open('r', encoding=self.encoding) as fh:
+        with path.open("r", encoding=self.encoding) as fh:
             sample = fh.read(8192)  # Read first 8KB
-        
+
         # Count occurrences of each delimiter
         delimiter_counts = {
-            delim: sample.count(delim)
-            for delim in self.SUPPORTED_DELIMITERS
+            delim: sample.count(delim) for delim in self.SUPPORTED_DELIMITERS
         }
-        
+
         # Return delimiter with highest count
         detected = max(delimiter_counts, key=delimiter_counts.get)
         logger.debug(f"Detected delimiter: {repr(detected)}")
-        
+
         return detected
 
-    def _sanitize_rows(self, fieldnames: List[str], rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, str]], Dict[int, Dict[str, Any]]]:
+    def _sanitize_rows(
+        self, fieldnames: List[str], rows: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, str]], Dict[int, Dict[str, Any]]]:
         """Normalize row values and record structural anomalies."""
         sanitized_rows: List[Dict[str, str]] = []
         row_structure: Dict[int, Dict[str, Any]] = {}
@@ -268,7 +257,7 @@ class CSVIngestion(BaseModel):
                 value = row.get(column)
                 if value is None:
                     missing_columns.append(column)
-                    clean_row[column] = ''
+                    clean_row[column] = ""
                 elif isinstance(value, str):
                     clean_row[column] = value.strip()
                 else:
@@ -284,25 +273,23 @@ class CSVIngestion(BaseModel):
             if missing_columns or extra_values:
                 row_structure[idx] = {}
                 if missing_columns:
-                    row_structure[idx]['missing_columns'] = missing_columns
+                    row_structure[idx]["missing_columns"] = missing_columns
                 if extra_values:
-                    row_structure[idx]['extra_fields'] = extra_values
+                    row_structure[idx]["extra_fields"] = extra_values
 
             sanitized_rows.append(clean_row)
 
         return sanitized_rows, row_structure
-    
+
     def read_batch(
-        self,
-        paths: List[Union[str, Path]],
-        format_type: CSVFormat = CSVFormat.AUTO
+        self, paths: List[Union[str, Path]], format_type: CSVFormat = CSVFormat.AUTO
     ) -> List[RawDataFrame]:
         """Read multiple CSV files.
-        
+
         Args:
             paths: List of file paths
             format_type: Format type for all files
-            
+
         Returns:
             List of RawDataFrame objects
         """
@@ -314,54 +301,54 @@ class CSVIngestion(BaseModel):
             except Exception as e:
                 logger.error(f"Failed to read {path}: {e}")
                 # Continue with other files
-        
+
         logger.info(f"Successfully read {len(results)} of {len(paths)} files")
         return results
-    
+
     def get_column_info(self, raw_df: RawDataFrame) -> Dict[str, Any]:
         """Get information about columns in the data frame.
-        
+
         Args:
             raw_df: RawDataFrame to analyze
-            
+
         Returns:
             Dictionary with column information
         """
         info = {
-            'column_count': len(raw_df.fieldnames),
-            'columns': raw_df.fieldnames,
-            'empty_columns': [],
-            'column_types': {}
+            "column_count": len(raw_df.fieldnames),
+            "columns": raw_df.fieldnames,
+            "empty_columns": [],
+            "column_types": {},
         }
-        
+
         # Check for empty columns
         for col in raw_df.fieldnames:
-            values = [row.get(col, '').strip() for row in raw_df.rows]
+            values = [row.get(col, "").strip() for row in raw_df.rows]
             non_empty = [v for v in values if v]
-            
+
             if not non_empty:
-                info['empty_columns'].append(col)
+                info["empty_columns"].append(col)
             else:
                 # Try to determine column type
-                info['column_types'][col] = self._guess_column_type(non_empty)
-        
+                info["column_types"][col] = self._guess_column_type(non_empty)
+
         return info
-    
+
     def _guess_column_type(self, values: List[str]) -> str:
         """Guess the data type of a column based on values.
-        
+
         Args:
             values: List of non-empty string values
-            
+
         Returns:
             Guessed type: 'numeric', 'text', 'identifier', 'mixed'
         """
         if not values:
-            return 'empty'
-        
+            return "empty"
+
         # Sample up to 100 values
         sample = values[:100]
-        
+
         numeric_count = 0
         for val in sample:
             try:
@@ -369,14 +356,16 @@ class CSVIngestion(BaseModel):
                 numeric_count += 1
             except ValueError:
                 pass
-        
+
         # If >80% numeric, consider it numeric
         if numeric_count / len(sample) > 0.8:
-            return 'numeric'
-        
+            return "numeric"
+
         # Check if looks like identifiers (short, alphanumeric)
         avg_length = sum(len(v) for v in sample) / len(sample)
-        if avg_length < 20 and all(v.replace('_', '').replace('-', '').isalnum() for v in sample[:10]):
-            return 'identifier'
-        
-        return 'text'
+        if avg_length < 20 and all(
+            v.replace("_", "").replace("-", "").isalnum() for v in sample[:10]
+        ):
+            return "identifier"
+
+        return "text"

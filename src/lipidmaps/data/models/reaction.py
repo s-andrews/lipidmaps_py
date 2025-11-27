@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field, field_validator
 logger = logging.getLogger(__name__)
 
 """ IN TEMPLATE PHASE"""
+
+
 class Reaction(BaseModel):
     """
     - reaction_id: identifier for the reaction
@@ -59,4 +61,3 @@ class Reaction(BaseModel):
             "reactants": [_serialize_item(s) for s in self.reactants],
             "products": [_serialize_item(p) for p in self.products],
         }
-

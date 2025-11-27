@@ -104,7 +104,10 @@ def main() -> None:
     logger.info("Computed statistics for %s groups", len(group_stats))
     for group_name, stats in group_stats.items():
         logger.info(
-            "%s -> %s samples, %s lipids", group_name, stats["sample_count"], stats["lipid_coverage"]
+            "%s -> %s samples, %s lipids",
+            group_name,
+            stats["sample_count"],
+            stats["lipid_coverage"],
         )
 
 

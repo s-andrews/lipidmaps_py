@@ -12,7 +12,7 @@ from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset
 from .models.refmet import RefMet
 
 # import new ingestion and validation modules
-from .ingestion.csv_reader import CSVIngestion, RawDataFrame, CSVFormat
+from .ingestion.csv_reader import CSVIngestion, CSVFormat
 from .validation.data_validator import DataValidator, ValidationReport
 
 
@@ -28,14 +28,14 @@ class DataManager(BaseModel):
         # Default behavior - first column is lipid names, rest are samples
         mgr = DataManager()
         dataset = mgr.process_csv("tests/inputs/quantified_test_file.csv")
-        
+
         # Specify custom columns:
         mgr = DataManager(
             lipid_name_column=0,  # or column name as string
             sample_columns=[1, 2, 3],  # or column names as list of strings
         )
         dataset = mgr.process_csv("data.csv")
-        
+
         # Specify group-to-sample mapping:
         mgr = DataManager(
             group_mapping={
@@ -44,7 +44,7 @@ class DataManager(BaseModel):
             }
         )
         dataset = mgr.process_csv("data.csv")
-        
+
         # With validation:
         mgr = DataManager(validate_data=True)
         dataset = mgr.process_csv("tests/inputs/quantified_test_file.csv")
@@ -58,30 +58,30 @@ class DataManager(BaseModel):
     dataset: Optional[LipidDataset] = Field(default=None)
     lipid_species: List[Any] = Field(default_factory=list)
     validation_report: Optional[ValidationReport] = Field(default=None)
-    
+
     # Configuration for ingestion and validation
     validate_data: bool = Field(default=False)
     csv_format: CSVFormat = Field(default=CSVFormat.AUTO)
-    
+
     # User-specified column configuration
     lipid_name_column: Optional[Union[int, str]] = Field(
         default=None,
-        description="Column index (0-based) or name for lipid names. Default: first column (0)"
+        description="Column index (0-based) or name for lipid names. Default: first column (0)",
     )
     sample_columns: Optional[Union[List[int], List[str]]] = Field(
         default=None,
-        description="List of column indices or names for sample data. Default: all columns after lipid column"
+        description="List of column indices or names for sample data. Default: all columns after lipid column",
     )
-    
+
     # Group-to-sample mapping
     group_mapping: Optional[Dict[str, List[str]]] = Field(
         default=None,
-        description="Map group names to sample IDs. Example: {'Control': ['S1', 'S2'], 'Treatment': ['S3', 'S4']}"
+        description="Map group names to sample IDs. Example: {'Control': ['S1', 'S2'], 'Treatment': ['S3', 'S4']}",
     )
 
     model_config = {"arbitrary_types_allowed": True}
-    
-    @field_validator('sample_columns', mode='before')
+
+    @field_validator("sample_columns", mode="before")
     @classmethod
     def validate_sample_columns(cls, v):
         """Ensure sample_columns is a list if provided."""
@@ -96,40 +96,40 @@ class DataManager(BaseModel):
             "Initialized DataManager (validation=%s, lipid_col=%s, sample_cols=%s, groups=%s)",
             self.validate_data,
             self.lipid_name_column,
-            len(self.sample_columns) if self.sample_columns else 'auto',
-            len(self.group_mapping) if self.group_mapping else 'auto'
+            len(self.sample_columns) if self.sample_columns else "auto",
+            len(self.group_mapping) if self.group_mapping else "auto",
         )
 
     def process_csv(self, csv_path: Union[str, Path]) -> LipidDataset:
         """Read CSV and populate SampleMetadata, QuantifiedLipid and LipidDataset.
-        
+
         Now uses CSVIngestion for reading and DataValidator for quality checks.
-        
+
         Args:
             csv_path: Path to CSV file
-            
+
         Returns:
             LipidDataset with processed data
         """
         csv_path = Path(csv_path)
         logger.info("Loading CSV file: %s", csv_path)
-        
+
         # Use CSVIngestion to read file
         ingestion = CSVIngestion()
         raw_df = ingestion.read_csv(csv_path, format_type=self.csv_format)
-        
+
         # Validate data if requested
         if self.validate_data:
             validator = DataValidator()
             self.validation_report = validator.validate(raw_df)
-            
+
             if not self.validation_report.passed:
                 logger.warning(
                     f"Validation found {len(self.validation_report.issues)} issues"
                 )
                 # Optionally print report
                 # self.validation_report.print_report()
-        
+
         # Process the raw data
         if raw_df.is_empty():
             ds = LipidDataset(samples=[], lipids=[])
@@ -138,13 +138,13 @@ class DataManager(BaseModel):
 
         # Determine lipid name column
         name_col = self._resolve_lipid_column(raw_df.fieldnames)
-        
+
         # Determine sample columns
         sample_ids = self._resolve_sample_columns(raw_df.fieldnames, name_col)
-        
+
         # Create sample metadata with group mapping if provided
         samples_meta = self.extract_sample_metadata(sample_ids)
-        
+
         # Extract quantified lipids
         quantified = self.extract_quantified_lipids(raw_df.rows, name_col, sample_ids)
         self.annotate_lipids_with_refmet(quantified)
@@ -155,20 +155,20 @@ class DataManager(BaseModel):
             f"Created LipidDataset: {len(samples_meta)} samples, {len(quantified)} lipids"
         )
         return dataset
-    
+
     def _resolve_lipid_column(self, fieldnames: List[str]) -> str:
         """Resolve the lipid name column from user specification or default.
-        
+
         Args:
             fieldnames: List of column names from CSV
-            
+
         Returns:
             Column name to use for lipid names
         """
         if self.lipid_name_column is None:
             # Default: first column
             return fieldnames[0]
-        
+
         if isinstance(self.lipid_name_column, int):
             # Column index specified
             if 0 <= self.lipid_name_column < len(fieldnames):
@@ -178,7 +178,7 @@ class DataManager(BaseModel):
                     f"lipid_name_column index {self.lipid_name_column} out of range. "
                     f"CSV has {len(fieldnames)} columns."
                 )
-        
+
         # Column name specified
         if self.lipid_name_column in fieldnames:
             return self.lipid_name_column
@@ -187,21 +187,25 @@ class DataManager(BaseModel):
                 f"lipid_name_column '{self.lipid_name_column}' not found in CSV. "
                 f"Available columns: {fieldnames}"
             )
-    
-    def _resolve_sample_columns(self, fieldnames: List[str], lipid_col: str) -> List[str]:
+
+    def _resolve_sample_columns(
+        self, fieldnames: List[str], lipid_col: str
+    ) -> List[str]:
         """Resolve sample columns from user specification or default.
-        
+
         Args:
             fieldnames: List of column names from CSV
             lipid_col: The lipid name column (to exclude)
-            
+
         Returns:
             List of column names to use for sample data
         """
         if self.sample_columns is None:
             # Default: all columns except lipid column
-            return [col for col in fieldnames if col != lipid_col and col and col.strip()]
-        
+            return [
+                col for col in fieldnames if col != lipid_col and col and col.strip()
+            ]
+
         resolved = []
         for spec in self.sample_columns:
             if isinstance(spec, int):
@@ -222,12 +226,12 @@ class DataManager(BaseModel):
                         f"sample_columns name '{spec}' not found in CSV. "
                         f"Available columns: {fieldnames}"
                     )
-        
+
         return [col for col in resolved if col and col.strip()]
 
     def read_csv_rows(self, csv_path: Path) -> Tuple[List[Dict], List[str]]:
         """Read CSV and return rows and fieldnames.
-        
+
         DEPRECATED: Use CSVIngestion directly instead.
         Kept for backward compatibility.
         """
@@ -240,7 +244,7 @@ class DataManager(BaseModel):
 
     def extract_sample_metadata(self, sample_ids: List[str]) -> List[SampleMetadata]:
         """Create SampleMetadata for each sample id.
-        
+
         If group_mapping is provided, uses it to assign groups.
         Otherwise, extracts group from sample ID using pattern matching.
         """
@@ -255,7 +259,7 @@ class DataManager(BaseModel):
             # First check explicit mapping
             if sample_id in sample_to_group:
                 return sample_to_group[sample_id]
-            
+
             # Fall back to pattern extraction
             if not sample_id or not sample_id.strip():
                 return "unknown"
@@ -269,13 +273,13 @@ class DataManager(BaseModel):
             SampleMetadata(sample_id=sid, group=extract_group(sid))
             for sid in sample_ids
         ]
-        
+
         if self.group_mapping:
             logger.info(
                 f"Applied group_mapping: {len(self.group_mapping)} groups, "
                 f"mapped {len(sample_to_group)} samples"
             )
-        
+
         return samples
 
     def extract_quantified_lipids(
@@ -325,11 +329,11 @@ class DataManager(BaseModel):
         try:
             # Extract lipid names
             lipid_names = [q.input_name for q in quantified]
-            
+
             # Call RefMet API to get results
             refmet_results = RefMet.validate_metabolite_names(lipid_names)
             logger.info(f"RefMet returned {len(refmet_results)} results")
-            
+
             # Apply results to quantified lipids
             for q, result in zip(quantified, refmet_results):
                 q.standardized_name = result.standardized_name
@@ -457,7 +461,13 @@ if __name__ == "__main__":
     import sys
 
     logging.basicConfig(level=logging.INFO)
-    csv_path = Path(__file__).parents[3] / "tests" / "data" / "inputs" / "file_structure_negative.csv"
+    csv_path = (
+        Path(__file__).parents[3]
+        / "tests"
+        / "data"
+        / "inputs"
+        / "file_structure_negative.csv"
+    )
     print(f"Using CSV: {csv_path}")
 
     # --- CSV ingestion -----------------------------------------------------
