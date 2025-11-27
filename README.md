@@ -47,7 +47,7 @@ pip install -e .
 
 4. Install development dependencies (optional, for running tests):
 ```bash
-pip install pytest pytest-cov black flake8 mypy
+pip install pytest pytest-cov pytest-html black flake8 mypy
 ```
 
 ### Verify Installation

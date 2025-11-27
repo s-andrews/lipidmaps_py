@@ -347,6 +347,15 @@ class DataManager(BaseModel):
                 "RefMet annotation failed; continuing without standardized names"
             )
 
+    def print_report(self) -> None:
+        """Print the most recent validation report if available."""
+        if not self.validation_report:
+            logger.info(
+                "No validation report available; run with validate_data=True to generate one"
+            )
+            return
+        self.validation_report.print_report()
+
     def dataset_dict(self) -> Dict[str, Any]:
         """Serialize the dataset to plain dict for JSON output or downstream analysis."""
         if self.dataset is None:
@@ -444,13 +453,50 @@ class DataManager(BaseModel):
 
 
 if __name__ == "__main__":
-    """Quick demo: run this module directly to parse the example CSV and print a short summary."""
+    """Quick demo showcasing CSVIngestion + DataValidator + DataManager."""
     import sys
 
     logging.basicConfig(level=logging.INFO)
-    mgr = DataManager()
-    csv_path = Path(__file__).parents[1] / "tests" / "inputs" / "test_input.csv"
+    csv_path = Path(__file__).parents[3] / "tests" / "data" / "inputs" / "file_structure_negative.csv"
     print(f"Using CSV: {csv_path}")
+
+    # --- CSV ingestion -----------------------------------------------------
+    ingestion = CSVIngestion()
+    try:
+        raw_df = ingestion.read_csv(csv_path)
+    except Exception as exc:
+        logger.exception("CSV ingestion failed: %s", exc)
+        sys.exit(2)
+
+    print(
+        f"Ingested {raw_df.row_count} rows x {raw_df.column_count} columns "
+        f"(format={raw_df.format_type.value})"
+    )
+    if raw_df.fieldnames:
+        preview = ", ".join(raw_df.fieldnames[:5])
+        if len(raw_df.fieldnames) > 5:
+            preview += ", ..."
+        print(f"Columns: {preview}")
+
+    # --- Data validation ---------------------------------------------------
+    validator = DataValidator()
+    validation_report = validator.validate(raw_df)
+    status = "PASSED" if validation_report.passed else "FAILED"
+    print(
+        f"Validation status: {status} "
+        f"({len(validation_report.issues)} issues, warnings={validation_report.has_warnings})"
+    )
+    if validation_report.issues:
+        sample_issues = validation_report.issues[:3]
+        print("Sample issues:")
+        for issue in sample_issues:
+            print(f"  - {issue}")
+        remaining = len(validation_report.issues) - len(sample_issues)
+        if remaining:
+            print(f"  ...and {remaining} more")
+
+    # --- Dataset processing ------------------------------------------------
+    mgr = DataManager(validate_data=True)
     try:
         ds = mgr.process_csv(csv_path)
     except Exception as exc:
@@ -462,7 +508,7 @@ if __name__ == "__main__":
     print(f"  lipids: {len(ds.lipids)}")
 
     # Group analysis
-    print("\n" "=" * 60)
+    print("\n" + "=" * 60)
     print("GROUP-LEVEL ANALYSIS")
     print("=" * 60)
 

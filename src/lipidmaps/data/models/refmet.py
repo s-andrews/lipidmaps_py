@@ -158,7 +158,7 @@ class RefMet:
                 refmet_id=(refmet_id if refmet_id else None),
             )
 
-            logger.info(f"RefMet result: {result.standardized_name}")
+            # logger.info(f"RefMet result: {result.standardized_name}")
             if input_name:
                 lookup[input_name] = result
 
@@ -168,7 +168,7 @@ class RefMet:
                 refmet_results.append(lookup[name])
             else:
                 refmet_results.append(
-                    RefMetResult(input_name=name, standardized_name=name)
+                    RefMetResult(input_name=name)
                 )
             logger.info(
                 f"Validated '{name}' -> standardized: '{refmet_results[-1].standardized_name}', lm_id: {refmet_results[-1].lm_id}"
