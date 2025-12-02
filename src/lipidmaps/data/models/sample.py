@@ -20,7 +20,10 @@ class QuantifiedLipid(BaseModel):
     enzyme_ids: Optional[List[str]] = None  # e.g., EC numbers or UniProt IDs
     # RefMet annotations
     standardized_name: Optional[str] = None
+    standardized_by: Optional[str] = None # e.g., "RefMet"
     lm_id: Optional[str] = None
+    lm_id_found_by: Optional[str] = None  # e.g., "LMSD", "RefMet"
+    matched_field: Optional[str] = None
     generic_lm_id: Optional[str] = None
     sub_class: Optional[str] = None
     super_class: Optional[str] = None
@@ -78,4 +81,4 @@ if __name__ == "__main__":
         enzyme_ids=["EC 2.3.1.51"],
     )
     zscores = lipid.zscore()
-    print("Z-scores:", zscores, lipid)
+    print(f"Z-scores: {zscores} {lipid}")

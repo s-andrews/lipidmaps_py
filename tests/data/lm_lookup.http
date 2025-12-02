@@ -1,4 +1,4 @@
-POST http://localhost/api/lm/lookup HTTP/1.1
+POST http://localhost/api/molecules/names HTTP/1.1
 content-type: application/json
 
 {

@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Union, Any
 import requests
 from pydantic import BaseModel
 
@@ -27,7 +27,7 @@ class RefMet:
     MWBaseURL = "https://www.metabolomicsworkbench.org/databases/refmet/name_to_refmet_new_minID.php"
 
     @staticmethod
-    def validate_metabolite_names(metabolite_names: List[str]) -> List[RefMetResult]:
+    def validate_metabolite_names(metabolite_names: List[str]) -> Union[List[RefMetResult], Dict[str, Any]]:
         """Validate metabolite names using RefMet API and return RefMetResult objects.
 
         Args:
@@ -40,16 +40,16 @@ class RefMet:
         try:
             logger.info("Sending request to RefMet API")
             response = requests.post(
-                RefMet.MWBaseURL, data=data, verify=True, timeout=20
+                RefMet.MWBaseURL, data=data, verify=False, timeout=20
             )
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.error("RefMet API call failed: %s", e)
+            logger.error(f"RefMet API call failed: {e}")
             # Return empty list on failure
             return {"error": str(e)}
 
         lines = [ln for ln in response.text.splitlines() if ln.strip()]
-        if not lines:
+        if not lines or len(lines) < 2:
             logger.warning("RefMet returned empty response")
             return []
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 # import the data models we will produce
 from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset
 from .models.refmet import RefMet
+from .models.lmsd import LMSD
 
 # import new ingestion and validation modules
 from .ingestion.csv_reader import CSVIngestion, CSVFormat
@@ -93,11 +94,9 @@ class DataManager(BaseModel):
 
     def model_post_init(self, __context: dict) -> None:
         logger.info(
-            "Initialized DataManager (validation=%s, lipid_col=%s, sample_cols=%s, groups=%s)",
-            self.validate_data,
-            self.lipid_name_column,
-            len(self.sample_columns) if self.sample_columns else "auto",
-            len(self.group_mapping) if self.group_mapping else "auto",
+            f"Initialized DataManager (validation={self.validate_data}, lipid_col={self.lipid_name_column}, "
+            f"sample_cols={len(self.sample_columns) if self.sample_columns else 'auto'}, "
+            f"groups={len(self.group_mapping) if self.group_mapping else 'auto'})"
         )
 
     def process_csv(self, csv_path: Union[str, Path]) -> LipidDataset:
@@ -112,7 +111,7 @@ class DataManager(BaseModel):
             LipidDataset with processed data
         """
         csv_path = Path(csv_path)
-        logger.info("Loading CSV file: %s", csv_path)
+        logger.info(f"Loading CSV file: {csv_path}")
 
         # Use CSVIngestion to read file
         ingestion = CSVIngestion()
@@ -337,7 +336,20 @@ class DataManager(BaseModel):
             # Apply results to quantified lipids
             for q, result in zip(quantified, refmet_results):
                 q.standardized_name = result.standardized_name
+                # record that the standardized name came from RefMet when present
+                try:
+                    if getattr(result, "standardized_name", None):
+                        q.standardized_by = "RefMet"
+                except Exception:
+                    pass
+
                 q.lm_id = result.lm_id
+                # if RefMet supplied the lm_id, record that source
+                try:
+                    if getattr(result, "lm_id", None):
+                        q.lm_id_found_by = "RefMet"
+                except Exception:
+                    pass
                 q.sub_class = result.sub_class
                 q.formula = result.formula
                 q.mass = result.exact_mass
@@ -350,6 +362,121 @@ class DataManager(BaseModel):
             logger.exception(
                 "RefMet annotation failed; continuing without standardized names"
             )
+
+    def fill_missing_lm_ids_from_lmsd(
+        self, quantified: Optional[List[Any]] = None, use_standardized_name: bool = True
+    ) -> int:
+        """Fill missing `lm_id` fields on QuantifiedLipid objects using LMSD.
+
+        Args:
+            quantified: Optional list of QuantifiedLipid objects to operate on. If
+                not provided, uses `self.dataset.lipids`.
+            use_standardized_name: If True, prefer `standardized_name` when calling
+                the LMSD API; fall back to `input_name` when absent.
+
+        Returns:
+            Number of lipids updated with an `lm_id`.
+        """
+        if quantified is None:
+            if self.dataset is None:
+                logger.debug("No dataset available to update lm_ids")
+                return 0
+            quantified = self.dataset.lipids
+
+        # Collect indices and names for lipids missing lm_id
+        missing_indices: List[int] = []
+        query_names: List[str] = []
+        for i, q in enumerate(quantified):
+            current = getattr(q, "lm_id", None)
+            if not current:
+                name = None
+                if use_standardized_name:
+                    name = getattr(q, "standardized_name", None)
+                if not name:
+                    name = getattr(q, "input_name", None)
+                # ensure we have a name to query
+                if name:
+                    missing_indices.append(i)
+                    query_names.append(name)
+
+        if not query_names:
+            logger.debug("No missing lm_id entries to update via LMSD")
+            return 0
+
+        try:
+            logger.info(f"Querying LMSD for {len(query_names)} names to fill missing lm_id fields")
+            resp = LMSD.get_lm_ids_by_name(query_names)
+        except Exception:
+            logger.exception("LMSD lookup failed")
+            return 0
+
+        # If LMSD returned an error dict, log and exit
+        if isinstance(resp, dict) and resp.get("error"):
+            logger.error(f"LMSD returned error: {resp.get('error')}")
+            return 0
+
+        if not isinstance(resp, list):
+            logger.warning(f"Unexpected LMSD response type: {type(resp)}")
+            return 0
+
+        updated = 0
+        # Map results back to quantified list
+        for idx, item in zip(missing_indices, resp):
+            if not isinstance(item, dict):
+                continue
+            lm_id = item.get("lm_id")
+            if lm_id:
+                try:
+                    quantified[idx].lm_id = lm_id
+                    # Optionally record which field matched (if model supports it)
+                    if hasattr(quantified[idx], "matched_field"):
+                        setattr(quantified[idx], "matched_field", item.get("matched_field"))
+                    # record that this lm_id was found via LMSD
+                    try:
+                        quantified[idx].lm_id_found_by = "LMSD"
+                    except Exception:
+                        pass
+                except Exception:
+                    logger.exception(f"Failed to set lm_id on lipid at index {idx}")
+                    continue
+                updated += 1
+
+        logger.info(f"Updated {updated} lm_id fields using LMSD")
+        return updated
+
+    def run_lmsd_fill_and_report(self, dataset: Optional[Any] = None) -> int:
+        """Run LMSD fill for `dataset` and return number updated.
+
+        This wraps `fill_missing_lm_ids_from_lmsd` and records/report changes
+        so it can be called from external code (API/CLI).
+        """
+        # Accept either an explicit dataset or use the manager's current dataset
+        if dataset is None:
+            dataset = getattr(self, "dataset", None)
+
+        # Record pre-existing lm_id state if we have a dataset
+        pre_lm: Dict[str, Any] = {}
+        if dataset is not None and getattr(dataset, "lipids", None) is not None:
+            pre_lm = {q.input_name: q.lm_id for q in dataset.lipids}
+
+        # If we have an explicit dataset, pass its lipids list to the fill helper
+        if dataset is not None and getattr(dataset, "lipids", None) is not None:
+            updated_count = self.fill_missing_lm_ids_from_lmsd(quantified=dataset.lipids)
+        else:
+            updated_count = self.fill_missing_lm_ids_from_lmsd()
+
+        # Logging/reporting: mirror previous CLI behavior
+        logger = logging.getLogger(__name__)
+        logger.info(f"LMSD fill completed: {updated_count} updated")
+        if updated_count and dataset is not None and getattr(dataset, "lipids", None) is not None:
+            for q in dataset.lipids:
+                prev = pre_lm.get(q.input_name)
+                if not prev and q.lm_id:
+                    logger.info(
+                        f"  {q.input_name} -> {q.lm_id} (matched_field={getattr(q, 'matched_field', None)})"
+                    )
+
+        return updated_count
 
     def print_report(self) -> None:
         """Print the most recent validation report if available."""
@@ -475,7 +602,7 @@ if __name__ == "__main__":
     try:
         raw_df = ingestion.read_csv(csv_path)
     except Exception as exc:
-        logger.exception("CSV ingestion failed: %s", exc)
+        logger.exception(f"CSV ingestion failed: {exc}")
         sys.exit(2)
 
     print(
@@ -510,7 +637,7 @@ if __name__ == "__main__":
     try:
         ds = mgr.process_csv(csv_path)
     except Exception as exc:
-        logger.exception("Demo failed to process CSV: %s", exc)
+        logger.exception(f"Demo failed to process CSV: {exc}")
         sys.exit(2)
 
     print("\nDataset summary:")

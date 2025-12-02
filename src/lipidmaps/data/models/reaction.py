@@ -40,7 +40,7 @@ class Reaction(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
-        logger.info("Created Reaction: %s", self.reaction_id)
+        logger.info(f"Created Reaction: {self.reaction_id}")
 
     def to_dict(self) -> Dict[str, Any]:
         """

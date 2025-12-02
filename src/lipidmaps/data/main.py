@@ -39,6 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run DataValidator checks during processing",
     )
     parser.add_argument(
+        "--fill-lmsd",
+        dest="fill_lmsd",
+        action="store_true",
+        help="Query LMSD to fill missing LM IDs after RefMet annotation",
+    )
+    parser.add_argument(
         "--groups",
         nargs="*",
         metavar="GROUP=S1,S2",
@@ -54,12 +60,12 @@ def parse_group_mapping(raw_groups: list[str] | None) -> dict[str, list[str]] | 
     mapping: dict[str, list[str]] = {}
     for entry in raw_groups:
         if "=" not in entry:
-            logger.warning("Skipping malformed group mapping '%s'", entry)
+            logger.warning(f"Skipping malformed group mapping '{entry}'")
             continue
         name, samples_str = entry.split("=", 1)
         samples = [s.strip() for s in samples_str.split(",") if s.strip()]
         if not samples:
-            logger.warning("Group '%s' has no samples; skipping", name)
+            logger.warning(f"Group '{name}' has no samples; skipping")
             continue
         mapping[name.strip()] = samples
     return mapping or None
@@ -73,7 +79,7 @@ def main() -> None:
     if not csv_path.exists():
         parser.error(f"CSV file not found: {csv_path}")
 
-    logger.info("Processing CSV: %s", csv_path)
+    logger.info(f"Processing CSV: {csv_path}")
 
     group_mapping = parse_group_mapping(args.groups)
     manager = DataManager(
@@ -91,23 +97,21 @@ def main() -> None:
     try:
         dataset = manager.process_csv(csv_path)
     except Exception as exc:
-        logger.exception("Failed to process CSV: %s", exc)
+        logger.exception(f"Failed to process CSV: {exc}")
         raise SystemExit(2) from exc
 
-    logger.info(
-        "Dataset ready: %s samples, %s lipids",
-        len(dataset.samples),
-        len(dataset.lipids),
-    )
+    logger.info(f"Dataset ready: {len(dataset.samples)} samples, {len(dataset.lipids)} lipids")
 
+    # Optionally fill missing LM IDs using LMSD and report what changed
+    if getattr(args, "fill_lmsd", False):
+        # Use DataManager helper to run LMSD fill and report updates
+        updated_count = manager.run_lmsd_fill_and_report(dataset)
+        logger.info(f"Filled {updated_count} missing LM IDs using LMSD")
     group_stats = manager.get_group_statistics()
-    logger.info("Computed statistics for %s groups", len(group_stats))
+    logger.info(f"Computed statistics for {len(group_stats)} groups")
     for group_name, stats in group_stats.items():
         logger.info(
-            "%s -> %s samples, %s lipids",
-            group_name,
-            stats["sample_count"],
-            stats["lipid_coverage"],
+            f"{group_name} -> {stats['sample_count']} samples, {stats['lipid_coverage']} lipids"
         )
 
 
