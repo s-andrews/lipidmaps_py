@@ -101,6 +101,7 @@ def main() -> None:
         raise SystemExit(2) from exc
 
     logger.info(f"Dataset ready: {len(dataset.samples)} samples, {len(dataset.lipids)} lipids")
+    logger.info(f"Sample column info: {dataset.samples[:4]}")
 
     # Optionally fill missing LM IDs using LMSD and report what changed
     if getattr(args, "fill_lmsd", False):

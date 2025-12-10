@@ -32,11 +32,13 @@ class RawDataFrame(BaseModel):
         rows: List of dictionaries, one per data row
         fieldnames: List of column headers
         format_type: Detected or specified format type
+        labels: Optional list of labels from second row if present
         metadata: Additional metadata about the file
     """
 
     rows: List[Dict[str, str]] = Field(default_factory=list)
     fieldnames: List[str] = Field(default_factory=list)
+    labels: List[str] = Field(default_factory=list)
     format_type: CSVFormat
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
@@ -130,19 +132,28 @@ class CSVIngestion(BaseModel):
 
         rows = []
         fieldnames = []
+        labels = []
 
         try:
-            with path.open("r", encoding=self.encoding, newline="") as fh:
-                reader = csv.DictReader(fh, delimiter=delimiter)
+            with path.open("r", encoding=self.encoding, newline="") as file:
+                reader = csv.DictReader(file, delimiter=delimiter)
                 fieldnames = reader.fieldnames or []
                 rows = list(reader)
+                if csv.Sniffer().has_header(delimiter.join(rows[0])):
+                    labels = [rows[0][fn] for fn in fieldnames]
+                    rows = rows[1:]
+
         except UnicodeDecodeError:
             # Try alternative encoding
             logger.warning(f"Failed to decode with {self.encoding}, trying latin-1")
-            with path.open("r", encoding="latin-1", newline="") as fh:
-                reader = csv.DictReader(fh, delimiter=delimiter)
+            with path.open("r", encoding="latin-1", newline="") as file:
+                reader = csv.DictReader(file, delimiter=delimiter)
                 fieldnames = reader.fieldnames or []
+                
                 rows = list(reader)
+                if csv.Sniffer().has_header(delimiter.join(rows[0])):
+                    labels = [rows[0][fn] for fn in fieldnames]
+                    rows = rows[1:]
 
         rows, row_structure_issues = self._sanitize_rows(fieldnames, rows)
 
@@ -162,6 +173,7 @@ class CSVIngestion(BaseModel):
             rows=rows,
             fieldnames=fieldnames,
             format_type=CSVFormat.STANDARD,
+            labels=labels,
             metadata=metadata,
         )
 

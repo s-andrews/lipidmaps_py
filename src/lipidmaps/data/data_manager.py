@@ -66,7 +66,7 @@ class DataManager(BaseModel):
 
     # User-specified column configuration
     lipid_name_column: Optional[Union[int, str]] = Field(
-        default=None,
+        default=0,
         description="Column index (0-based) or name for lipid names. Default: first column (0)",
     )
     sample_columns: Optional[Union[List[int], List[str]]] = Field(
@@ -78,6 +78,11 @@ class DataManager(BaseModel):
     group_mapping: Optional[Dict[str, List[str]]] = Field(
         default=None,
         description="Map group names to sample IDs. Example: {'Control': ['S1', 'S2'], 'Treatment': ['S3', 'S4']}",
+    )
+
+    group_label: Optional[str] = Field(
+        default=None,
+        description="Label to use for groups - Usually derived from group_mapping or second row in CSV.",
     )
 
     model_config = {"arbitrary_types_allowed": True}
@@ -116,6 +121,17 @@ class DataManager(BaseModel):
         # Use CSVIngestion to read file
         ingestion = CSVIngestion()
         raw_df = ingestion.read_csv(csv_path, format_type=self.csv_format)
+        column_info = ingestion.get_column_info(raw_df)
+        logger.info(
+            f"CSV ingested: {raw_df.row_count} rows x {raw_df.column_count} columns. Empty columns: {column_info.get('empty_columns', [])}"
+        )
+
+        # {
+        #     "column_count": len(raw_df.fieldnames),
+        #     "columns": raw_df.fieldnames,
+        #     "empty_columns": [],
+        #     "column_types": {},
+        # }
 
         # Validate data if requested
         if self.validate_data:
@@ -140,15 +156,17 @@ class DataManager(BaseModel):
 
         # Determine sample columns
         sample_ids = self._resolve_sample_columns(raw_df.fieldnames, name_col)
-
+        labels = raw_df.labels if hasattr(raw_df, "labels") else []
         # Create sample metadata with group mapping if provided
-        samples_meta = self.extract_sample_metadata(sample_ids)
+        samples_meta = self.extract_sample_metadata(sample_ids, labels=labels)
 
+        # logger.info(f"column_info: {column_info.get('column_types', {})}")
+        # logger.info(f"Empty: {column_info.get('empty_columns', [])}")
         # Extract quantified lipids
-        quantified = self.extract_quantified_lipids(raw_df.rows, name_col, sample_ids)
+        quantified = self.extract_quantified_lipids(raw_df.rows, name_col, sample_ids, column_info=column_info)
         self.annotate_lipids_with_refmet(quantified)
 
-        dataset = LipidDataset(samples=samples_meta, lipids=quantified)
+        dataset = LipidDataset(samples=samples_meta, lipids=quantified, column_info=column_info)
         self.dataset = dataset
         logger.info(
             f"Created LipidDataset: {len(samples_meta)} samples, {len(quantified)} lipids"
@@ -228,20 +246,8 @@ class DataManager(BaseModel):
 
         return [col for col in resolved if col and col.strip()]
 
-    def read_csv_rows(self, csv_path: Path) -> Tuple[List[Dict], List[str]]:
-        """Read CSV and return rows and fieldnames.
 
-        DEPRECATED: Use CSVIngestion directly instead.
-        Kept for backward compatibility.
-        """
-        logger.debug("Using legacy read_csv_rows (consider using CSVIngestion)")
-        with csv_path.open(newline="") as fh:
-            reader = csv.DictReader(fh)
-            rows = list(reader)
-            fieldnames = reader.fieldnames or []
-        return rows, fieldnames
-
-    def extract_sample_metadata(self, sample_ids: List[str]) -> List[SampleMetadata]:
+    def extract_sample_metadata(self, sample_ids: List[str], labels: Optional[List[str]]=None) -> List[SampleMetadata]:
         """Create SampleMetadata for each sample id.
 
         If group_mapping is provided, uses it to assign groups.
@@ -268,11 +274,22 @@ class DataManager(BaseModel):
                 return group if group else "unknown"
             return "unknown"
 
-        samples = [
-            SampleMetadata(sample_id=sid, group=extract_group(sid))
-            for sid in sample_ids
-        ]
-
+        if labels:
+            # Use labels to assign groups if available
+            label_map = {sid: lbl for sid, lbl in zip(sample_ids, labels[1:]) if lbl}
+            samples = [
+                SampleMetadata(
+                    sample_id=sid,
+                    group=extract_group(sid),
+                    label=label_map.get(sid)
+                )
+                for sid in sample_ids
+            ]
+        else:
+            samples = [
+                SampleMetadata(sample_id=sid, group=extract_group(sid))
+                for sid in sample_ids
+            ]
         if self.group_mapping:
             logger.info(
                 f"Applied group_mapping: {len(self.group_mapping)} groups, "
@@ -282,7 +299,7 @@ class DataManager(BaseModel):
         return samples
 
     def extract_quantified_lipids(
-        self, rows: List[Dict], name_col: str, sample_ids: List[str]
+        self, rows: List[Dict], name_col: str, sample_ids: List[str], column_info: Optional[Dict[str, Any]] = None
     ) -> List[QuantifiedLipid]:
         """Extract QuantifiedLipid objects from CSV rows."""
         quantified = []
@@ -293,6 +310,14 @@ class DataManager(BaseModel):
                 skipped_rows += 1
                 logger.debug(f"Skipping row {row_idx}: empty lipid name")
                 continue
+            if column_info is not None:
+                empty_columns = column_info.get("empty_columns", [])
+                non_numeric_columns = [col for col, ctype in column_info.get("column_types", {}).items() if ctype != "numeric"]
+                if name_col in empty_columns or name_col in non_numeric_columns:
+                    skipped_rows += 1
+                    logger.debug(f"Skipping row {row_idx}: lipid name column '{name_col}' is either empty or non-numeric")
+                    continue
+
             values = {}
             skipped_values = 0
             for sid in sample_ids:
@@ -304,9 +329,9 @@ class DataManager(BaseModel):
                     values[sid] = float(raw)
                 except ValueError:
                     skipped_values += 1
-                    logger.warning(
-                        f"Non-numeric value for sample {sid} at row {row_idx}: {raw!r}"
-                    )
+                    # logger.warning(
+                    #     f"Non-numeric value for sample {sid} at row {row_idx}: {raw!r}"
+                    # )
                     continue
             if values:
                 quantified.append(QuantifiedLipid(input_name=lipid_name, values=values))

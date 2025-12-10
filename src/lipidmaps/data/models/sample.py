@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class SampleMetadata(BaseModel):
     sample_id: str
     group: str  # e.g., "Control", "WT"
-    condition: Optional[str] = None  # e.g., "Fasted", "Fed"
+    label: Optional[str] = None  # e.g., "Fasted", "Fed"
 
 
 class QuantifiedLipid(BaseModel):
@@ -50,6 +50,7 @@ class QuantifiedLipid(BaseModel):
 class LipidDataset(BaseModel):
     samples: List[SampleMetadata]
     lipids: List[QuantifiedLipid]
+    column_info: Optional[Dict[str, Any]] = None  # Metadata about CSV columns
 
     def get_grouped_data(self) -> Dict[str, List[QuantifiedLipid]]:
         grouped = {}
