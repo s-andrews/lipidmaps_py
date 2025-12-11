@@ -99,9 +99,10 @@ class ReactionChecker(BaseModel):
             ReactionResponse with filtered reactions containing only lm_main components
         """
         payload = {
-            "search_source": "lipidmaps_py",
+            "search_mode": "default",
             "search_type": search_type,
-            "lm_ids": lm_ids,
+            "generic_reactions": True,
+            "lmsd_ids": lm_ids,
         }
 
         try:
@@ -152,3 +153,28 @@ class ReactionChecker(BaseModel):
         except requests.RequestException as e:
             logger.error(f"Reaction API call failed: {e}")
             return ReactionResponse(reactions=[], error=str(e))
+
+
+if __name__ == "__main__":
+    import os
+    import json
+
+    # Simple runnable example to test ReactionChecker locally.
+    # Configure base URL via environment variable REACTION_API_BASE (default http://localhost)
+    base = os.environ.get("REACTION_API_BASE", "http://localhost")
+
+    # Payload from user for quick testing
+    sample_payload = {
+        "search_mode": "default",
+        "search_type": "lipids",
+        "generic_reactions": True,
+        "lmsd_ids": ["LMGP06010000", "LMFA0103000", "LMFA010100150"],
+    }
+
+    checker = ReactionChecker(base_url=base)
+    print(f"Using Reaction API base: {checker.api_url}")
+
+    # Run the check and print nicely formatted JSON output
+    resp = checker.check_reactions(sample_payload["lmsd_ids"], search_type=sample_payload["search_type"])
+    out = resp.model_dump() if hasattr(resp, "model_dump") else resp.dict()
+    print(json.dumps(out, indent=2))

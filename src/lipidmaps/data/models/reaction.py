@@ -11,31 +11,45 @@ logger = logging.getLogger(__name__)
 
 class Reaction(BaseModel):
     """
-    - reaction_id: identifier for the reaction
+    - reaction_id: identifier for the reaction (int or str)
+    - reaction_name: optional human-readable name
     - reaction_level: numeric or string level/score
-    - reactants / products: lists of dicts describing lipid species or raw items convertible to dicts
+    - proteins: list of {ec_number, description} dicts
+    - genes: list of gene identifiers or dicts
+    - curations: list of curation dicts (database_name, database_id, citation_id, info)
+    - reactants / products: lists of dicts describing lipid species (keeps LMSD/Reaction API shape)
     """
 
-    reaction_id: str
-    reaction_name: str
-    reaction_level: Union[int, float, str]
-    reactants: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
-    products: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
-    type: str  # "species-level" or "class-level"
-    pathway_id: Optional[str]
-    enzyme_id: Optional[str]
+    reaction_id: Union[int, str]
+    reaction_name: Optional[str] = None
+    reaction_level: Optional[Union[int, float, str]] = None
+
+    # biological context / provenance
+    proteins: List[Dict[str, Any]] = Field(default_factory=list)
+    genes: List[Union[str, Dict[str, Any]]] = Field(default_factory=list)
+    curations: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # reaction participants: keep as flexible dicts to match API payloads
+    reactants: List[Dict[str, Any]] = Field(default_factory=list)
+    products: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # metadata
+    type: Optional[str] = None  # "species-level" or "class-level"
+    pathway_id: Optional[str] = None
+    enzyme_id: Optional[str] = None
 
     # Pydantic v2 config
     model_config = {"arbitrary_types_allowed": True}
 
-    @field_validator("reactants", "products", mode="before")
+    @field_validator("proteins", "genes", "curations", "reactants", "products", mode="before")
     def _ensure_list(cls, v):
-        # Accept None -> empty list
+        # Accept None -> empty list; wrap single item into list
         if v is None:
             return []
-        # If single item passed, wrap in list
-        if not isinstance(v, list):
+        if isinstance(v, (dict, str)):
             return [v]
+        if not isinstance(v, list):
+            return list(v)
         return v
 
     def __init__(self, **data):
@@ -44,8 +58,8 @@ class Reaction(BaseModel):
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Serialize reaction to a plain dict. Entries that expose .dict()/.to_dict()
-        are converted automatically.
+        Serialize reaction to a plain dict. Preserve proteins, genes, curations,
+        reactants and products as provided by upstream APIs.
         """
 
         def _serialize_item(item):
@@ -57,7 +71,14 @@ class Reaction(BaseModel):
 
         return {
             "reaction_id": self.reaction_id,
+            "reaction_name": self.reaction_name,
             "reaction_level": self.reaction_level,
-            "reactants": [_serialize_item(s) for s in self.reactants],
+            "proteins": [_serialize_item(p) for p in self.proteins],
+            "genes": [_serialize_item(g) for g in self.genes],
+            "curations": [_serialize_item(c) for c in self.curations],
+            "reactants": [_serialize_item(r) for r in self.reactants],
             "products": [_serialize_item(p) for p in self.products],
+            "type": self.type,
+            "pathway_id": self.pathway_id,
+            "enzyme_id": self.enzyme_id,
         }

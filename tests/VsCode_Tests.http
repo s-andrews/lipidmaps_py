@@ -1,0 +1,37 @@
+POST http://localhost/api/reactions HTTP/1.1
+content-type: application/json
+
+{
+    "search_mode": "default",
+    "search_type": "lipids",
+    "generic_reactions": true,
+    "lmsd_ids" : ["LMGP06010000","LMFA0103000","LMFA010100150"]
+}
+
+###
+
+POST http://localhost:8000/api/v1/database/names HTTP/1.1
+content-type: application/json
+
+{
+    "names" : ["Cholesterol","cholesterol","LSM 18:1;O2","NonExistingName"]
+}
+
+
+###
+
+POST http://localhost/api/molecules/names HTTP/1.1
+content-type: application/json
+
+{
+    "names" : ["Cholesterol","cholesterol","LSM 18:1;O2","NonExistingName"]
+}
+
+###
+
+POST http://localhost/api/reactions/names HTTP/1.1
+content-type: application/json
+
+{
+    "names" : ["Cholesterol","cholesterol","LSM 18:1;O2","NonExistingName"]
+}

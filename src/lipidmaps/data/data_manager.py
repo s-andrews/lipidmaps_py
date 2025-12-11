@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field, field_validator
 from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset
 from .models.refmet import RefMet
 from .models.lmsd import LMSD
+from .reaction_checker import ReactionChecker
+from .headgroups import lipidmaps_headgroups
 
 # import new ingestion and validation modules
 from .ingestion.csv_reader import CSVIngestion, CSVFormat
@@ -470,6 +472,70 @@ class DataManager(BaseModel):
         logger.info(f"Updated {updated} lm_id fields using LMSD")
         return updated
 
+    def fill_missing_lm_ids_from_headgroups(
+        self, quantified: Optional[List[Any]] = None,
+    ) -> int:
+        """Fill missing `lm_id` fields using the `lipidmaps_headgroups` table.
+
+        This attempts to infer the headgroup from the lipid's `standardized_name`
+        or `input_name` and map it to a class-level LM ID from
+        `src/lipidmaps/data/headgroups.py`.
+
+        Args:
+            quantified: Optional list of QuantifiedLipid objects. If not
+                provided, uses `self.dataset.lipids`.
+
+        Returns:
+            Number of lipids updated.
+        """
+        if quantified is None:
+            if self.dataset is None:
+                logger.info("No dataset available to update lm_ids from headgroups")
+                return 0
+            quantified = self.dataset.lipids
+
+        updated = 0
+
+        # Prepare normalized headgroup keys for prefix matching (longest-first)
+        hg_keys = sorted(lipidmaps_headgroups.keys(), key=lambda k: -len(k))
+
+        for q in quantified:
+            if getattr(q, "lm_id", None):
+                continue
+
+            # candidate names to inspect (standardized_name preferred)
+            candidates = [getattr(q, "standardized_name", None), getattr(q, "input_name", None)]
+            found = False
+            for name in candidates:
+                if not name:
+                    continue
+                name_up = name.strip()
+                # try simple prefix matching against known headgroup keys
+                for key in hg_keys:
+                    # match case-insensitive, allow key to be prefix followed by '(' or ' ' or '-' or end
+                    if name_up.upper().startswith(key.upper()):
+                        lm_list = lipidmaps_headgroups.get(key)
+                        if lm_list:
+                            lm_id = lm_list[0]
+                            try:
+                                q.lm_id = lm_id
+                                if hasattr(q, "matched_field"):
+                                    setattr(q, "matched_field", f"headgroup:{key}")
+                                try:
+                                    q.lm_id_found_by = "Headgroup"
+                                except Exception:
+                                    pass
+                                updated += 1
+                                found = True
+                            except Exception:
+                                logger.exception("Failed to set lm_id from headgroup mapping")
+                            break
+                if found:
+                    break
+
+        logger.info(f"Updated {updated} lm_id fields using headgroup mapping")
+        return updated
+
     def run_lmsd_fill_and_report(self, dataset: Optional[Any] = None) -> int:
         """Run LMSD fill for `dataset` and return number updated.
 
@@ -502,7 +568,24 @@ class DataManager(BaseModel):
                         f"  {q.input_name} -> {q.lm_id} (matched_field={getattr(q, 'matched_field', None)})"
                     )
 
-        return updated_count
+        # After LMSD attempt, try headgroup-based filling for remaining missing lm_ids
+        head_updated = 0
+        if dataset is not None and getattr(dataset, "lipids", None) is not None:
+            head_updated = self.fill_missing_lm_ids_from_headgroups(quantified=dataset.lipids)
+        else:
+            head_updated = self.fill_missing_lm_ids_from_headgroups()
+
+        if head_updated and dataset is not None and getattr(dataset, "lipids", None) is not None:
+            for q in dataset.lipids:
+                prev = pre_lm.get(q.input_name)
+                # only log those that were previously empty and now have lm_id
+                if not prev and q.lm_id and getattr(q, "lm_id_found_by", None) == "Headgroup":
+                    logger.info(
+                        f"  {q.input_name} -> {q.lm_id} (matched_field={getattr(q, 'matched_field', None)})"
+                    )
+
+        # return total updated count (LMSD + headgroup)
+        return updated_count + head_updated
 
     def print_report(self) -> None:
         """Print the most recent validation report if available."""
@@ -535,6 +618,28 @@ class DataManager(BaseModel):
             records.append(rec)
         df = pd.DataFrame.from_records(records).set_index("lipid")
         return df
+
+    def get_reactions_for_lm_ids(
+        self, lm_ids: List[str], base_url: str = "http://localhost", search_type: str = "lipids"
+    ) -> Dict[str, Any]:
+        """Query the reaction API for the provided LIPID MAPS IDs.
+
+        This is a thin wrapper around `ReactionChecker` so callers (CLI, API)
+        can obtain normalized reaction data for a list of `lm_ids`.
+
+        Args:
+            lm_ids: List of LIPID MAPS IDs (e.g. ['LMGP06010000'])
+            base_url: Base URL for the reaction API (defaults to http://localhost)
+            search_type: Search type to send to the API (default: 'lipids')
+
+        Returns:
+            Dict containing keys `reactions` (list) and optionally `error`.
+        """
+        logger.info(f"Fetching reactions for {len(lm_ids)} LM IDs from {base_url}")
+        checker = ReactionChecker(base_url=base_url)
+        resp = checker.check_reactions(lm_ids, search_type=search_type)
+        # Return plain dict for easy JSON serialization by callers
+        return resp.model_dump() if hasattr(resp, "model_dump") else resp.dict()
 
     def add_lipid_species(self, lipid: Any) -> None:
         """Add a lipid species to the manager (legacy helper used by tests).

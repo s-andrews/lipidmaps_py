@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 from pathlib import Path
 
@@ -50,10 +51,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Query LMSD to fill missing LM IDs after RefMet annotation",
     )
     parser.add_argument(
+        "--use-headgroups",
+        dest="use_headgroups",
+        action="store_true",
+        help="Query LMSD to fill missing LM IDs after RefMet annotation",
+    )
+    parser.add_argument(
         "--groups",
         nargs="*",
         metavar="GROUP=S1,S2",
         help="Optional group mapping entries (e.g. Control=S1,S2 Treatment=S3,S4)",
+    )
+    parser.add_argument(
+        "--reactions",
+        action="store_true",
+        help="Query reaction API for LM IDs found in the dataset",
+    )
+    parser.add_argument(
+        "--reaction-api",
+        dest="reaction_api",
+        default="http://localhost",
+        help="Base URL for the reaction API (default: http://localhost)",
     )
     return parser
 
@@ -114,12 +132,41 @@ def main() -> None:
         # Use DataManager helper to run LMSD fill and report updates
         updated_count = manager.run_lmsd_fill_and_report(dataset)
         logger.info(f"Filled {updated_count} missing LM IDs using LMSD")
+
+    # if getattr(args, "use_headgroups", False):
+    #     # Use DataManager helper to run LM_ID filling by headgroups and report updates
+
     group_stats = manager.get_group_statistics()
     logger.info(f"Computed statistics for {len(group_stats)} groups")
     for group_name, stats in group_stats.items():
         logger.info(
             f"{group_name} -> {stats['sample_count']} samples, {stats['lipid_coverage']} lipids"
         )
+
+    # Optionally query reactions for LM IDs present in the dataset
+    if getattr(args, "reactions", False):
+        # collect all non-empty lm_id values from the dataset
+        lm_ids = [q.lm_id for q in dataset.lipids if getattr(q, "lm_id", None)]
+        # remove duplicates while preserving order
+        seen = set()
+        unique_lm = []
+        for lid in lm_ids:
+            if lid not in seen:
+                seen.add(lid)
+                unique_lm.append(lid)
+
+        if not unique_lm:
+            logger.info("No LM IDs found in dataset to query reactions")
+        else:
+            logger.info(f"Querying reaction API for {len(unique_lm)} LM IDs")
+            reactions = manager.get_reactions_for_lm_ids(unique_lm, base_url=args.reaction_api)
+            # Log a compact summary and the full JSON at debug level
+            try:
+                count = len(reactions.get("reactions", [])) if isinstance(reactions, dict) else 0
+            except Exception:
+                count = 0
+            logger.info(f"Reaction API returned {count} reactions")
+            logger.debug("Reaction API full response:\n%s", json.dumps(reactions, indent=2))
 
 
 if __name__ == "__main__":
