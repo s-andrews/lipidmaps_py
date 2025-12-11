@@ -19,7 +19,7 @@ class LMSDResult(BaseModel):
         return self.model_dump()
 
 class LMSD:
-    LMSDNameUrl = "https://dev.lipidmaps.org/api/molecules/names"
+    LMSDNameUrl = "http://localhost/api/reactions/names"
 
     @staticmethod
     def get_lm_ids_by_name(lipid_names: List[str]) -> Union[List[Dict[str, Any]], Dict[str, Any], None]:
@@ -36,7 +36,7 @@ class LMSD:
         try:
             logger.info("Sending request to LMSD API")
             response = requests.post(
-                LMSD.LMSDNameUrl, json=data, verify=True, timeout=20
+                LMSD.LMSDNameUrl, json=data, verify=False, timeout=20
             )
             response.raise_for_status()
         except requests.RequestException as e:
@@ -50,7 +50,6 @@ class LMSD:
             json_data = None
 
         if json_data is not None:
-            logger.debug("LMSD returned JSON response")
             # If the response is a dict that looks like an error, return it
             if isinstance(json_data, dict):
                 if 'error' in json_data and len(json_data) == 1:
@@ -64,23 +63,17 @@ class LMSD:
             if json_list is not None:
                 results: List[Dict[str, Any]] = []
 
-                for item in json_list:
-                    def jget(*keys):
-                        for k in keys:
-                            if isinstance(item, dict) and k in item:
-                                return item[k]
-                        return None
+                for item in json_list:  
 
                     res = LMSDResult(
-                        input_name=jget('input_name', 'input', 'query'),
-                        matched_field=jget('matched_field', 'matched'),
-                        name=jget('name'),
-                        sys_name=jget('sys_name', 'systematic_name', 'systematic'),
-                        abbrev=jget('abbrev', 'abbreviation'),
-                        abbrev_chains=jget('abbrev_chains'),
-                        lm_id=jget('lm_id', 'lm id'),
+                        input_name=item.get('input_name'),
+                        matched_field=item.get('matched_field'),
+                        name=item.get('name'),
+                        sys_name=item.get('sys_name'),
+                        abbrev=item.get('abbrev'),
+                        abbrev_chains=item.get('abbrev_chains'),
+                        lm_id=item.get('lm_id'),
                     )
-
                     results.append(res.to_dict())
 
                 return results
@@ -89,7 +82,7 @@ class LMSD:
         lines = [ln for ln in response.text.splitlines() if ln.strip()]
 
         if not lines:
-            logger.warning("LMSD returned empty response")
+            logger.info("LMSD returned empty response")
             return []
 
         header = lines[0].split("\t")
@@ -104,23 +97,18 @@ class LMSD:
         def find(*candidates: str) -> Optional[int]:
             for cand in candidates:
                 cand_l = cand.lower()
-                # exact match
                 if cand_l in hdr_map:
                     return hdr_map[cand_l]
-                # substring match
-                for h, i in hdr_map.items():
-                    if cand_l in h or h in cand_l:
-                        return i
+
             return None
 
-        # likely header names — try alternatives for robustness
-        input_idx = find('input_name', 'input', 'query')
-        matched_idx = find('matched_field', 'matched')
+        input_idx = find('input_name')
+        matched_idx = find('matched_field')
         name_idx = find('name')
-        sys_name_idx = find('sys_name', 'systematic_name', 'systematic')
-        abbrev_idx = find('abbrev', 'abbreviation')
-        abbrev_chains_idx = find('abbrev_chains', 'abbrev_chains', 'abbrev_chains')
-        lm_id_idx = find('lm_id', 'lm id', 'lm_id', 'lm_id')
+        sys_name_idx = find('sys_name')
+        abbrev_idx = find('abbrev')
+        abbrev_chains_idx = find('abbrev_chains')
+        lm_id_idx = find('lm_id')
 
         results: List[Dict[str, Any]] = []
 

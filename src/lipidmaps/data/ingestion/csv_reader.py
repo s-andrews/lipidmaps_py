@@ -76,7 +76,7 @@ class CSVIngestion(BaseModel):
         default=None, description="CSV delimiter (default: auto-detect)"
     )
     encoding: str = Field(default="utf-8", description="File encoding")
-
+    has_labels: bool = Field(default=False, description="Whether second row has labels")
     # Class-level constants
     SUPPORTED_DELIMITERS: List[str] = Field(
         default=[",", "\t", ";", "|"], init=False, repr=False
@@ -129,7 +129,7 @@ class CSVIngestion(BaseModel):
         """
         # Auto-detect delimiter if not specified
         delimiter = self.delimiter or self._detect_delimiter(path)
-
+        has_labels = self.has_labels
         rows = []
         fieldnames = []
         labels = []
@@ -139,19 +139,20 @@ class CSVIngestion(BaseModel):
                 reader = csv.DictReader(file, delimiter=delimiter)
                 fieldnames = reader.fieldnames or []
                 rows = list(reader)
-                if csv.Sniffer().has_header(delimiter.join(rows[0])):
+                if has_labels:
                     labels = [rows[0][fn] for fn in fieldnames]
+                    logger.info(f"Labels detected: {labels}")
                     rows = rows[1:]
 
         except UnicodeDecodeError:
             # Try alternative encoding
-            logger.warning(f"Failed to decode with {self.encoding}, trying latin-1")
+            logger.info(f"Failed to decode with {self.encoding}, trying latin-1")
             with path.open("r", encoding="latin-1", newline="") as file:
                 reader = csv.DictReader(file, delimiter=delimiter)
                 fieldnames = reader.fieldnames or []
                 
                 rows = list(reader)
-                if csv.Sniffer().has_header(delimiter.join(rows[0])):
+                if has_labels:
                     labels = [rows[0][fn] for fn in fieldnames]
                     rows = rows[1:]
 

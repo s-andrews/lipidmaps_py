@@ -63,6 +63,7 @@ class DataManager(BaseModel):
     # Configuration for ingestion and validation
     validate_data: bool = Field(default=False)
     csv_format: CSVFormat = Field(default=CSVFormat.AUTO)
+    has_labels: bool = Field(default=False)
 
     # User-specified column configuration
     lipid_name_column: Optional[Union[int, str]] = Field(
@@ -119,11 +120,11 @@ class DataManager(BaseModel):
         logger.info(f"Loading CSV file: {csv_path}")
 
         # Use CSVIngestion to read file
-        ingestion = CSVIngestion()
+        ingestion = CSVIngestion(has_labels=self.has_labels)
         raw_df = ingestion.read_csv(csv_path, format_type=self.csv_format)
         column_info = ingestion.get_column_info(raw_df)
         logger.info(
-            f"CSV ingested: {raw_df.row_count} rows x {raw_df.column_count} columns. Empty columns: {column_info.get('empty_columns', [])}"
+            f"CSV ingested: {raw_df.row_count} rows x {raw_df.column_count} columns."
         )
 
         # {
@@ -163,7 +164,7 @@ class DataManager(BaseModel):
         # logger.info(f"column_info: {column_info.get('column_types', {})}")
         # logger.info(f"Empty: {column_info.get('empty_columns', [])}")
         # Extract quantified lipids
-        quantified = self.extract_quantified_lipids(raw_df.rows, name_col, sample_ids, column_info=column_info)
+        quantified = self.extract_quantified_lipids(raw_df.rows, name_col, sample_ids, column_info)
         self.annotate_lipids_with_refmet(quantified)
 
         dataset = LipidDataset(samples=samples_meta, lipids=quantified, column_info=column_info)
@@ -302,25 +303,31 @@ class DataManager(BaseModel):
         self, rows: List[Dict], name_col: str, sample_ids: List[str], column_info: Optional[Dict[str, Any]] = None
     ) -> List[QuantifiedLipid]:
         """Extract QuantifiedLipid objects from CSV rows."""
+        logger.info(f"Extracting quantified lipids using name_col='{name_col}' and {sample_ids} samples")
         quantified = []
         skipped_rows = 0
+        empty_columns = []
+        non_numeric_columns = []
+
+        if column_info is not None:
+            empty_columns = column_info.get("empty_columns", [])
+            non_numeric_columns = [col for col, ctype in column_info.get("column_types", {}).items() if ctype != "numeric"]
+
+        
         for row_idx, row in enumerate(rows, start=1):
             lipid_name = (row.get(name_col) or "").strip()
             if not lipid_name:
                 skipped_rows += 1
-                logger.debug(f"Skipping row {row_idx}: empty lipid name")
+                logger.info(f"Skipping row {row_idx}: empty lipid name")
                 continue
-            if column_info is not None:
-                empty_columns = column_info.get("empty_columns", [])
-                non_numeric_columns = [col for col, ctype in column_info.get("column_types", {}).items() if ctype != "numeric"]
-                if name_col in empty_columns or name_col in non_numeric_columns:
-                    skipped_rows += 1
-                    logger.debug(f"Skipping row {row_idx}: lipid name column '{name_col}' is either empty or non-numeric")
-                    continue
+
 
             values = {}
             skipped_values = 0
             for sid in sample_ids:
+                if sid in empty_columns or sid in non_numeric_columns:
+                    skipped_values += 1
+                    continue
                 raw = (row.get(sid) or "").strip()
                 if raw == "":
                     skipped_values += 1
@@ -335,17 +342,11 @@ class DataManager(BaseModel):
                     continue
             if values:
                 quantified.append(QuantifiedLipid(input_name=lipid_name, values=values))
-                logger.debug(
-                    f"Quantified lipid: {lipid_name}, number of values: {len(values)}"
-                )
-                logger.debug(
-                    f"Skipped rows: {skipped_rows}, skipped values: {skipped_values}"
-                )
             else:
                 skipped_rows += 1
-                logger.debug(f"Skipping row {row_idx}: no valid values found")
+                logger.info(f"Skipping row {row_idx}: no valid values found")
         if skipped_rows > 0:
-            logger.debug(f"Total skipped rows: {skipped_rows}")
+            logger.info(f"Total skipped rows: {skipped_rows}")
         return quantified
 
     def annotate_lipids_with_refmet(self, quantified: List[Any]) -> None:
@@ -404,7 +405,7 @@ class DataManager(BaseModel):
         """
         if quantified is None:
             if self.dataset is None:
-                logger.debug("No dataset available to update lm_ids")
+                logger.info("No dataset available to update lm_ids")
                 return 0
             quantified = self.dataset.lipids
 
@@ -425,23 +426,23 @@ class DataManager(BaseModel):
                     query_names.append(name)
 
         if not query_names:
-            logger.debug("No missing lm_id entries to update via LMSD")
+            logger.info("No missing lm_id entries to update via LMSD")
             return 0
 
         try:
             logger.info(f"Querying LMSD for {len(query_names)} names to fill missing lm_id fields")
             resp = LMSD.get_lm_ids_by_name(query_names)
         except Exception:
-            logger.exception("LMSD lookup failed")
+            logger.info("LMSD lookup failed")
             return 0
 
         # If LMSD returned an error dict, log and exit
         if isinstance(resp, dict) and resp.get("error"):
-            logger.error(f"LMSD returned error: {resp.get('error')}")
+            logger.info(f"LMSD returned error: {resp.get('error')}")
             return 0
 
         if not isinstance(resp, list):
-            logger.warning(f"Unexpected LMSD response type: {type(resp)}")
+            logger.info(f"Unexpected LMSD response type: {type(resp)}")
             return 0
 
         updated = 0

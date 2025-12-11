@@ -39,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run DataValidator checks during processing",
     )
     parser.add_argument(
+        "--has-labels",
+        action="store_true",
+        help="Indicate if the second row in the CSV contains labels",
+    )
+    parser.add_argument(
         "--fill-lmsd",
         dest="fill_lmsd",
         action="store_true",
@@ -84,6 +89,7 @@ def main() -> None:
     group_mapping = parse_group_mapping(args.groups)
     manager = DataManager(
         validate_data=args.validate,
+        has_labels=args.has_labels,
         csv_format=CSVFormat(args.format),
         group_mapping=group_mapping,
     )
