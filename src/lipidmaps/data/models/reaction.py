@@ -12,13 +12,10 @@ logger = logging.getLogger(__name__)
 class Reaction(BaseModel):
     """
     - reaction_id: identifier for the reaction
-    - reaction_level: numeric or string level/score
-    - reactants / products: lists of dicts describing lipid species or raw items convertible to dicts
     """
 
-    reaction_id: str
+    reaction_id: Union[str, int]
     reaction_name: str
-    reaction_level: Union[int, float, str]
     reactants: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
     products: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
     type: str  # "species-level" or "class-level"
@@ -40,7 +37,7 @@ class Reaction(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
-        logger.info(f"Created Reaction: {self.reaction_id}")
+        logger.info(f"Created Reaction: {self.reaction_id}: {self.reaction_name}")
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -57,7 +54,6 @@ class Reaction(BaseModel):
 
         return {
             "reaction_id": self.reaction_id,
-            "reaction_level": self.reaction_level,
             "reactants": [_serialize_item(s) for s in self.reactants],
             "products": [_serialize_item(p) for p in self.products],
         }

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
+
     """Construct CLI argument parser for quick package smoke testing."""
     parser = argparse.ArgumentParser(
         description="Process a lipidomics CSV using the lipidmaps_py DataManager"
@@ -48,6 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="fill_lmsd",
         action="store_true",
         help="Query LMSD to fill missing LM IDs after RefMet annotation",
+    )
+    parser.add_argument(
+        "--fill-headgroups",
+        dest="fill_headgroups",
+        action="store_true",
+        help="Fill missing LM IDs using headgroup mapping after LMSD fill",
     )
     parser.add_argument(
         "--groups",
@@ -94,11 +101,8 @@ def main() -> None:
         group_mapping=group_mapping,
     )
 
-    # if manager.validation_report and manager.validation_report.passed:
-    #     logger.info("Data validation passed successfully.")
-    # else:
-    #     logger.warning("Data validation failed.")
-    #     # exit()
+    # (reaction annotation will be performed after CSV processing)
+
 
     try:
         dataset = manager.process_csv(csv_path)
@@ -106,6 +110,7 @@ def main() -> None:
         logger.exception(f"Failed to process CSV: {exc}")
         raise SystemExit(2) from exc
 
+    # Dataset is now ready; perform reaction fetching/annotation and display selected lipids
     logger.info(f"Dataset ready: {len(dataset.samples)} samples, {len(dataset.lipids)} lipids")
     logger.info(f"Sample column info: {dataset.samples[:4]}")
 
@@ -114,12 +119,48 @@ def main() -> None:
         # Use DataManager helper to run LMSD fill and report updates
         updated_count = manager.run_lmsd_fill_and_report(dataset)
         logger.info(f"Filled {updated_count} missing LM IDs using LMSD")
+
+    # Optionally fill missing LM IDs using headgroup mapping
+    if getattr(args, "fill_headgroups", False):
+        updated_count = manager.fill_missing_lm_ids_from_headgroups(dataset)
+        logger.info(f"Filled {updated_count} missing LM IDs using headgroup mapping")
     group_stats = manager.get_group_statistics()
     logger.info(f"Computed statistics for {len(group_stats)} groups")
     for group_name, stats in group_stats.items():
         logger.info(
             f"{group_name} -> {stats['sample_count']} samples, {stats['lipid_coverage']} lipids"
         )
+
+    from .print_utils import print_annotated_lipids_with_reactions
+    from .reaction_checker import ReactionChecker
+    from .models.reaction import Reaction
+
+    # Get selected lipids (convenience wrapper) and collect LM IDs
+    selected_lipids = manager.selected( n= len(manager.dataset.lipids) )
+    lm_ids = [l.lm_id for l in selected_lipids if getattr(l, 'lm_id', None)]
+    if lm_ids:
+        checker = ReactionChecker(base_url="http://localhost")
+        response = checker.check_reactions(lm_ids)
+        print(f"Retrieved {len(response.reactions)} reactions for {len(lm_ids)} LM IDs")
+        print(response)
+        reactions = []
+        for rxn in response.reactions:
+
+            rid = getattr(rxn, 'reaction_id', None) or 'unknown'
+            reactions.append(Reaction(
+                reaction_id=str(rid),
+                reaction_name=getattr(rxn, 'reaction_name', 'unknown'),
+                reactants=[{'lm_id': c.compound_lm_id, 'input_name': c.compound_name} for c in getattr(rxn, 'reactants', [])],
+                products=[{'lm_id': c.compound_lm_id, 'input_name': c.compound_name} for c in getattr(rxn, 'products', [])],
+                type="class-level",
+                pathway_id=None,
+                enzyme_id=None,
+            ))
+        if reactions:
+            manager.annotate_lipids_with_reactions(reactions)
+            # print_annotated_lipids_with_reactions(manager, n=100)
+
+
 
 
 if __name__ == "__main__":

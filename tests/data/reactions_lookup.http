@@ -5,6 +5,6 @@ content-type: application/json
     "search_mode": "default",
     "search_type": "lipids",
     "generic_reactions": true,
-    "lmsd_ids" : ["LMPR01010008","LMFA01050415"],
+    "lmsd_ids" : ["LMPR01010008","LMFA01050415", "LMGP0105AA00"],
     "time": "Wed, 21 Oct 2015 18:27:50 GMT"
 }

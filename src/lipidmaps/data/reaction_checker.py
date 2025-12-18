@@ -31,6 +31,7 @@ class ReactionData(BaseModel):
     reactants: List[CompoundComponent] = Field(default_factory=list)
     products: List[CompoundComponent] = Field(default_factory=list)
     reaction_name: Optional[str] = None
+    reaction_id: Optional[int] = None
     # Allow additional fields from API response
     model_config = {"extra": "allow"}
 
@@ -57,6 +58,7 @@ class ReactionData(BaseModel):
             reactants=filtered_reactants,
             products=filtered_products,
             reaction_name=reaction_name,
+            reaction_id=self.reaction_id,
         )
 
 
@@ -87,27 +89,53 @@ class ReactionChecker(BaseModel):
         logger.info(f"Initialized ReactionChecker with URL: {self.api_url}")
 
     def check_reactions(
-        self, lm_ids: List[str], search_type: str = "lm_id"
+        self,
+        lm_ids: List[str],
+        search_type: str = "lipids",
+        search_mode: str = "default",
+        generic_reactions: bool = True,
     ) -> ReactionResponse:
         """Check reactions for given LIPID MAPS IDs.
 
+        Builds a request payload compatible with the LIPID MAPS reaction API.
+
         Args:
             lm_ids: List of LIPID MAPS IDs to check
-            search_type: Type of search (default: "lm_id")
+            search_type: Type of search (e.g. "lipids")
+            search_mode: Mode string for the API (default: "default")
+            generic_reactions: Whether to request generic reactions
 
         Returns:
             ReactionResponse with filtered reactions containing only lm_main components
         """
+        # Build payload matching the API used in the HTTP example (keys like "lmsd_ids")
         payload = {
-            "search_source": "lipidmaps_py",
+            "search_mode": search_mode,
             "search_type": search_type,
-            "lm_ids": lm_ids,
+            "generic_reactions": generic_reactions,
+            "lmsd_ids": lm_ids,
+            "search_source": "lipidmaps_py",
         }
+        logger.debug("Reaction check payload: %s", payload)
 
         try:
-            logger.info(f"Sending reaction check request for {len(lm_ids)} LM IDs")
+            logger.info(f"Sending reaction check request for {len(lm_ids)} LM IDs to {self.api_url}")
             response = requests.post(self.api_url, json=payload, timeout=self.timeout)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except requests.HTTPError:
+                # Log response body where available to help debugging 400/500 errors
+                body = None
+                try:
+                    body = response.text
+                except Exception:
+                    body = "<unavailable>"
+                logger.error(
+                    "Reaction API returned HTTP %s: %s",
+                    response.status_code,
+                    body,
+                )
+                raise
 
             raw_data = response.json()
 
@@ -150,5 +178,13 @@ class ReactionChecker(BaseModel):
             return ReactionResponse(reactions=reactions)
 
         except requests.RequestException as e:
-            logger.error(f"Reaction API call failed: {e}")
+            # Try to include response text if present on the exception/response
+            resp = getattr(e, "response", None)
+            body = None
+            if resp is not None:
+                try:
+                    body = resp.text
+                except Exception:
+                    body = "<unavailable>"
+            logger.error("Reaction API call failed: %s; response: %s", e, body)
             return ReactionResponse(reactions=[], error=str(e))
