@@ -8,10 +8,10 @@ import pandas as pd
 from pydantic import BaseModel, Field, field_validator
 
 # import the data models we will produce
-from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset
+from .models.sample import SampleMetadata, SampleReactionInfo, QuantifiedLipid, LipidDataset
 from .models.refmet import RefMet
 from .models.lmsd import LMSD
-from .reaction_checker import ReactionChecker
+from .reaction_checker import ReactionChecker, ReactionData
 from .models.reaction import Reaction
 
 # import new ingestion and validation modules
@@ -551,48 +551,77 @@ class DataManager(BaseModel):
         try:
             checker = ReactionChecker(base_url="http://localhost")
             response = checker.check_reactions(lm_ids)
-            logger.info(f"Retrieved {len(response.reactions)} reactions for {len(lm_ids)} LM IDs")
+            logger.info(f"Retrieved {len(response.reactions)} reactions for {len(lm_ids)} LM IDs\n")
+            # print(response.reactions)
             return response.reactions
         except Exception:
             logger.exception("Failed to fetch reactions from ReactionChecker API.")
             return []
         
 
-    def annotate_lipids_with_reactions(self, reactions: list) -> None:
+    def annotate_lipids_with_reactions(self, reactions: list[ReactionData]) -> None:
         """
-        For each QuantifiedLipid in the dataset, find all Reaction objects where the lipid is a reactant or product,
-        and update the QuantifiedLipid's 'reactions' field with those reactions (as dicts).
+        For each QuantifiedLipid in the dataset, find all reactions where the lipid's lm_id is a reactant or product,
+        and update the QuantifiedLipid's 'reactions' field with a list of SampleReactionInfo summaries.
         """
+
         if self.dataset is None or not hasattr(self.dataset, "lipids"):
             logger.warning("No dataset or lipids to annotate with reactions.")
             return
 
-        lipid_map = {}
+        # Build a mapping from lm_id to list of QuantifiedLipid objects
+        from collections import defaultdict
+        lm_id_to_lipids: dict[str, list[QuantifiedLipid]] = defaultdict(list)
         for lipid in self.dataset.lipids:
-            # Use lm_id if available, else input_name as key
-            key = lipid.lm_id or lipid.input_name
-            lipid_map[key] = lipid
+            lm_id = getattr(lipid, "lm_id", None)
+            if lm_id:
+                lm_id_to_lipids[lm_id].append(lipid)
 
-        # Build a mapping from lipid key to list of reactions
-        lipid_reactions = {key: [] for key in lipid_map}
+        # Prepare a mapping from lm_id to list of SampleReactionInfo
+        lipid_reactions: dict[str, list[SampleReactionInfo]] = {lm_id: [] for lm_id in lm_id_to_lipids}
+
         for reaction in reactions:
+            # Get reaction_id and reaction_name
+            reaction_id = getattr(reaction, "reaction_id", None)
+            if reaction_id is None:
+                reaction_id = getattr(reaction, "id", None)
+            if reaction_id is not None:
+                reaction_id = str(reaction_id)
+            reaction_name = getattr(reaction, "reaction_name", None)
+            # Determine type (default to "species-level" if not present)
+            rtype = getattr(reaction, "type", None) or "species-level"
+            # Enzyme and pathway IDs
+            enzyme_ids = getattr(reaction, "enzyme_ids", None)
+            pathway_ids = getattr(reaction, "pathway_ids", None)
+            # Additional details
+            details = reaction.model_dump() if hasattr(reaction, "model_dump") else dict(reaction)
+
             # Check reactants and products for each reaction
             for role in ["reactants", "products"]:
-                for item in getattr(reaction, role, []):
-                    # Try to match by lm_id, then by input_name
-                    lm_id = item.get("lm_id") if isinstance(item, dict) else None
-                    name = item.get("input_name") if isinstance(item, dict) else None
-                    for key in [lm_id, name]:
-                        if key and key in lipid_reactions:
-                            lipid_reactions[key].append(reaction.to_dict())
+                items = getattr(reaction, role, [])
+                for item in items:
+                    lm_id = None
+                    if isinstance(item, dict):
+                        lm_id = item.get("compound_lm_id")
+                    elif hasattr(item, "compound_lm_id"):
+                        lm_id = getattr(item, "compound_lm_id", None)
+                    if lm_id and lm_id in lipid_reactions:
+                        info = SampleReactionInfo(
+                            reaction_id=reaction_id or "",
+                            reaction_name=reaction_name or "",
+                            type=rtype,
+                            enzyme_ids=enzyme_ids,
+                            pathway_ids=pathway_ids,
+                            role=role[:-1],  # "reactant" or "product"
+                            details=details,
+                        )
+                        lipid_reactions[lm_id].append(info)
 
-        # Update each lipid's reactions field
-        for key, lipid in lipid_map.items():
-            rxns = lipid_reactions.get(key, [])
-            if rxns:
+        # Assign the summary objects to each lipid (all with same lm_id)
+        for lm_id, lipids in lm_id_to_lipids.items():
+            rxns = lipid_reactions.get(lm_id, [])
+            for lipid in lipids:
                 lipid.reactions = rxns
-            else:
-                lipid.reactions = []
 
     def print_report(self) -> None:
         """Print the most recent validation report if available."""

@@ -135,30 +135,36 @@ def main() -> None:
     from .reaction_checker import ReactionChecker
     from .models.reaction import Reaction
 
-    # Get selected lipids (convenience wrapper) and collect LM IDs
-    selected_lipids = manager.selected( n= len(manager.dataset.lipids) )
-    lm_ids = [l.lm_id for l in selected_lipids if getattr(l, 'lm_id', None)]
-    if lm_ids:
-        checker = ReactionChecker(base_url="http://localhost")
-        response = checker.check_reactions(lm_ids)
-        print(f"Retrieved {len(response.reactions)} reactions for {len(lm_ids)} LM IDs")
-        print(response)
-        reactions = []
-        for rxn in response.reactions:
+    # Fetch reactions for all LM IDs in the dataset 
+    reactions = manager.fetch_reactions_for_lm_ids(dataset)
+    manager.annotate_lipids_with_reactions(reactions)
+    print_annotated_lipids_with_reactions(manager, n=100)
 
-            rid = getattr(rxn, 'reaction_id', None) or 'unknown'
-            reactions.append(Reaction(
-                reaction_id=str(rid),
-                reaction_name=getattr(rxn, 'reaction_name', 'unknown'),
-                reactants=[{'lm_id': c.compound_lm_id, 'input_name': c.compound_name} for c in getattr(rxn, 'reactants', [])],
-                products=[{'lm_id': c.compound_lm_id, 'input_name': c.compound_name} for c in getattr(rxn, 'products', [])],
-                type="class-level",
-                pathway_id=None,
-                enzyme_id=None,
-            ))
-        if reactions:
-            manager.annotate_lipids_with_reactions(reactions)
-            # print_annotated_lipids_with_reactions(manager, n=100)
+    # # Get selected lipids (convenience wrapper) and collect LM IDs
+    # selected_lipids = manager.selected( n= len(manager.dataset.lipids) )
+    # lm_ids = [l.lm_id for l in selected_lipids if getattr(l, 'lm_id', None)]
+    # if lm_ids:
+    #     checker = ReactionChecker(base_url="http://localhost")
+    #     response = checker.check_reactions(lm_ids)
+    #     print(f"Retrieved {len(response.reactions)} reactions for {len(lm_ids)} LM IDs")
+    #     reactions = []
+    #     for rxn in response.reactions:
+    #         # print(f"Processing reaction ID: {getattr(rxn, 'reaction_id', 'N/A')}")
+    #         # print(f"  Name: {getattr(rxn, 'reaction_name', 'N/A')}")
+    #         rid = getattr(rxn, 'reaction_id', None) or 'unknown'
+
+    #         reactions.append(Reaction(
+    #             reaction_id=str(rid),
+    #             reaction_name=getattr(rxn, 'reaction_name', 'unknown'),
+    #             reactants=[{'lm_id': c.compound_lm_id, 'input_name': c.compound_name} for c in getattr(rxn, 'reactants', [])],
+    #             products=[{'lm_id': c.compound_lm_id, 'input_name': c.compound_name} for c in getattr(rxn, 'products', [])],
+    #             type="class-level",
+    #             pathway_id=None,
+    #             enzyme_id=None,
+    #         ))
+    #     if reactions:
+    #         manager.annotate_lipids_with_reactions(reactions)
+    #         print_annotated_lipids_with_reactions(manager, n=100)
 
 
 

@@ -11,13 +11,22 @@ class SampleMetadata(BaseModel):
     group: str  # e.g., "Control", "WT"
     label: Optional[str] = None  # e.g., "Fasted", "Fed"
 
+class SampleReactionInfo(BaseModel):
+    reaction_id: str
+    reaction_name: str
+    type: str  # "species-level" or "class-level"
+    enzyme_ids: Optional[List[str]] = None # e.g., EC numbers or UniProt IDs
+    pathway_ids: Optional[List[str]] = None # Supplied by LIPID MAPS API
+    role: Optional[str] = None  # e.g., "reactant" or "product"
+    weight: Optional[float] = None  # e.g., for species-level reactions
+    details: Optional[Dict[str, Any]] = None  # Additional reaction details
 
 class QuantifiedLipid(BaseModel):
     input_name: str
     values: Dict[str, float]  # sample_id -> value
     pathway_ids: Optional[List[str]] = None  # e.g., KEGG or Reactome IDs
     pathway_names: Optional[List[str]] = None  # Human-readable names
-    enzyme_ids: Optional[List[str]] = None  # e.g., EC numbers or UniProt IDs
+    enzyme_ids: Optional[List[str]] = None  
     # RefMet annotations
     standardized_name: Optional[str] = None
     standardized_by: Optional[str] = None # e.g., "RefMet"
@@ -33,9 +42,7 @@ class QuantifiedLipid(BaseModel):
     refmet_id: Optional[str] = None
     formula: Optional[str] = None
     mass: Optional[float] = None
-    reactions: Optional[List[Dict[str, Any]]] = (
-        None  # e.g., {"reactant": "PC", "product": "LPC", "type": "class-level"}
-    )
+    reactions: Optional[List[SampleReactionInfo]] = None
     weight: Optional[float] = None  # For species or class-level reaction
 
     def zscore(self) -> Dict[str, float]:
@@ -77,9 +84,6 @@ if __name__ == "__main__":
     lipid = QuantifiedLipid(
         input_name="PC(16:0/18:1)",
         values={"Sample1": 10.2, "Sample2": 11.3, "Sample3": 9.8},
-        pathway_ids=["R-HSA-1483257"],
-        pathway_names=["Glycerophospholipid metabolism"],
-        enzyme_ids=["EC 2.3.1.51"],
     )
     zscores = lipid.zscore()
     print(f"Z-scores: {zscores} {lipid}")

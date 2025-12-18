@@ -1,6 +1,6 @@
 import logging
 import requests
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Dict
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,8 @@ class CompoundComponent(BaseModel):
     compound_type: Optional[str] = None
     compound_name: Optional[str] = None
     compound_lm_id: Optional[str] = None
+    compound_sys_name: Optional[str] = None
+    compound_synonyms: Optional[str] = None
     compound_generic_id: Optional[str] = None
 
     def display_name(self) -> str:
@@ -30,6 +32,10 @@ class ReactionData(BaseModel):
 
     reactants: List[CompoundComponent] = Field(default_factory=list)
     products: List[CompoundComponent] = Field(default_factory=list)
+    genes: List[CompoundComponent] = Field(default_factory=list)
+    proteins: List[Dict[str, Any]] = Field(default_factory=list)
+    curations: List[Dict[str, Any]] = Field(default_factory=list)
+    pathways: List[Dict[str, Any]] = Field(default_factory=list)
     reaction_name: Optional[str] = None
     reaction_id: Optional[int] = None
     # Allow additional fields from API response
@@ -55,10 +61,14 @@ class ReactionData(BaseModel):
         )
 
         return ReactionData(
+            reaction_id=self.reaction_id,
+            reaction_name=reaction_name,
             reactants=filtered_reactants,
             products=filtered_products,
-            reaction_name=reaction_name,
-            reaction_id=self.reaction_id,
+            genes=self.genes,
+            proteins=self.proteins,
+            curations=self.curations,
+            pathways=self.pathways,
         )
 
 

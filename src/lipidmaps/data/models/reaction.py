@@ -18,6 +18,9 @@ class Reaction(BaseModel):
     reaction_name: str
     reactants: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
     products: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
+    genes: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
+    proteins: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
+    curations: List[Union[Dict[str, Any], Any]] = Field(default_factory=list)
     type: str  # "species-level" or "class-level"
     pathway_id: Optional[str]
     enzyme_id: Optional[str]
@@ -54,6 +57,7 @@ class Reaction(BaseModel):
 
         return {
             "reaction_id": self.reaction_id,
+            "reaction_name": self.reaction_name,
             "reactants": [_serialize_item(s) for s in self.reactants],
             "products": [_serialize_item(p) for p in self.products],
         }

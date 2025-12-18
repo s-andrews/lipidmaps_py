@@ -10,10 +10,13 @@ def print_annotated_lipids_with_reactions(manager, n=10):
         print("No dataset or lipids available.")
         return
     for i, lipid in enumerate(manager.dataset.lipids[:n]):
-        print(f"Lipid {i+1}: {getattr(lipid, 'input_name', getattr(lipid, 'lm_id', 'Unknown'))}")
+        print(f"Lipid {i+1}: {getattr(lipid, 'input_name')} -> {getattr(lipid, 'standardized_name')} : LMID: {getattr(lipid, 'lm_id', 'Unknown')}")
         if hasattr(lipid, 'reactions') and lipid.reactions:
             for rxn in lipid.reactions:
-                print(f"  Reaction: {rxn.get('reaction_id', 'N/A')} - {rxn.get('reaction_name', 'N/A')}")
+                # rxn is a SampleReactionInfo (Pydantic model), not a dict
+                reaction_name = getattr(rxn, 'reaction_name', None) or 'N/A'
+                print(f"Reaction: {reaction_name} ID: {getattr(rxn, 'reaction_id', 'Unknown')} Role: {getattr(rxn, 'role', 'N/A')}")
         else:
-            print("  No reactions annotated.")
-        print()
+            pass
+            # print("  No reactions annotated.")
+
