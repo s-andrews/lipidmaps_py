@@ -10,7 +10,7 @@ import lipidmaps
 #
 # We might have auto-detect for certain standard formats from
 # upstream programs (eg msdial)
-lipid_data = lipidmaps.import_data("mydata.csv", lipid_col=1, sample_cols=[4,5,6,7])
+lipid_data = lipidmaps.import_data("mydata.csv", lipid_col=1, sample_cols=[4, 5, 6, 7])
 
 lipid_data = lipidmaps.import_msdial("mydata_msdial.csv")
 
@@ -45,26 +45,30 @@ sample_names = lipid_data.samples()
 lipids = lipid_data.lipids()
 
 for lipid in lipids:
-    print (f"Original name: {lipid.users_name}")
-    print (f"Official name: {lipid.offical_name}")
-    print (f"Specific LMID: {lipid.lmid}")
-    print (f"Generic LMID: {lipid.generic_lmid}") # Do we need to allow multiple of these?
+    print(f"Original name: {lipid.users_name}")
+    print(f"Official name: {lipid.offical_name}")
+    print(f"Specific LMID: {lipid.lmid}")
+    print(
+        f"Generic LMID: {lipid.generic_lmid}"
+    )  # Do we need to allow multiple of these?
 
     # Access the users quantitated data for each lipid
     for sample in sample_names:
-        print(f"Value for {lipid.official_name} in {sample} is {lipid_data.get_value_for_lipid(lipid, sample)}")
+        print(
+            f"Value for {lipid.official_name} in {sample} is {lipid_data.get_value_for_lipid(lipid, sample)}"
+        )
 
 #############
 # Reactions #
 #############
 
-# Extract the set of reactions for the imported lipids via another 
+# Extract the set of reactions for the imported lipids via another
 # lipidmaps web api call
 
 # They need to say which species the data comes from, and whether they
 # want only complete reactions (all lipid reactants and products were observed)
 # or also include reactions where just some components were present.  We could
-# possibly also include an option to retrieve all reactions for the species 
+# possibly also include an option to retrieve all reactions for the species
 # regardless of whether the lipids in our data were present.
 
 reactions = lipid_data.get_reactions(species="human", complete=True)
@@ -77,35 +81,41 @@ for reaction in reactions:
     reactants = reaction.reactants()
     for reactant in reactants:
         if reactant.is_lipid():
-            print(f"Looking at reactant {reactant.official_name} with id {reactant.lmid}")
+            print(
+                f"Looking at reactant {reactant.official_name} with id {reactant.lmid}"
+            )
 
-            # The lipids which are valid here are a function of the dataset 
+            # The lipids which are valid here are a function of the dataset
             # not the sample
             valid_lipids = lipid_data.get_lipids_for_reaction_component(reactant)
 
             for valid_lipid in valid_lipids:
-                print(f"Lipid {valid_lipid.official_name} is valid for component {reactant.name} in reaction {reaction.name}")
-
+                print(
+                    f"Lipid {valid_lipid.official_name} is valid for component {reactant.name} in reaction {reaction.name}"
+                )
 
             # For quantitation we shouldn't use the valid lipids but let the API do it so
             # we can't get it wrong.
             for sample in sample_names:
-                reactant_quantitation = lipid_data.get_value_for_reaction_component(reactant, method="sum")
-                print(f"Value for {reactant.name} in {reaction.name} in {sample} is {reactant_quantitation}")
-
+                reactant_quantitation = lipid_data.get_value_for_reaction_component(
+                    reactant, method="sum"
+                )
+                print(
+                    f"Value for {reactant.name} in {reaction.name} in {sample} is {reactant_quantitation}"
+                )
 
     # We should have the same logic for products
     products = reaction.products()
-
 
     # Should we also have a method to pair up reactants and products?
     # We'll need this internally I guess? Is it more complex than this
     # when we're dealing with fatty acids?
 
     paired_components = reaction.paired_components()
-    for i,paired_component in enumerate(paired_components):
-        print(f"For pair {i} reactant is {paired_component[0].official_name} product is {paired_component[1].official_name}")
-
+    for i, paired_component in enumerate(paired_components):
+        print(
+            f"For pair {i} reactant is {paired_component[0].official_name} product is {paired_component[1].official_name}"
+        )
 
 
 ###################
@@ -122,8 +132,3 @@ for reaction_node in reaction_chains:
         sub_reactions = reaction_node.children()
 
 # The logic for the iterration could then be in the user's code.
-
-
-
-
-

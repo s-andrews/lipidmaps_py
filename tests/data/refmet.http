@@ -1,0 +1,8 @@
+POST https://www.metabolomicsworkbench.org/databases/refmet/name_to_refmet_new_minID.php HTTP/1.1
+content-type: application/json
+
+{
+    "metabolite_name":"PC(16:0/18:1)\nCholesterol\nTAG(16:0/18:1/18:2)"
+}
+
+
