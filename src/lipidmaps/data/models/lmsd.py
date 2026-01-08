@@ -19,7 +19,7 @@ class LMSDResult(BaseModel):
         return self.model_dump()
 
 class LMSD:
-    LMSDNameUrl = "http://localhost/api/reactions/names"
+    LMSDNameUrl = "https://lipidmaps.org/api/reactions/names"
 
     @staticmethod
     def get_lm_ids_by_name(lipid_names: List[str]) -> Union[List[Dict[str, Any]], Dict[str, Any], None]:

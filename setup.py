@@ -12,6 +12,8 @@ setup(
         "pandas",
         "numpy",
         "requests",
+        "networkx",
+        "matplotlib",
     ],
     extras_require={
         "dev": [

@@ -4,7 +4,7 @@ import re
 from typing import List, Tuple, Dict, Any, Union, Optional
 from pathlib import Path
 import pandas as pd
-
+import networkx as nx
 from pydantic import BaseModel, Field, field_validator
 
 # import the data models we will produce
@@ -623,6 +623,54 @@ class DataManager(BaseModel):
             for lipid in lipids:
                 lipid.reactions = rxns
 
+    def build_reactions_tree_from_reactions(self, reactions: list) -> nx.DiGraph:
+        """
+        Build a directed graph (tree) of reactions from a list of ReactionData.
+        Each node is a compound (by LM ID or name), edges represent reactions.
+        """
+        G = nx.DiGraph()
+        for reaction in reactions:
+            # Check for reactants/products attributes
+            if hasattr(reaction, "reactants") and hasattr(reaction, "products"):
+                for reactant in reaction.reactants:
+                    for product in reaction.products:
+                        G.add_edge(
+                            reactant.display_name(),
+                            product.display_name(),
+                            reaction_id=getattr(reaction, "reaction_id", None),
+                            reaction_name=getattr(reaction, "reaction_name", None),
+                        )
+            else:
+                logger.warning(f"Reaction object missing reactants/products: {reaction}")
+        return G
+    
+    def generate_pyplot_reactions_tree(self, tree: nx.DiGraph, output_path: Union[str, Path] = "reactions_tree.png") -> None:
+        """
+        Generate and save a matplotlib plot of the reactions tree.
+        Args:
+            tree: Directed graph of reactions.
+            output_path: Path to save the generated plot image.
+        """
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(26, 12))  # Increase figure size for clarity
+        pos = nx.spring_layout(tree, k=0.5, iterations=100)  # k controls spacing, increase for more space
+        nx.draw(
+            tree,
+            pos,
+            with_labels=True,
+            node_size=500,
+            node_color="lightblue",
+            font_size=8,
+            font_weight="bold",
+            edge_color="gray",
+            arrows=True,
+        )
+        plt.tight_layout()
+        plt.savefig(output_path)
+        plt.close()
+        logger.info(f"Reactions tree plot saved to {output_path}")
+        
     def print_report(self) -> None:
         """Print the most recent validation report if available."""
         if not self.validation_report:

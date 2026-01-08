@@ -103,7 +103,6 @@ def main() -> None:
 
     # (reaction annotation will be performed after CSV processing)
 
-
     try:
         dataset = manager.process_csv(csv_path)
     except Exception as exc:
@@ -138,75 +137,12 @@ def main() -> None:
     # Fetch reactions for all LM IDs in the dataset 
     reactions = manager.fetch_reactions_for_lm_ids(dataset)
     manager.annotate_lipids_with_reactions(reactions)
-    # print_annotated_lipids_with_reactions(manager, n=100)
-    import networkx as nx
-    def build_reactions_tree_from_reactions(reactions: list) -> nx.DiGraph:
-        """
-        Build a directed graph (tree) of reactions from a list of ReactionData.
-        Each node is a compound (by LM ID or name), edges represent reactions.
-        """
-        G = nx.DiGraph()
-        for reaction in reactions:
-            # Check for reactants/products attributes
-            if hasattr(reaction, "reactants") and hasattr(reaction, "products"):
-                for reactant in reaction.reactants:
-                    for product in reaction.products:
-                        G.add_edge(
-                            reactant.display_name(),
-                            product.display_name(),
-                            reaction_id=getattr(reaction, "reaction_id", None),
-                            reaction_name=getattr(reaction, "reaction_name", None),
-                        )
-            else:
-                logger.warning(f"Reaction object missing reactants/products: {reaction}")
-        return G
-    tree = build_reactions_tree_from_reactions(reactions)
+    print_annotated_lipids_with_reactions(manager, n=100)
+
+    tree = manager.build_reactions_tree_from_reactions(reactions)
     print(f"Built reactions tree with {tree.number_of_nodes()} nodes and {tree.number_of_edges()} edges")
     # To visualize or traverse:
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(26, 12))  # Increase figure size for clarity
-    pos = nx.spring_layout(tree, k=0.5, iterations=100)  # k controls spacing, increase for more space
-    nx.draw(
-        tree,
-        pos,
-        with_labels=True,
-        node_size=1200,
-        node_color="lightblue",
-        font_size=10,
-        font_weight="bold",
-        edge_color="gray",
-        arrows=True,
-    )
-    plt.tight_layout()
-    plt.savefig("reactions_tree.png")
-    plt.close()
-    # # Get selected lipids (convenience wrapper) and collect LM IDs
-    # selected_lipids = manager.selected( n= len(manager.dataset.lipids) )
-    # lm_ids = [l.lm_id for l in selected_lipids if getattr(l, 'lm_id', None)]
-    # if lm_ids:
-    #     checker = ReactionChecker(base_url="http://localhost")
-    #     response = checker.check_reactions(lm_ids)
-    #     print(f"Retrieved {len(response.reactions)} reactions for {len(lm_ids)} LM IDs")
-    #     reactions = []
-    #     for rxn in response.reactions:
-    #         # print(f"Processing reaction ID: {getattr(rxn, 'reaction_id', 'N/A')}")
-    #         # print(f"  Name: {getattr(rxn, 'reaction_name', 'N/A')}")
-    #         rid = getattr(rxn, 'reaction_id', None) or 'unknown'
-
-    #         reactions.append(Reaction(
-    #             reaction_id=str(rid),
-    #             reaction_name=getattr(rxn, 'reaction_name', 'unknown'),
-    #             reactants=[{'lm_id': c.compound_lm_id, 'input_name': c.compound_name} for c in getattr(rxn, 'reactants', [])],
-    #             products=[{'lm_id': c.compound_lm_id, 'input_name': c.compound_name} for c in getattr(rxn, 'products', [])],
-    #             type="class-level",
-    #             pathway_id=None,
-    #             enzyme_id=None,
-    #         ))
-    #     if reactions:
-    #         manager.annotate_lipids_with_reactions(reactions)
-    #         print_annotated_lipids_with_reactions(manager, n=100)
-
-
+    manager.generate_pyplot_reactions_tree(tree, output_path="reactions_tree.png")
 
 
 if __name__ == "__main__":

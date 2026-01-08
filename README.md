@@ -20,6 +20,7 @@ A Python package to interface with the LIPID MAPS database.
 ### Prerequisites
 - Python 3.8 or higher (with SQLite3 support if test coverage report is used)
 - pip (Python package installer)
+- If you use networkx functions, 3.10+ is ideal
 
 > **Note**: If you encounter `ModuleNotFoundError: No module named '_sqlite3'`, your Python installation was built without SQLite support. Either:
 > - Use your system's Python (e.g., `python3` instead of a custom-built Python)
@@ -44,8 +45,12 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```bash
 pip install -e .
 ```
+or to include dev requirements
+```bash
+pip install .[dev]
+```
 
-4. Install development dependencies (optional, for running tests):
+4. Install development dependencies (optional and if you haven't already used .[dev], for running tests):
 ```bash
 pip install pytest pytest-cov pytest-html black flake8 mypy
 ```
