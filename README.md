@@ -1,6 +1,16 @@
 # lipidmaps_py
 
-A Python package to interface with the LIPID MAPS database.
+A Python package providing tools to ingest, normalize, validate, and manage lipidomics datasets and to interface with LIPID MAPS resources.
+
+This project is intended for researchers and developers working with mass-spectrometry lipidomics data who need reproducible preprocessing (ingestion, normalization, and QC), integration with RefMet identifiers, and programmatic access to dataset management utilities.
+
+## Purpose
+
+- Provide robust CSV/TSV ingestion with flexible column handling and format detection.
+- Normalize lipid names to RefMet where possible so downstream analyses work with standardized identifiers.
+- Validate datasets and generate concise QC reports highlighting missing values, format inconsistencies, and common data issues.
+- Offer a `DataManager` abstraction for working with quantified lipids, samples, and simple cohort metadata.
+- Lay the groundwork for LIPID MAPS API integration (LM ID lookup) and reaction-analysis features.
 
 ## Development Status
 
