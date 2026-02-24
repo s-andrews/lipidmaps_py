@@ -16,7 +16,7 @@ This project is intended for researchers and developers working with mass-spectr
 
 ### ✅ Complete
 - **Data Import & Validation**: CSV/TSV data ingestion with format detection
-- **Data Normalization**: RefMet standardization
+- **Name Standardization**: RefMet standardization of user provided metabolite names
 - **Quality Control**: Data validation and issue reporting
 - **Data Management**: DataManager for handling quantified lipid datasets
 
@@ -124,6 +124,8 @@ from lipidmaps import process_csv
 
 # Load a CSV file. The package includes sample datasets in the `tests/data/inputs/` directory:
 dataset = process_csv("path/to/your/data.csv")
+# process_csv accepts many parameters that DataManager class accepts.
+dataset = process_csv("path/to/your/data.csv", validate_data=True, use_refmet=True, use_headgroups=True, taxonomy_group="mammalia")
 
 # Csv file is processed into an object with iterable samples and lipids data
 # samples - the list of SampleMetadata type objects with sample_name, group and label attributes
@@ -138,12 +140,35 @@ print(f"Samples: {dataset.list_sample_names()[:5]}")
 # List first 5 lipid names
 print(f"Lipids: {dataset.list_lipid_names()[:5]}")
 
+```
+
+## Refmet Name Standardization
+- [Refmet](https://www.metabolomicsworkbench.org/databases/refmet/index.php) standardization is used by default and it can be dectivated with ```use_refmet=False``` option. 
+```python
+
+# Lipid names can also be validated separately by importing RefMet class and providing an array of names to validate_metabolite_names() function
+from lipidmaps.data import RefMet
+lipid_names = ['PC(12:1)','Chol']
+refmet_results = RefMet.validate_metabolite_names(lipid_names)
+# Output will be RefMetResult object that contains standardized_name and lm_id if recognized 
+print(refmet_results)
+
+```
+
+## Adding LIPID MAPS Ids
+- RefMet will return lipid maps id's if they are mapped to refmet entries
+- Defining molecular species in lipidomics assays are difficult and we rely on generic lipid structures where R groups are not specified. We use headgroup matching for generic structure ID's if RefMet doesn't return lm_id's.  
+```python
 # Update LIPID MAPS ids by headgroups
 # fill_missing_lm_ids_from_headgroups(dataset) will assign headgroup LIPID MAPS ids to lipids as generic lm_id and return the updated count.
 updated_count = dataset.fill_missing_lm_ids_from_headgroups()
 
 # List lipid names where an lm id is assigned
 print(f"Lipid names with assigned lm ids: {dataset.list_lipids_with_lmid()[:5]}")
+```
+## Quantitation
+
+```python
 
 # Find quantified lipid values by sample and lipid objects
 for lipid in dataset.lipids[:5]:

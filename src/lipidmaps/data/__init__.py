@@ -19,6 +19,9 @@ from .models.sample import (
     SampleMetadata,
     Quantitation,
 )
+from .models.refmet import (
+    RefMet
+)
 from .models.reaction import (
     ReactionData,
     CompoundComponent,
@@ -39,6 +42,7 @@ __all__ = [
     "QuantifiedLipid",
     "SampleMetadata",
     "Quantitation",
+    "RefMet",
     "ReactionData",
     "CompoundComponent",
     "ReactionChecker",
