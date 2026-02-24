@@ -79,6 +79,10 @@ class QuantifiedLipid(LipidmapsBaseModel):
     mass: Optional[float] = None
     reactions: Optional[List[ReactionData]] = None # List of associated reactions
     weight: Optional[float] = None  # For species or class-level reaction
+    # Quantitation metadata
+    unit: Optional[str] = None  # e.g., 'pmol', 'ng', 'area'
+    measurement_method: Optional[str] = None  # e.g., 'LC-MS', 'GC-MS'
+    quantitation_notes: Optional[str] = None
 
     def get_value_for_sample(self, sample: "SampleMetadata") -> Optional[float]:
         """
@@ -106,6 +110,40 @@ class LipidDataset(LipidmapsBaseModel):
     column_info: Optional[Dict[str, Any]] = None  # Metadata about CSV columns
     reactions: List[ReactionData] = Field(default_factory=list)  # All reactions in dataset
     validation_report: Optional[ValidationReport] = Field(default=None)
+    # Quantitation metadata for the entire dataset
+    quantitation_unit: Optional[str] = None  # e.g., 'pmol', 'ng', 'area'
+    quantitation_method: Optional[str] = None  # e.g., 'LC-MS', 'GC-MS'
+    quantitation_notes: Optional[str] = None
+
+    def set_quantitation_info(
+        self,
+        unit: Optional[str] = None,
+        method: Optional[str] = None,
+        notes: Optional[str] = None,
+        apply_to_lipids: bool = False,
+    ) -> None:
+        """Set quantitation metadata for the dataset.
+
+        Args:
+            unit: Unit of measurement (e.g., 'pmol', 'ng', 'area')
+            method: Measurement method (e.g., 'LC-MS', 'GC-MS')
+            notes: Additional notes about the quantitation
+            apply_to_lipids: If True, also set these values on all lipids
+        """
+        if unit is not None:
+            self.quantitation_unit = unit
+        if method is not None:
+            self.quantitation_method = method
+        if notes is not None:
+            self.quantitation_notes = notes
+        if apply_to_lipids:
+            for lipid in self.lipids:
+                if unit is not None:
+                    lipid.unit = unit
+                if method is not None:
+                    lipid.measurement_method = method
+                if notes is not None:
+                    lipid.quantitation_notes = notes
 
     def list_sample_names(self) -> List[str]:
         return [s.sample_name for s in self.samples]
