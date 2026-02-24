@@ -7,6 +7,7 @@ from ..utils.headgroups import lipidmaps_headgroups
 from .query import Query, from_callable, attr_eq, attr_in, attr_contains, attr_gt, has_attr
 from .base import LipidmapsBaseModel
 from pydantic import Field
+from enum import Enum
 from .reaction import ReactionData, CompoundComponent, ReactionChecker
 from ...config import LMSD_REACTIONS_BASE_URL
 from ..validation.data_validator import DataValidator, ValidationReport
@@ -55,10 +56,23 @@ class SampleMetadata(LipidmapsBaseModel):
             skip_missing=skip_missing,
         )
 
+class MissingType(str, Enum):
+    MCAR = "Missing Completely At Random"
+    MAR = "Missing At Random"
+    MNAR = "Missing Not At Random"
+    OTHER = "OTHER"
+
+class MissingInfo(LipidmapsBaseModel):
+    type: MissingType
+    note: Optional[str] = None
+    imputed: bool = False
+
+    model_config = {"extra": "forbid"}
 
 class QuantifiedLipid(LipidmapsBaseModel):
     input_name: str
-    values: Dict[str, float]  # sample_name -> value
+    values: Dict[str, Optional[float]] = Field(default_factory=dict)
+    missing: Dict[str, MissingInfo] = Field(default_factory=dict)
     pathway_ids: Optional[List[str]] = None  # e.g., KEGG or Reactome IDs
     pathway_names: Optional[List[str]] = None  # Human-readable names
     enzyme_ids: Optional[List[str]] = None  
@@ -84,14 +98,60 @@ class QuantifiedLipid(LipidmapsBaseModel):
     measurement_method: Optional[str] = None  # e.g., 'LC-MS', 'GC-MS'
     quantitation_notes: Optional[str] = None
 
-    def get_value_for_sample(self, sample: "SampleMetadata") -> Optional[float]:
+    def get_value_for_sample(self, sample: SampleMetadata) -> Optional[float]:
         """
         Retrieve the quantitation value for a given SampleMetadata object.
         Returns None if not found.
         """
         return self.values.get(sample.sample_name)
 
-    
+    def set_missing_for_sample(self, sample: SampleMetadata, mtype: MissingType, note: Optional[str] = None, imputed: bool = False) -> None:
+        sample_name = sample.sample_name
+        self.missing[sample_name] = MissingInfo(type=mtype, note=note, imputed=imputed)
+        # ensure explicit None value for missing entries
+        if sample_name not in self.values:
+            self.values[sample_name] = None
+
+    def is_missing(self, sample: SampleMetadata) -> bool:
+        return sample.sample_name in self.missing
+
+    def impute_missing(self, strategy: str = "mean", fill_value: Optional[float] = None) -> Dict[str, float]:
+        """
+        Impute missing values in self.values.
+
+        strategy: "mean", "median", "zero", or "value" (requires fill_value).
+        Returns a dict of sample_name -> imputed_value for entries that were imputed.
+        """
+        # collect existing numeric values (ignore None and NaN)
+        present = [v for v in self.values.values() if v is not None and not (isinstance(v, float) and np.isnan(v))]
+        if strategy == "mean":
+            fill = float(np.mean(present)) if present else (0.0 if fill_value is None else float(fill_value))
+        elif strategy == "median":
+            fill = float(np.median(present)) if present else (0.0 if fill_value is None else float(fill_value))
+        elif strategy == "zero":
+            fill = 0.0
+        elif strategy == "value":
+            if fill_value is None:
+                raise ValueError("fill_value required for strategy='value'")
+            fill = float(fill_value)
+        else:
+            raise ValueError(f"Unsupported imputation strategy: {strategy}")
+
+        imputed: Dict[str, float] = {}
+        for sid, val in list(self.values.items()):
+            if val is None or (isinstance(val, float) and np.isnan(val)):
+                self.values[sid] = fill
+                mi = self.missing.get(sid)
+                if mi:
+                    mi.imputed = True
+                    if mi.note is None:
+                        mi.note = f"Imputed ({strategy})"
+                else:
+                    # Mark as imputed missing if no MissingInfo existed
+                    self.missing[sid] = MissingInfo(type=MissingType.OTHER, note=f"Imputed ({strategy})", imputed=True)
+                imputed[sid] = fill
+        return imputed
+        
     @property
     def recognized(self) -> bool:
         return self.standardized_name is not None
@@ -476,17 +536,41 @@ class LipidDataset(LipidmapsBaseModel):
             lm_ids = [c.compound_lm_id for c in getattr(reaction, 'products', []) if hasattr(c, 'compound_lm_id')]
         return [l for l in self.lipids if l.lm_id in lm_ids]
 
+    def impute_missing_values(self, strategy: str = "mean", fill_value: Optional[float] = None) -> Dict[str, Dict[str, float]]:
+        """
+        Impute missing values across all lipids in the dataset.
+        Returns a mapping: lipid_input_name -> {sample_name: imputed_value, ...}
+        """
+        summary: Dict[str, Dict[str, float]] = {}
+        for lipid in self.lipids:
+            imputed = lipid.impute_missing(strategy=strategy, fill_value=fill_value)
+            if imputed:
+                summary[lipid.input_name] = imputed
+        return summary
+
 
 
 class Quantitation(LipidmapsBaseModel):
-    lipid: "QuantifiedLipid"  # Reference to a QuantifiedLipid object
-    sample_values: Dict[str, float]  # sample_name -> value
+    lipid: Union["QuantifiedLipid", str]  # Reference to a QuantifiedLipid object or its input_name
+    sample_values: Dict[str, Optional[float]]  # sample_name -> value (snapshot)
     method: Optional[str] = None  # e.g., 'LC-MS', 'GC-MS'
     unit: Optional[str] = None  # e.g., 'pmol', 'ng'
     notes: Optional[str] = None
     # Add more fields as needed
 
+    @classmethod
+    def from_lipid(cls, lipid: "QuantifiedLipid", samples: Optional[List[str]] = None, method: Optional[str] = None, unit: Optional[str] = None, notes: Optional[str] = None) -> "Quantitation":
+        """
+        Create a Quantitation snapshot from a QuantifiedLipid.
+        If samples is provided, only include those sample names.
+        """
+        sample_values = {sid: val for sid, val in lipid.values.items() if (samples is None or sid in samples)}
+        return cls(lipid=lipid.input_name, sample_values=sample_values, method=method, unit=unit, notes=notes)
+
     def get_value_for_sample(self, sample_name: str) -> Optional[float]:
+        # If lipid was stored as object elsewhere, prefer snapshot; allow object resolution if needed
+        if hasattr(self.lipid, "values"):
+            return getattr(self.lipid, "values").get(sample_name)  # type: ignore
         return self.sample_values.get(sample_name)
     
 if __name__ == "__main__":

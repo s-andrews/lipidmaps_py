@@ -168,41 +168,102 @@ print(f"Lipid names with assigned lm ids: {dataset.list_lipids_with_lmid()[:5]}"
 ```
 ## Quantitation
 
+Quantitation values are stored on `QuantifiedLipid` objects (accessible via `dataset.lipids`) as a `values` mapping
+from sample name to numeric value. The package provides several small helpers to read, query and aggregate those values.
+
+Examples
+
 ```python
-
-# Find quantified lipid values by sample and lipid objects
+# Iterate lipids and samples (sample may be a SampleMetadata object or a sample id string)
 for lipid in dataset.lipids[:5]:
-   for sample in dataset.samples[:5]:
-      print(f"{sample.sample_name}\t{lipid.input_name}\t{lipid.get_value_for_sample(sample)}")
-      'or'
-      print(f"{sample.sample_name}\t{lipid.input_name}\t{lipid.get_value_for_sample(sample)}")
-      'or more specific value'
-      print(f"{sample.sample_name}\t{lipid.input_name}\t{dataset.get_value(sample,lipid)}")
+      for sample in dataset.samples[:5]:
+            val = lipid.get_value_for_sample(sample)
+            print(f"{sample.sample_name}\t{lipid.input_name}\t{val}")
 
+# Equivalent access via dataset helper (sample can be id or SampleMetadata)
+print(dataset.get_value(dataset.samples[0], dataset.lipids[0]))
 
-# Find lipids by name. This function will return array of lipid objects where query is found within input_name or standard_name.
-queried_lipids = dataset.find_lipids("query")
+# Find lipids by name (returns a list of lipid objects where the query matches input or standardized name)
+matches = dataset.find_lipids("cardiolipin")
 
-# Get quantified values for given lipid name. This function will return an object for lipid values {"sample_name": "lipid_value"} 
-lipid_name = "lipid name"
-values = dataset.get_values(lipid_name)
-print(f"Values for {lipid_name}: {values}")
+# Get quantified values for a lipid name (returns dict: {"sample_name": value, ...})
+values = dataset.get_values("PC(16:0/18:1)")
+print(values)
 
-# Fetch reactions from LIPID MAPS
-# We can query LIPID MAPS for lipid reactions by using list of lm_id's
-# DataManager class facilitate connections between different classes and fetching data from external API's
+# Per-sample list of lipid values (useful for plotting or tables)
+vals = dataset.get_lipid_values_for_samples('sample_01')
+# returns something like: [{"input_name": "orig name", "value": 123.4}, ...]
 
-from lipidmaps.data.data_manager import DataManager
-manager = DataManager()
-# LIPID MAPS reactions response includes lipids and non lipids for reactant and products. It can also return generic reactions for the lipid.
- 
+# Aggregations — compute mean across a set of lipid objects for a given sample
+class_lipids = dataset.get_lipids_by_generic_lm_id('LMGP0101')  # example generic LM ID
+mean = dataset.mean_value_for_lipids('sample_01', class_lipids, skip_missing=True)
+
+# Fetch reactions by LM ID (attaches ReactionData objects to the dataset)
 reactions = dataset.fetch_reactions_by_lm_id(reaction_type="class-level", only_lipid_components=False)
-
-# Response is a list of `ReactionData` objects that includes `reaction_id`, `proteins`, `genes`, `curations`, `reactants` and `products`.
-
-# The `fetch_reactions_by_lm_id` method attaches the reactions to the `LipidDataset` and
-# annotates matching lipids in-place, so a separate annotate step is not required.
 ```
+
+Notes
+- `QuantifiedLipid.values` is a plain mapping — you can access values directly (`lipid.values.get('sample_01')`) but
+   prefer the helper methods above to handle missing samples or alternative sample identifiers.
+- The Streamlit demo (`scripts/streamlit_demo.py`) uses these helpers to build per-sample charts, class-level summaries and
+   the interactive search UI.
+
+## Reactions
+
+LIPID MAPS reactions can be fetched by LM ID using `dataset.fetch_reactions_by_lm_id(...)`. The method returns a list of
+`ReactionData` objects and also attaches the fetched reactions to the `LipidDataset` instance so downstream code (or the
+Streamlit demo) can inspect or render them.
+
+Example
+
+```python
+# Fetch reactions (optionally restrict by taxonomy_group)
+reactions = dataset.fetch_reactions_by_lm_id(
+   reaction_type='class-level',
+   only_lipid_components=False,
+   taxonomy_group='mammalia',
+)
+
+# Inspect a few reactions
+for rx in reactions[:5]:
+   print(rx.reaction_id)
+   print('Reactants:', [c.lm_id for c in getattr(rx, 'reactants', [])])
+   print('Products: ', [c.lm_id for c in getattr(rx, 'products', [])])
+
+# Get lipid objects participating in a reaction (helper accepts ReactionData or reaction id)
+lipids_in_rx = dataset.get_lipids_for_reaction(reactions[0])
+```
+
+Notes
+- Reaction responses may include non-lipid entities; reactants/products can be generic or species-level LM IDs.
+- `ReactionData` typically exposes fields like `reaction_id`, `proteins`, `genes`, `curations`, `reactants` and `products`.
+- Fetching attaches reactions to the dataset and will annotate matching lipids in-place.
+
+## Queries
+
+The package provides a composable query API for filtering `QuantifiedLipid` objects via `dataset.query_lipids(*preds, combine='and')`.
+Predicates can be `Query` objects from `lipidmaps.data.models.query` (e.g. `attr_eq`, `attr_contains`) or plain callables that
+accept a `QuantifiedLipid` and return a boolean.
+
+Examples
+
+```python
+from lipidmaps.data.models.query import attr_eq, attr_contains
+
+# Find cardiolipins by main class or name
+q = attr_eq('main_class', 'Cardiolipins') | attr_contains('input_name', 'cardiolipin')
+results = dataset.query_lipids(q, combine='or')
+
+# Combine Query with a callable to filter by a sample value
+q2 = attr_eq('main_class', 'Cardiolipins') & (lambda l: l.values.get('Sample1', 0) > 100)
+results2 = dataset.query_lipids(q2)
+```
+
+Tips
+- Use `combine='or'` to broaden matches across predicates.
+- Callables are useful for numeric comparisons (sample values, mass ranges) that are awkward to express as attribute queries.
+- The README and `scripts/streamlit_demo.py` contain examples showing how to use queries to power interactive selection and plotting.
+
 
 ## Streamlit demo
 
