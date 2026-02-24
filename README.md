@@ -10,7 +10,7 @@ This project is intended for researchers and developers working with mass-spectr
 - Normalize lipid names to RefMet where possible so downstream analyses work with standardized identifiers.
 - Validate datasets and generate concise QC reports highlighting missing values, format inconsistencies, and common data issues.
 - Offer a `DataManager` abstraction for working with quantified lipids, samples, and simple cohort metadata.
-- Lay the groundwork for LIPID MAPS API integration (LM ID lookup) and reaction-analysis features.
+- Lay the groundwork for LIPID MAPS API integration (LM ID lookup) and reaction-analysis features..
 
 ## Development Status
 
