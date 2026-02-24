@@ -144,12 +144,13 @@ print(f"Lipids: {dataset.list_lipid_names()[:5]}")
 
 ## Refmet Name Standardization
 - [Refmet](https://www.metabolomicsworkbench.org/databases/refmet/index.php) standardization is used by default and it can be dectivated with ```use_refmet=False``` option. 
+- Lipid names can also be validated separately by importing RefMet class and providing an array of names to validate_metabolite_names() function
 ```python
 
-# Lipid names can also be validated separately by importing RefMet class and providing an array of names to validate_metabolite_names() function
 from lipidmaps.data import RefMet
 lipid_names = ['PC(12:1)','Chol']
 refmet_results = RefMet.validate_metabolite_names(lipid_names)
+
 # Output will be RefMetResult object that contains standardized_name and lm_id if recognized 
 print(refmet_results)
 
@@ -168,8 +169,7 @@ print(f"Lipid names with assigned lm ids: {dataset.list_lipids_with_lmid()[:5]}"
 ```
 ## Quantitation
 
-Quantitation values are stored on `QuantifiedLipid` objects (accessible via `dataset.lipids`) as a `values` mapping
-from sample name to numeric value. The package provides several small helpers to read, query and aggregate those values.
+- Quantitation values are stored on `QuantifiedLipid` objects (accessible via `dataset.lipids`) as a `values` mapping from sample name to numeric value. The package provides several small helpers to read, query and aggregate those values.
 
 Examples
 
@@ -202,17 +202,14 @@ mean = dataset.mean_value_for_lipids('sample_01', class_lipids, skip_missing=Tru
 reactions = dataset.fetch_reactions_by_lm_id(reaction_type="class-level", only_lipid_components=False)
 ```
 
-Notes
-- `QuantifiedLipid.values` is a plain mapping — you can access values directly (`lipid.values.get('sample_01')`) but
-   prefer the helper methods above to handle missing samples or alternative sample identifiers.
-- The Streamlit demo (`scripts/streamlit_demo.py`) uses these helpers to build per-sample charts, class-level summaries and
-   the interactive search UI.
+### Notes
+- `QuantifiedLipid.values` is a plain mapping — you can access values directly (`lipid.values.get('sample_01')`) but prefer the helper methods above to handle missing samples or alternative sample identifiers.
+- The Streamlit demo (`scripts/streamlit_demo.py`) uses these helpers to build per-sample charts, class-level summaries and the interactive search UI.
 
 ## Reactions
 
-LIPID MAPS reactions can be fetched by LM ID using `dataset.fetch_reactions_by_lm_id(...)`. The method returns a list of
-`ReactionData` objects and also attaches the fetched reactions to the `LipidDataset` instance so downstream code (or the
-Streamlit demo) can inspect or render them.
+- LIPID MAPS reactions can be fetched by LM ID using `dataset.fetch_reactions_by_lm_id(...)`. The method returns a list of
+`ReactionData` objects and also attaches the fetched reactions to the `LipidDataset` instance so downstream code (or the Streamlit demo) can inspect or render them.
 
 Example
 
