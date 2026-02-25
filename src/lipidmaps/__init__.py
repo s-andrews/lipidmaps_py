@@ -51,9 +51,7 @@ from . import data
 __version__ = "0.1.0"
 __all__ = [
     "import_data",
-    "import_msdial",
     "process_csv",
-    "LipidData",
     "DataManager",
     "QuantitationAnalyzer",
     "QuantitationConfig",

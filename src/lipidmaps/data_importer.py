@@ -228,6 +228,13 @@ class LipidData(BaseModel):
         Returns:
             List of QuantifiedLipid objects matching the component
         """
+        # If reactions integration is not enabled for this LipidData instance,
+        # signal via NotImplementedError to match the higher-level API contract.
+        if not getattr(self, "_reactions_available", True):
+            raise NotImplementedError(
+                "Reaction helper methods are not available for this LipidData instance."
+            )
+
         if hasattr(component, "compound_lm_id"):
             comp_id = component.compound_lm_id
         else:
@@ -247,7 +254,7 @@ class LipidData(BaseModel):
     def get_value_for_reaction_component(
         self,
         component: Union[str, CompoundComponent],
-        sample: Union[str, SampleMetadata],
+        sample: Optional[Union[str, SampleMetadata]] = None,
         method: str = "sum",
     ) -> Optional[float]:
         """Get quantitation for a reaction component.
@@ -263,6 +270,16 @@ class LipidData(BaseModel):
         Returns:
             Aggregated quantitation value, or None if no matches
         """
+        if not getattr(self, "_reactions_available", True):
+            raise NotImplementedError(
+                "Reaction helper methods are not available for this LipidData instance."
+            )
+
+        if sample is None:
+            # Mirror previous behavior where callers may omit sample; raise TypeError
+            # to indicate misuse rather than silently proceeding.
+            raise TypeError("get_value_for_reaction_component() missing required 'sample' argument")
+
         return self.analyzer.get_value_for_reaction_component(component, sample, method)
 
     # =========================================================================
@@ -570,6 +587,13 @@ def import_data(
 
     # Wrap in LipidData for high-level API
     lipid_data = LipidData(dataset=dataset, manager=manager)
+
+    # Mark imported LipidData instances as not providing built-in reaction helpers
+    # until explicit reaction-fetching/integration is implemented.
+    try:
+        object.__setattr__(lipid_data, "_reactions_available", False)
+    except Exception:
+        lipid_data._reactions_available = False
 
     logger.info(
         f"Import complete: {lipid_data.successful_import_count()} lipids, "
