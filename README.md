@@ -10,7 +10,7 @@ This project is intended for researchers and developers working with mass-spectr
 - Normalize lipid names to RefMet where possible so downstream analyses work with standardized identifiers.
 - Validate datasets and generate concise QC reports highlighting missing values, format inconsistencies, and common data issues.
 - Offer a `DataManager` abstraction for working with quantified lipids, samples, and simple cohort metadata.
-- Lay the groundwork for LIPID MAPS API integration (LM ID lookup) and reaction-analysis features..
+- Lay the groundwork for LIPID MAPS API integration (LM ID lookup) and reaction-analysis features.
 
 ## Development Status
 
@@ -195,7 +195,7 @@ vals = dataset.get_lipid_values_for_samples('sample_01')
 # returns something like: [{"input_name": "orig name", "value": 123.4}, ...]
 
 # Aggregations — compute mean across a set of lipid objects for a given sample
-class_lipids = dataset.get_lipids_by_generic_lm_id('LMGP0101')  # example generic LM ID
+class_lipids = dataset.get_lipids_by_generic_lm_id('LMGP01010000')  # example generic LM ID
 mean = dataset.mean_value_for_lipids('sample_01', class_lipids, skip_missing=True)
 
 # Fetch reactions by LM ID (attaches ReactionData objects to the dataset)
@@ -205,6 +205,7 @@ reactions = dataset.fetch_reactions_by_lm_id(reaction_type="class-level", only_l
 ### Notes
 - `QuantifiedLipid.values` is a plain mapping — you can access values directly (`lipid.values.get('sample_01')`) but prefer the helper methods above to handle missing samples or alternative sample identifiers.
 - The Streamlit demo (`scripts/streamlit_demo.py`) uses these helpers to build per-sample charts, class-level summaries and the interactive search UI.
+
 
 ## Reactions
 
@@ -230,6 +231,50 @@ for rx in reactions[:5]:
 # Get lipid objects participating in a reaction (helper accepts ReactionData or reaction id)
 lipids_in_rx = dataset.get_lipids_for_reaction(reactions[0])
 ```
+## Normalization
+
+- Normalized quantitation outputs are stored separately from raw measurements so original
+`QuantifiedLipid.values` are never overwritten. Normalized results are kept as list of
+`NormalizedResult` objects in `QuantifiedLipid.normalized`.
+
+Example — total-lipid normalization and storing results per-lipid:
+
+```python
+from lipidmaps.data.quantitation import QuantitationAnalyzer
+
+# build an analyzer for the dataset
+qa = QuantitationAnalyzer(dataset=dataset)
+
+# perform total-lipid normalization (scale factor e.g. 1e6 for ppm)
+method_key = "total_lipid:scale=1e6"
+norm_map = qa.normalize_total_lipid(scale_factor=1e6)  # returns {input_name: {sample: value, ...}, ...}
+
+# store normalized values on each QuantifiedLipid (non-destructive)
+for l in dataset.lipids:
+   if l.input_name in norm_map:
+      l.set_normalized(method_key, norm_map[l.input_name])
+
+# produce a DataFrame of normalized values (rows=lipids, cols=samples)
+df_norm = dataset.normalized_dataframe(method_key)
+print(df_norm.head())
+
+# save CSV if desired
+df_norm.to_csv("normalized.csv")
+```
+
+Accessing stored normalized results for a single lipid:
+
+```python
+# returns a NormalizedResult or None
+nr = dataset.lipids[0].get_normalized(method_key)
+if nr:
+   print(nr.values)         # per-sample mapping
+   print(nr.meta)           # any provenance metadata
+   print(nr.created_iso)    # ISO timestamp when created
+```
+
+Note: The Streamlit demo (`scripts/streamlit_demo.py`) includes UI to apply
+normalization methods and download the resulting CSV without modifying raw values.
 
 Notes
 - Reaction responses may include non-lipid entities; reactants/products can be generic or species-level LM IDs.

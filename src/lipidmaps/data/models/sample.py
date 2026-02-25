@@ -8,6 +8,7 @@ from .query import Query, from_callable, attr_eq, attr_in, attr_contains, attr_g
 from .base import LipidmapsBaseModel
 from pydantic import Field
 from enum import Enum
+from datetime import datetime
 from .reaction import ReactionData, CompoundComponent, ReactionChecker
 from ...config import LMSD_REACTIONS_BASE_URL
 from ..validation.data_validator import DataValidator, ValidationReport
@@ -69,6 +70,19 @@ class MissingInfo(LipidmapsBaseModel):
 
     model_config = {"extra": "forbid"}
 
+
+class NormalizedResult(LipidmapsBaseModel):
+    """Typed container for normalized values and provenance metadata."""
+
+    method_key: str
+    values: Dict[str, Optional[float]] = Field(default_factory=dict)
+    meta: Dict[str, Any] = Field(default_factory=dict)
+    created_iso: Optional[str] = None
+
+    def model_post_init(self, __context: Any) -> None:  # type: ignore[misc]
+        if self.created_iso is None:
+            self.created_iso = datetime.utcnow().isoformat() + "Z"
+
 class QuantifiedLipid(LipidmapsBaseModel):
     input_name: str
     values: Dict[str, Optional[float]] = Field(default_factory=dict)
@@ -97,6 +111,8 @@ class QuantifiedLipid(LipidmapsBaseModel):
     unit: Optional[str] = None  # e.g., 'pmol', 'ng', 'area'
     measurement_method: Optional[str] = None  # e.g., 'LC-MS', 'GC-MS'
     quantitation_notes: Optional[str] = None
+    # Store typed normalized results keyed by method_key -> NormalizedResult
+    normalized: Dict[str, "NormalizedResult"] = Field(default_factory=dict)
 
     def get_value_for_sample(self, sample: SampleMetadata) -> Optional[float]:
         """
@@ -164,6 +180,23 @@ class QuantifiedLipid(LipidmapsBaseModel):
             k: (v - mean) / std if std != 0 else 0.0 for k, v in self.values.items()
         }
 
+    def set_normalized(self, entry: Union["NormalizedResult", str], vals: Optional[Dict[str, Optional[float]]] = None, meta: Optional[Dict[str, Any]] = None) -> None:
+        """Store normalized values. Accepts either a NormalizedResult or (method_key, vals[, meta])."""
+        if hasattr(entry, "method_key") and hasattr(entry, "values"):
+            nr: "NormalizedResult" = entry  # type: ignore[var-annotated]
+            self.normalized[nr.method_key] = nr
+            return
+
+        method_key = entry
+        if vals is None:
+            raise ValueError("vals required when passing method_key string")
+        nr = NormalizedResult(method_key=method_key, values=vals, meta=meta or {})
+        self.normalized[method_key] = nr
+
+    def get_normalized(self, method_key: str) -> Optional["NormalizedResult"]:
+        """Return a NormalizedResult for `method_key` or None if not present."""
+        return self.normalized.get(method_key)
+
 class LipidDataset(LipidmapsBaseModel):
     samples: List[SampleMetadata]
     lipids: List[QuantifiedLipid]
@@ -210,6 +243,57 @@ class LipidDataset(LipidmapsBaseModel):
 
     def list_lipid_names(self) -> List[str]:
         return [l.input_name for l in self.lipids]
+
+    def normalized_dataframe(self, method_key: str):
+        """Return a pandas DataFrame of normalized values for `method_key`.
+
+        Rows are lipids (input_name) and columns are sample names.
+        """
+        try:
+            import pandas as pd
+        except Exception:
+            raise
+
+        data = {}
+        for l in self.lipids:
+            nr = None
+            try:
+                nr = l.get_normalized(method_key)
+            except Exception:
+                nr = None
+
+            if nr is None:
+                # fallback to old-style dict stored directly on object
+                try:
+                    raw = getattr(l, 'normalized', {})
+                    if isinstance(raw, dict) and method_key in raw:
+                        data[l.input_name] = raw[method_key]
+                except Exception:
+                    pass
+            else:
+                # nr may be a NormalizedResult instance
+                try:
+                    data[l.input_name] = nr.values if hasattr(nr, 'values') else nr
+                except Exception:
+                    data[l.input_name] = nr
+
+        # If no per-lipid normalized entries found, check dataset-level store
+        if not data:
+            store = getattr(self, '_normalized_store', None)
+            if store and method_key in store:
+                df = pd.DataFrame.from_dict(store[method_key], orient='index')
+            else:
+                df = pd.DataFrame.from_dict(data, orient='index')
+        else:
+            df = pd.DataFrame.from_dict(data, orient='index')
+        # order columns if possible
+        cols = self.list_sample_names() if hasattr(self, 'list_sample_names') else None
+        if cols is not None and len(cols) > 0:
+            try:
+                df = df[cols]
+            except Exception:
+                pass
+        return df
     
     def list_reactions(self) -> Optional[List[str]]:
         return [f"{r.reaction_name} {r.reaction_id}" for r in (self.reactions)]
@@ -535,6 +619,24 @@ class LipidDataset(LipidmapsBaseModel):
         if not lm_ids and hasattr(reaction, 'products') and role == "product":
             lm_ids = [c.compound_lm_id for c in getattr(reaction, 'products', []) if hasattr(c, 'compound_lm_id')]
         return [l for l in self.lipids if l.lm_id in lm_ids]
+
+    def possible_reactions(self, reactions: Optional[List[Any]] = None) -> List[Any]:
+        """Return reactions from `reactions` that are plausible for this dataset.
+
+        Wraps the rule-based `reactions_possible_in_dataset` helper which inspects
+        headgroups present in this dataset and filters based on known headgroup
+        conversion rules.
+        """
+        try:
+            if reactions is None:
+                reactions = getattr(self, 'reactions', []) or []
+            # local import to avoid top-level dependency cycles
+            from ..utils.lipid_reaction_rules import reactions_possible_in_dataset
+
+            return reactions_possible_in_dataset(self, reactions)
+        except Exception:
+            logger.exception("Failed to compute plausible reactions for dataset.")
+            return []
 
     def impute_missing_values(self, strategy: str = "mean", fill_value: Optional[float] = None) -> Dict[str, Dict[str, float]]:
         """
