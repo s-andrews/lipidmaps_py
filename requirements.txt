@@ -2,6 +2,7 @@ pandas==2.2.3
 numpy==2.0.2
 pydantic==2.9.2
 requests==2.32.3
+scipy>=1.10.0
 mkdocs==1.6.1
 aiofiles
 mkdocs-material

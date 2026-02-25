@@ -12,6 +12,7 @@ setup(
         "pandas",
         "numpy",
         "requests",
+        "scipy>=1.10.0",
     ],
     extras_require={
         "dev": [
