@@ -73,6 +73,16 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
     model_config = {"arbitrary_types_allowed": True}
     _config: QuantitationConfig = PrivateAttr(default_factory=QuantitationConfig)
 
+    def __init__(self, dataset: Any = None, **data):
+        """Allow positional-style construction `QuantitationAnalyzer(dataset)` for tests.
+
+        If `dataset` is provided positionally, inject it into kwargs forwarded
+        to the Pydantic BaseModel initializer.
+        """
+        if dataset is not None:
+            data.setdefault("dataset", dataset)
+        super().__init__(**data)
+
     def __repr__(self) -> str:
         return f"QuantitationAnalyzer(dataset={getattr(self.dataset, 'name', None)})"
 

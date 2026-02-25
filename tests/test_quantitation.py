@@ -104,7 +104,7 @@ def sample_dataset():
 @pytest.fixture
 def analyzer(sample_dataset):
     """Create a QuantitationAnalyzer for testing."""
-    return QuantitationAnalyzer(sample_dataset)
+    return QuantitationAnalyzer(dataset=sample_dataset)
 
 
 @pytest.fixture
@@ -208,7 +208,7 @@ class TestNormalizationMethods:
     
     def test_apply_normalization_in_place(self, sample_dataset):
         """Test in-place normalization."""
-        analyzer = QuantitationAnalyzer(sample_dataset)
+        analyzer = QuantitationAnalyzer(dataset=sample_dataset)
         original_value = sample_dataset.lipids[0].values["Control_1"]
         
         analyzer.apply_normalization(
@@ -608,7 +608,7 @@ class TestEdgeCases:
     def test_empty_dataset(self):
         """Test with empty dataset."""
         dataset = LipidDataset(samples=[], lipids=[])
-        analyzer = QuantitationAnalyzer(dataset)
+        analyzer = QuantitationAnalyzer(dataset=dataset)
         
         # Should not raise errors
         means = analyzer.get_group_means()
@@ -630,7 +630,7 @@ class TestEdgeCases:
             ),
         ]
         dataset = LipidDataset(samples=samples, lipids=lipids)
-        analyzer = QuantitationAnalyzer(dataset)
+        analyzer = QuantitationAnalyzer(dataset=dataset)
         
         # Should handle single-sample groups gracefully
         fc = analyzer.calculate_fold_change("GroupB", "GroupA")
@@ -649,7 +649,7 @@ class TestEdgeCases:
             ),
         ]
         dataset = LipidDataset(samples=samples, lipids=lipids)
-        analyzer = QuantitationAnalyzer(dataset)
+        analyzer = QuantitationAnalyzer(dataset=dataset)
         
         # Should handle missing gracefully
         means = analyzer.get_group_means()

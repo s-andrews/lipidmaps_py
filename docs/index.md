@@ -1,7 +1,8 @@
-````markdown
 # LIPID MAPS Python API
 
-Welcome — Examples for common workflows using the `lipidmaps` package.
+Welcome to [LIPID MAPS](https://lipidmaps.org) Python API 
+
+### Examples for common workflows using the `lipidmaps` package.
 
 Quick import
 
@@ -40,4 +41,4 @@ print(df_norm.head())
 ```
 
 More examples and detailed API usage are available in the repository `README.md` and the docs sidebar.
-````
+
