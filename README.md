@@ -16,7 +16,7 @@ This project is intended for researchers and developers working with mass-spectr
 
 ### ✅ Complete
 - **Data Import & Validation**: CSV/TSV data ingestion with format detection
-- **Data Normalization**: RefMet standardization
+- **Name Standardization**: RefMet standardization of user provided metabolite names
 - **Quality Control**: Data validation and issue reporting
 - **Data Management**: DataManager for handling quantified lipid datasets
 
@@ -124,6 +124,8 @@ from lipidmaps import process_csv
 
 # Load a CSV file. The package includes sample datasets in the `tests/data/inputs/` directory:
 dataset = process_csv("path/to/your/data.csv")
+# process_csv accepts many parameters that DataManager class accepts.
+dataset = process_csv("path/to/your/data.csv", validate_data=True, use_refmet=True, use_headgroups=True, taxonomy_group="mammalia")
 
 # Csv file is processed into an object with iterable samples and lipids data
 # samples - the list of SampleMetadata type objects with sample_name, group and label attributes
@@ -138,46 +140,172 @@ print(f"Samples: {dataset.list_sample_names()[:5]}")
 # List first 5 lipid names
 print(f"Lipids: {dataset.list_lipid_names()[:5]}")
 
+```
+
+## Refmet Name Standardization
+- [Refmet](https://www.metabolomicsworkbench.org/databases/refmet/index.php) standardization is used by default and it can be dectivated with ```use_refmet=False``` option. 
+- Lipid names can also be validated separately by importing RefMet class and providing an array of names to validate_metabolite_names() function
+```python
+
+from lipidmaps.data import RefMet
+lipid_names = ['PC(12:1)','Chol']
+refmet_results = RefMet.validate_metabolite_names(lipid_names)
+
+# Output will be RefMetResult object that contains standardized_name and lm_id if recognized 
+print(refmet_results)
+
+```
+
+## Adding LIPID MAPS Ids
+- RefMet will return lipid maps id's if they are mapped to refmet entries
+- Defining molecular species in lipidomics assays are difficult and we rely on generic lipid structures where R groups are not specified. We use headgroup matching for generic structure ID's if RefMet doesn't return lm_id's.  
+```python
 # Update LIPID MAPS ids by headgroups
 # fill_generic_lm_ids_from_headgroups(dataset) will assign headgroup LIPID MAPS ids to lipids as generic lm_id and return the updated count.
 updated_count = dataset.fill_generic_lm_ids_from_headgroups()
 
 # List lipid names where an lm id is assigned
 print(f"Lipid names with assigned lm ids: {dataset.list_lipids_with_lmid()[:5]}")
-
-# Find quantified lipid values by sample and lipid objects
-for lipid in dataset.lipids[:5]:
-   for sample in dataset.samples[:5]:
-      print(f"{sample.sample_name}\t{lipid.input_name}\t{lipid.get_value_for_sample(sample)}")
-      'or'
-      print(f"{sample.sample_name}\t{lipid.input_name}\t{lipid.get_value_for_sample(sample)}")
-      'or more specific value'
-      print(f"{sample.sample_name}\t{lipid.input_name}\t{dataset.get_value(sample,lipid)}")
-
-
-# Find lipids by name. This function will return array of lipid objects where query is found within input_name or standard_name.
-queried_lipids = dataset.find_lipids("query")
-
-# Get quantified values for given lipid name. This function will return an object for lipid values {"sample_name": "lipid_value"} 
-lipid_name = "lipid name"
-values = dataset.get_values(lipid_name)
-print(f"Values for {lipid_name}: {values}")
-
-# Fetch reactions from LIPID MAPS
-# We can query LIPID MAPS for lipid reactions by using list of lm_id's
-# DataManager class facilitate connections between different classes and fetching data from external API's
-
-from lipidmaps.data.data_manager import DataManager
-manager = DataManager()
-# LIPID MAPS reactions response includes lipids and non lipids for reactant and products. It can also return generic reactions for the lipid.
- 
-reactions = dataset.fetch_reactions_by_lm_id(reaction_type="class-level", only_lipid_components=False)
-
-# Response is a list of `ReactionData` objects that includes `reaction_id`, `proteins`, `genes`, `curations`, `reactants` and `products`.
-
-# The `fetch_reactions_by_lm_id` method attaches the reactions to the `LipidDataset` and
-# annotates matching lipids in-place, so a separate annotate step is not required.
 ```
+## Quantitation
+
+- Quantitation values are stored on `QuantifiedLipid` objects (accessible via `dataset.lipids`) as a `values` mapping from sample name to numeric value. The package provides several small helpers to read, query and aggregate those values.
+
+Examples
+
+```python
+# Iterate lipids and samples (sample may be a SampleMetadata object or a sample id string)
+for lipid in dataset.lipids[:5]:
+      for sample in dataset.samples[:5]:
+            val = lipid.get_value_for_sample(sample)
+            print(f"{sample.sample_name}\t{lipid.input_name}\t{val}")
+
+# Equivalent access via dataset helper (sample can be id or SampleMetadata)
+print(dataset.get_value(dataset.samples[0], dataset.lipids[0]))
+
+# Find lipids by name (returns a list of lipid objects where the query matches input or standardized name)
+matches = dataset.find_lipids("cardiolipin")
+
+# Get quantified values for a lipid name (returns dict: {"sample_name": value, ...})
+values = dataset.get_values("PC(16:0/18:1)")
+print(values)
+
+# Per-sample list of lipid values (useful for plotting or tables)
+vals = dataset.get_lipid_values_for_samples('sample_01')
+# returns something like: [{"input_name": "orig name", "value": 123.4}, ...]
+
+# Aggregations — compute mean across a set of lipid objects for a given sample
+class_lipids = dataset.get_lipids_by_generic_lm_id('LMGP01010000')  # example generic LM ID
+mean = dataset.mean_value_for_lipids('sample_01', class_lipids, skip_missing=True)
+
+# Fetch reactions by LM ID (attaches ReactionData objects to the dataset)
+reactions = dataset.fetch_reactions_by_lm_id(reaction_type="class-level", only_lipid_components=False)
+```
+
+### Notes
+- `QuantifiedLipid.values` is a plain mapping — you can access values directly (`lipid.values.get('sample_01')`) but prefer the helper methods above to handle missing samples or alternative sample identifiers.
+- The Streamlit demo (`scripts/streamlit_demo.py`) uses these helpers to build per-sample charts, class-level summaries and the interactive search UI.
+
+
+## Reactions
+
+- LIPID MAPS reactions can be fetched by LM ID using `dataset.fetch_reactions_by_lm_id(...)`. The method returns a list of
+`ReactionData` objects and also attaches the fetched reactions to the `LipidDataset` instance so downstream code (or the Streamlit demo) can inspect or render them.
+
+Example
+
+```python
+# Fetch reactions (optionally restrict by taxonomy_group)
+reactions = dataset.fetch_reactions_by_lm_id(
+   reaction_type='class-level',
+   only_lipid_components=False,
+   taxonomy_group='mammalia',
+)
+
+# Inspect a few reactions
+for rx in reactions[:5]:
+   print(rx.reaction_id)
+   print('Reactants:', [c.lm_id for c in getattr(rx, 'reactants', [])])
+   print('Products: ', [c.lm_id for c in getattr(rx, 'products', [])])
+
+# Get lipid objects participating in a reaction (helper accepts ReactionData or reaction id)
+lipids_in_rx = dataset.get_lipids_for_reaction(reactions[0])
+```
+## Normalization
+
+- Normalized quantitation outputs are stored separately from raw measurements so original
+`QuantifiedLipid.values` are never overwritten. Normalized results are kept as list of
+`NormalizedResult` objects in `QuantifiedLipid.normalized`.
+
+Example — total-lipid normalization and storing results per-lipid:
+
+```python
+from lipidmaps.data.quantitation import QuantitationAnalyzer
+
+# build an analyzer for the dataset
+qa = QuantitationAnalyzer(dataset=dataset)
+
+# perform total-lipid normalization (scale factor e.g. 1e6 for ppm)
+method_key = "total_lipid:scale=1e6"
+norm_map = qa.normalize_total_lipid(scale_factor=1e6)  # returns {input_name: {sample: value, ...}, ...}
+
+# store normalized values on each QuantifiedLipid (non-destructive)
+for l in dataset.lipids:
+   if l.input_name in norm_map:
+      l.set_normalized(method_key, norm_map[l.input_name])
+
+# produce a DataFrame of normalized values (rows=lipids, cols=samples)
+df_norm = dataset.normalized_dataframe(method_key)
+print(df_norm.head())
+
+# save CSV if desired
+df_norm.to_csv("normalized.csv")
+```
+
+Accessing stored normalized results for a single lipid:
+
+```python
+# returns a NormalizedResult or None
+nr = dataset.lipids[0].get_normalized(method_key)
+if nr:
+   print(nr.values)         # per-sample mapping
+   print(nr.meta)           # any provenance metadata
+   print(nr.created_iso)    # ISO timestamp when created
+```
+
+Note: The Streamlit demo (`scripts/streamlit_demo.py`) includes UI to apply
+normalization methods and download the resulting CSV without modifying raw values.
+
+Notes
+- Reaction responses may include non-lipid entities; reactants/products can be generic or species-level LM IDs.
+- `ReactionData` typically exposes fields like `reaction_id`, `proteins`, `genes`, `curations`, `reactants` and `products`.
+- Fetching attaches reactions to the dataset and will annotate matching lipids in-place.
+
+## Queries
+
+The package provides a composable query API for filtering `QuantifiedLipid` objects via `dataset.query_lipids(*preds, combine='and')`.
+Predicates can be `Query` objects from `lipidmaps.data.models.query` (e.g. `attr_eq`, `attr_contains`) or plain callables that
+accept a `QuantifiedLipid` and return a boolean.
+
+Examples
+
+```python
+from lipidmaps.data.models.query import attr_eq, attr_contains
+
+# Find cardiolipins by main class or name
+q = attr_eq('main_class', 'Cardiolipins') | attr_contains('input_name', 'cardiolipin')
+results = dataset.query_lipids(q, combine='or')
+
+# Combine Query with a callable to filter by a sample value
+q2 = attr_eq('main_class', 'Cardiolipins') & (lambda l: l.values.get('Sample1', 0) > 100)
+results2 = dataset.query_lipids(q2)
+```
+
+Tips
+- Use `combine='or'` to broaden matches across predicates.
+- Callables are useful for numeric comparisons (sample values, mass ranges) that are awkward to express as attribute queries.
+- The README and `scripts/streamlit_demo.py` contain examples showing how to use queries to power interactive selection and plotting.
+
 
 ## Streamlit demo
 

@@ -1,6 +1,7 @@
 import csv
 import logging
 import re
+import tempfile
 from typing import List, Dict, Any, Union, Optional
 from pathlib import Path
 import pandas as pd
@@ -72,6 +73,10 @@ class DataManager(LipidmapsBaseModel):
     use_headgroups: bool = Field(default=True, description="Whether to use headgroup mapping for filling missing LM IDs")
     fetch_reactions: bool = Field(default=True, description="Whether to fetch reactions by LM ID after processing CSV")
     taxonomy_group: Optional[str] = Field(default="all", description="Taxonomy group filter for reaction fetching (e.g. 'bacteria', 'mammalia', 'all')")
+    transpose_file: bool = Field(
+        default=False,
+        description="If True, transpose the input CSV before ingestion (useful when lipids are columns and samples are rows)."
+    )
     # User-specified column configuration
     lipid_name_column: Optional[Union[int, str]] = Field(
         default=0,
@@ -125,6 +130,24 @@ class DataManager(LipidmapsBaseModel):
         """
         csv_path = Path(csv_path)
         logger.info(f"Loading CSV file: {csv_path}")
+
+        # Optional manual transpose: write a transposed temp CSV and use that file
+        if self.transpose_file:
+            try:
+                logger.info("transpose_file=True: transposing CSV so lipids become rows")
+                # read with first column as index if present, otherwise fall back to default read
+                try:
+                    df = pd.read_csv(csv_path, header=0, index_col=0)
+                except Exception:
+                    df = pd.read_csv(csv_path, header=0)
+                transposed = df.T.reset_index()
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+                transposed.to_csv(tmp.name, index=False)
+                csv_path = Path(tmp.name)
+                logger.info(f"Transposed CSV written to temporary file: {csv_path}")
+            except Exception:
+                logger.exception("Failed to transpose CSV; proceeding with original file")
+
 
         # Use CSVIngestion to read file
         ingestion = CSVIngestion(has_labels=self.has_labels)

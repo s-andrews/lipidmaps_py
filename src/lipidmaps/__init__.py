@@ -7,14 +7,16 @@ using LIPID MAPS resources.
 
 Main functions:
     - import_data: Import lipid data from CSV files
-    - import_msdial: Import MS-DIAL formatted data
+    - process_csv: Convenience function to process CSV directly
 
 Main classes:
-    - LipidData: High-level interface for imported lipid data
+    - QuantifiedLipid: Typed model representing a quantified lipid, its per-sample values, and annotation metadata.
+    - LipidDataset: Container for samples and `QuantifiedLipid` objects with helpers for querying, aggregation, normalization, and reaction annotation.
+    - RefMet: Utilities for RefMet name standardization and LM ID lookup for input lipid names.
+    - Reactions: Tools and models for fetching, filtering, and inspecting LIPID MAPS reactions.
+    - QuantitationAnalyzer: Analysis tools for normalization and quantitation workflows.
 
-Subpackages:
-    - data: Data input framework for pathway analysis
-    - tools: Utility tools and helpers
+
 """
 
 # Convenience wrapper for direct CSV processing
@@ -34,8 +36,27 @@ def process_csv(csv_path, **kwargs):
 
 from .data_importer import import_data, import_msdial, LipidData
 
+# Quantitation analysis exports
+from .data.quantitation import (
+    QuantitationAnalyzer,
+    QuantitationConfig,
+    NormalizationMethod,
+    QuantitationUnit,
+    create_analyzer,
+)
+
 # Import subpackages to make them accessible
 from . import data
 
 __version__ = "0.1.0"
-__all__ = ["import_data", "import_msdial", "LipidData", "data"]
+__all__ = [
+    "import_data",
+    "process_csv",
+    "DataManager",
+    "QuantitationAnalyzer",
+    "QuantitationConfig",
+    "NormalizationMethod",
+    "QuantitationUnit",
+    "create_analyzer",
+    "data",
+]

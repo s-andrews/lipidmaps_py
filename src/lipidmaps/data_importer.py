@@ -12,7 +12,15 @@ from pathlib import Path
 from pydantic import BaseModel, Field, computed_field, ConfigDict
 
 from .data.data_manager import DataManager
-from .data.models.sample import LipidDataset, QuantifiedLipid
+from .data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
+from .data.models.reaction import ReactionData, CompoundComponent
+from .data.quantitation import (
+    QuantitationAnalyzer,
+    QuantitationConfig,
+    NormalizationMethod,
+    QuantitationUnit,
+    create_analyzer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -209,21 +217,306 @@ class LipidData(BaseModel):
             "This will call LIPID MAPS API to retrieve reaction data."
         )
 
-    def get_lipids_for_reaction_component(self, component: str):
-        """Get valid lipids for a reaction component.
+    def get_lipids_for_reaction_component(
+        self, component: Union[str, CompoundComponent]
+    ) -> List[QuantifiedLipid]:
+        """Get all lipids matching a reaction component.
 
-        Note:
-            Future implementation - requires reactions integration
+        Args:
+            component: Component LM ID (str) or CompoundComponent object
+
+        Returns:
+            List of QuantifiedLipid objects matching the component
         """
-        raise NotImplementedError("Reactions integration not yet implemented.")
+        # If reactions integration is not enabled for this LipidData instance,
+        # signal via NotImplementedError to match the higher-level API contract.
+        if not getattr(self, "_reactions_available", True):
+            raise NotImplementedError(
+                "Reaction helper methods are not available for this LipidData instance."
+            )
 
-    def get_value_for_reaction_component(self, component: str, method: str = "sum"):
+        if hasattr(component, "compound_lm_id"):
+            comp_id = component.compound_lm_id
+        else:
+            comp_id = str(component)
+
+        if not comp_id:
+            return []
+
+        comp_id_lower = comp_id.lower()
+        return [
+            l
+            for l in self.dataset.lipids
+            if (l.lm_id and l.lm_id.lower() == comp_id_lower)
+            or (l.generic_lm_id and l.generic_lm_id.lower() == comp_id_lower)
+        ]
+
+    def get_value_for_reaction_component(
+        self,
+        component: Union[str, CompoundComponent],
+        sample: Optional[Union[str, SampleMetadata]] = None,
+        method: str = "sum",
+    ) -> Optional[float]:
         """Get quantitation for a reaction component.
 
-        Note:
-            Future implementation - requires reactions integration
+        A reaction component may map to multiple lipids in the dataset.
+        This method aggregates values across all matching lipids.
+
+        Args:
+            component: Component LM ID (str) or CompoundComponent object
+            sample: Sample name (str) or SampleMetadata object
+            method: Aggregation method ('sum', 'mean', 'max', 'min')
+
+        Returns:
+            Aggregated quantitation value, or None if no matches
         """
-        raise NotImplementedError("Reactions integration not yet implemented.")
+        if not getattr(self, "_reactions_available", True):
+            raise NotImplementedError(
+                "Reaction helper methods are not available for this LipidData instance."
+            )
+
+        if sample is None:
+            # Mirror previous behavior where callers may omit sample; raise TypeError
+            # to indicate misuse rather than silently proceeding.
+            raise TypeError("get_value_for_reaction_component() missing required 'sample' argument")
+
+        return self.analyzer.get_value_for_reaction_component(component, sample, method)
+
+    # =========================================================================
+    # QUANTITATION ANALYSIS
+    # =========================================================================
+
+    @property
+    def analyzer(self) -> QuantitationAnalyzer:
+        """Get the quantitation analyzer for this dataset."""
+        if not hasattr(self, "_analyzer") or self._analyzer is None:
+            object.__setattr__(self, "_analyzer", create_analyzer(self.dataset))
+        return self._analyzer
+
+    @property
+    def quantitation_config(self) -> QuantitationConfig:
+        """Get the current quantitation configuration."""
+        return self.analyzer.config
+
+    def set_quantitation_config(
+        self,
+        unit: Optional[str] = None,
+        method: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> None:
+        """Set quantitation configuration (unit, measurement method, notes).
+
+        Args:
+            unit: Unit of measurement (e.g., 'pmol', 'ng', 'area')
+            method: Measurement method (e.g., 'LC-MS', 'GC-MS')
+            notes: Additional notes about the quantitation
+        """
+        self.analyzer.set_config(unit=unit, method=method, notes=notes)
+
+    def get_values(self, lipid_name: str) -> Optional[Dict[str, float]]:
+        """Get quantified values for a lipid by name.
+
+        Args:
+            lipid_name: Lipid name (input_name or standardized_name)
+
+        Returns:
+            Dict mapping sample_name -> value, or None if not found
+        """
+        return self.dataset.get_values(lipid_name)
+
+    # =========================================================================
+    # NORMALIZATION METHODS
+    # =========================================================================
+
+    def normalize(
+        self,
+        method: Union[str, NormalizationMethod],
+        internal_standard: Optional[str] = None,
+        log_base: int = 2,
+        log_offset: float = 1.0,
+        total_lipid_scale: float = 1e6,
+        in_place: bool = False,
+    ) -> Dict[str, Dict[str, float]]:
+        """Apply normalization to the dataset.
+
+        Args:
+            method: Normalization method ('total_lipid', 'internal_standard',
+                   'log2', 'log10', 'median_center', 'zscore')
+            internal_standard: Required if method is 'internal_standard'
+            log_base: Base for log transformation (2 or 10)
+            log_offset: Offset for log transformation to handle zeros
+            total_lipid_scale: Scale factor for total lipid normalization
+            in_place: If True, update lipid values in the dataset
+
+        Returns:
+            Dict mapping lipid_name -> {sample_name: normalized_value}
+        """
+        if isinstance(method, str):
+            method = NormalizationMethod(method)
+        return self.analyzer.apply_normalization(
+            method=method,
+            internal_standard=internal_standard,
+            log_base=log_base,
+            log_offset=log_offset,
+            total_lipid_scale=total_lipid_scale,
+            in_place=in_place,
+        )
+
+    def normalize_total_lipid(
+        self, scale_factor: float = 1e6
+    ) -> Dict[str, Dict[str, float]]:
+        """Normalize by total lipid content per sample.
+
+        Each sample's values are divided by the sum of all lipid values.
+
+        Args:
+            scale_factor: Factor to multiply normalized values (default: 1e6 for ppm)
+
+        Returns:
+            Dict mapping lipid_name -> {sample_name: normalized_value}
+        """
+        return self.analyzer.normalize_total_lipid(scale_factor)
+
+    def normalize_log(
+        self, base: int = 2, offset: float = 1.0
+    ) -> Dict[str, Dict[str, float]]:
+        """Apply log transformation.
+
+        Args:
+            base: Logarithm base (2 or 10)
+            offset: Value added before log to handle zeros
+
+        Returns:
+            Dict mapping lipid_name -> {sample_name: log_value}
+        """
+        return self.analyzer.normalize_log(base, offset)
+
+    def normalize_median_center(self) -> Dict[str, Dict[str, float]]:
+        """Center values by subtracting sample median.
+
+        Returns:
+            Dict mapping lipid_name -> {sample_name: centered_value}
+        """
+        return self.analyzer.normalize_median_center()
+
+    # =========================================================================
+    # STATISTICAL ANALYSIS
+    # =========================================================================
+
+    def calculate_fold_change(
+        self, group1: str, group2: str, log2: bool = True
+    ) -> Dict[str, float]:
+        """Calculate fold change between two groups.
+
+        Args:
+            group1: First group name (numerator)
+            group2: Second group name (denominator/reference)
+            log2: If True, return log2 fold change
+
+        Returns:
+            Dict mapping lipid_name -> fold_change
+        """
+        return self.analyzer.calculate_fold_change(group1, group2, log2)
+
+    def calculate_pvalue(
+        self,
+        group1: str,
+        group2: str,
+        test: str = "ttest",
+        paired: bool = False,
+    ) -> Dict[str, float]:
+        """Calculate p-values comparing two groups.
+
+        Args:
+            group1: First group name
+            group2: Second group name
+            test: Statistical test ('ttest' or 'mannwhitney')
+            paired: If True, use paired test
+
+        Returns:
+            Dict mapping lipid_name -> p_value
+        """
+        return self.analyzer.calculate_pvalue(group1, group2, test, paired)
+
+    def calculate_cv(
+        self, by_group: bool = False
+    ) -> Union[Dict[str, float], Dict[str, Dict[str, float]]]:
+        """Calculate coefficient of variation for each lipid.
+
+        CV = (std / mean) * 100
+
+        Args:
+            by_group: If True, calculate CV per group
+
+        Returns:
+            Dict mapping lipid_name -> CV (or group -> {lipid_name -> CV})
+        """
+        return self.analyzer.calculate_cv(by_group)
+
+    def differential_analysis(
+        self,
+        group1: str,
+        group2: str,
+        fc_threshold: float = 1.0,
+        pvalue_threshold: float = 0.05,
+        test: str = "ttest",
+    ) -> List[Dict[str, Any]]:
+        """Perform differential analysis between two groups.
+
+        Args:
+            group1: First group name
+            group2: Second group name (reference)
+            fc_threshold: Absolute log2 fold change threshold
+            pvalue_threshold: P-value significance threshold
+            test: Statistical test to use
+
+        Returns:
+            List of dicts with lipid analysis results, sorted by p-value
+        """
+        return self.analyzer.differential_analysis(
+            group1, group2, fc_threshold, pvalue_threshold, test
+        )
+
+    # =========================================================================
+    # GROUP-LEVEL QUANTITATION
+    # =========================================================================
+
+    def get_group_means(self) -> Dict[str, Dict[str, float]]:
+        """Get mean values per group for each lipid.
+
+        Returns:
+            Dict mapping group_name -> {lipid_name: mean_value}
+        """
+        return self.analyzer.get_group_means()
+
+    def get_group_stds(self) -> Dict[str, Dict[str, float]]:
+        """Get standard deviation per group for each lipid.
+
+        Returns:
+            Dict mapping group_name -> {lipid_name: std_value}
+        """
+        return self.analyzer.get_group_stds()
+
+    def get_group_summary(self) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """Get comprehensive summary statistics per group.
+
+        Returns:
+            Dict mapping group_name -> {lipid_name: {mean, std, min, max, median, n}}
+        """
+        return self.analyzer.get_group_summary()
+
+    def compare_groups(self, group1: str, group2: str) -> Dict[str, Dict[str, Any]]:
+        """Compare two groups with full statistics.
+
+        Args:
+            group1: First group name
+            group2: Second group name
+
+        Returns:
+            Dict mapping lipid_name -> {group1_mean, group1_std, group2_mean,
+                                        group2_std, log2_fc, p_value, significant}
+        """
+        return self.analyzer.compare_groups(group1, group2)
 
 
 def import_data(
@@ -294,6 +587,13 @@ def import_data(
 
     # Wrap in LipidData for high-level API
     lipid_data = LipidData(dataset=dataset, manager=manager)
+
+    # Mark imported LipidData instances as not providing built-in reaction helpers
+    # until explicit reaction-fetching/integration is implemented.
+    try:
+        object.__setattr__(lipid_data, "_reactions_available", False)
+    except Exception:
+        lipid_data._reactions_available = False
 
     logger.info(
         f"Import complete: {lipid_data.successful_import_count()} lipids, "

@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.express as px
 from lipidmaps.data.data_manager import DataManager
 from lipidmaps.data.models import reaction
+from lipidmaps.data.quantitation import QuantitationAnalyzer, NormalizationMethod
 
 # ---------------------- BOOTSTRAP ----------------------
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -150,6 +151,18 @@ def main():
                 disabled=not file_chosen,
             )
 
+            transpose_file = st.checkbox(
+                "Transpose CSV (lipids as columns)",
+                value=False,
+                disabled=not file_chosen,
+            )
+
+            has_labels = st.checkbox(
+                "CSV has header labels",
+                value= False,
+                disabled=not file_chosen,
+            )
+
             # Taxonomy group selection for reactions fetching
             allowed_taxonomy_groups = ['all', 'bacteria', 'archaea', 'fungi', 'viridiplantae', 'mammalia', 'arthropoda', 'eukaryota']
             # allow choosing taxonomy only once dataset is processed
@@ -166,20 +179,6 @@ def main():
             processed = st.button("Process Data", disabled=not file_chosen)
             if st.session_state["processed"] and file_chosen:
                 st.badge("Success! Please use the Processed tab to view results", icon=":material/check:", color="green")
-
-        # # ---- TOOLS ----
-        # with st.expander("Tools", expanded=True):
-        #     processed_flag = bool(st.session_state["processed"])
-
-        #     generic_lm_id_button = st.button("Assign Generic LMIDs",
-        #                                     disabled=(not processed_flag or use_headgroups))
-        #     if st.session_state["generic_lm_id_assigned"]:
-        #         st.badge("Generic LMIDs assigned", icon=":material/check:", color="green")
-
-        #     fetch_reactions_button = st.button("Fetch reactions by LM ID",
-        #                                     disabled=(not processed_flag or fetch_reactions))
-        #     if st.session_state["reactions_fetched"]:
-        #         st.badge("Reactions fetched", icon=":material/check:", color="green")
 
         # ---- PAGES ----
         with st.expander("All", expanded=True):
@@ -257,7 +256,7 @@ def main():
             fp = st.session_state["file_to_use"]
 
             from lipidmaps import process_csv
-            dataset = process_csv(fp, validate_data=validate_data, use_refmet=use_refmet, use_headgroups=use_headgroups, taxonomy_group=taxonomy_group)
+            dataset = process_csv(fp, validate_data=validate_data, use_refmet=use_refmet, use_headgroups=use_headgroups, taxonomy_group=taxonomy_group, transpose_file=transpose_file, has_labels=has_labels)
             st.session_state["dataset"] = dataset
             st.session_state["processed"] = True
             st.session_state["reactions"] = []  # clear old reactions
@@ -520,6 +519,158 @@ def main():
             else:
                 st.info("No lipids available to select.")
 
+            # ---------------------- NORMALIZATION ----------------------
+            st.subheader("Normalization")
+            try:
+                from lipidmaps.data.quantitation import NormalizationMethod, QuantitationAnalyzer
+                norm_methods = [m for m in NormalizationMethod]
+                method_labels = {m: m.value for m in norm_methods}
+
+                sel_method = st.selectbox("Normalization method", options=norm_methods, format_func=lambda m: m.value, key="norm_method_select")
+
+                # Explanatory text for each normalization method
+                method_descriptions = {
+                    NormalizationMethod.NONE: (
+                        "No normalization. Values are left unchanged so you can inspect raw measurements "
+                        "and compare downstream effects of applying other methods."
+                    ),
+                    NormalizationMethod.TOTAL_LIPID: (
+                        "Total-lipid normalization divides each lipid value by the sum of all lipid values "
+                        "in the same sample, then optionally multiplies by a scale factor (e.g. 1e6 for ppm). "
+                        "This compensates for differences in total loading or sample amount between samples."
+                    ),
+                    NormalizationMethod.INTERNAL_STANDARD: (
+                        "Internal-standard normalization divides each lipid's value by the value of a chosen "
+                        "internal standard lipid measured in the same sample. This corrects for instrument "
+                        "variation and sample-specific recovery, but requires a consistent internal standard "
+                        "present across samples."
+                    ),
+                    NormalizationMethod.LOG2: (
+                        "Log2 transform: computes log2(value + offset) to reduce skew and stabilize variance. "
+                        "An offset (default 1) prevents taking the log of zero. Useful when data are heavy-tailed."
+                    ),
+                    NormalizationMethod.LOG10: (
+                        "Log10 transform: computes log10(value + offset) to reduce skew and stabilize variance. "
+                        "An offset (default 1) prevents taking the log of zero. Use based on interpretation preference."
+                    ),
+                    NormalizationMethod.MEDIAN_CENTER: (
+                        "Median-centering subtracts the median value (across all lipids) for each sample from each lipid, "
+                        "centering sample distributions and removing sample-specific offsets. Useful for comparability."
+                    ),
+                    NormalizationMethod.ZSCORE: (
+                        "Per-lipid z-score: for each lipid, compute (value - mean) / std across samples. "
+                        "This centers each lipid to mean 0 with unit variance, highlighting relative changes across samples."
+                    ),
+                    NormalizationMethod.QUANTILE: (
+                        "Quantile normalization forces the distribution of values across samples to be identical by averaging "
+                        "ranked values. It is useful when sample distributions should be comparable, but assumes similar global composition."
+                    ),
+                }
+
+                try:
+                    desc = method_descriptions.get(sel_method)
+                    if desc:
+                        st.info(desc)
+                except Exception:
+                    pass
+
+                internal_std = None
+                if sel_method == NormalizationMethod.INTERNAL_STANDARD:
+                    # allow selecting from lipid names or entering free text
+                    lipid_names = [getattr(l, 'input_name', '') for l in dataset.lipids]
+                    internal_std = st.selectbox("Internal standard (choose lipid)", options=["(none)"] + lipid_names, key="internal_std_select")
+                    if internal_std == "(none)":
+                        internal_std = st.text_input("Or type internal standard name", value="", key="internal_std_text") or None
+
+                # normalized values are stored separately on each lipid; no in-place overwrite
+                scale_factor = None
+                if sel_method == NormalizationMethod.TOTAL_LIPID:
+                    scale_factor = st.number_input("Scale factor (e.g. 1e6 for ppm)", value=1e6, format="%.0f", key="norm_scale_factor")
+
+                if st.button("Apply normalization", key="apply_normalization"):
+                    try:
+                        qa = QuantitationAnalyzer(dataset=dataset)
+                        # build a reproducible method key encoding method + params
+                        method_key = sel_method.value
+                        if sel_method == NormalizationMethod.TOTAL_LIPID and scale_factor is not None:
+                            method_key = f"{method_key}:scale={float(scale_factor)}"
+                        if sel_method == NormalizationMethod.INTERNAL_STANDARD:
+                            std_name = internal_std or st.session_state.get("internal_std_text")
+                            method_key = f"{method_key}:std={std_name}"
+                        if sel_method == NormalizationMethod.NONE:
+                            norm_res = {l.input_name: l.values.copy() for l in dataset.lipids}
+                        elif sel_method == NormalizationMethod.TOTAL_LIPID:
+                            norm_res = qa.normalize_total_lipid(scale_factor=scale_factor)
+                        elif sel_method == NormalizationMethod.INTERNAL_STANDARD:
+                            std_name = internal_std or st.session_state.get("internal_std_text")
+                            if not std_name:
+                                st.error("Please provide an internal standard name or select one.")
+                                norm_res = None
+                            else:
+                                norm_res = qa.normalize_internal_standard(std_name)
+                        elif sel_method == NormalizationMethod.LOG2:
+                            norm_res = qa.normalize_log(base=2)
+                        elif sel_method == NormalizationMethod.LOG10:
+                            norm_res = qa.normalize_log(base=10)
+                        elif sel_method == NormalizationMethod.MEDIAN_CENTER:
+                            norm_res = qa.normalize_median_center()
+                        elif sel_method == NormalizationMethod.ZSCORE:
+                            # zscore per-lipid helper on lipid objects may exist
+                            norm_res = {l.input_name: l.zscore() for l in dataset.lipids}
+                        else:
+                            st.error(f"Normalization {sel_method} not implemented in demo")
+                            norm_res = None
+
+                        if norm_res is not None:
+                            # convert to DataFrame: rows = lipids, columns = samples
+                            df_norm = pd.DataFrame.from_dict(norm_res, orient='index')
+                            # order columns by dataset sample names if available
+                            try:
+                                cols = dataset.list_sample_names() if hasattr(dataset, 'list_sample_names') else getattr(dataset, 'sample_names', None)
+                                if cols:
+                                    df_norm = df_norm[cols]
+                            except Exception:
+                                pass
+
+                            # store normalized results on each lipid under the method_key
+                            per_lipid_failed = False
+                            for l in dataset.lipids:
+                                if l.input_name in norm_res:
+                                    try:
+                                        l.set_normalized(method_key, norm_res[l.input_name])
+                                    except Exception:
+                                        per_lipid_failed = True
+
+                            # If per-lipid storage failed (some models may forbid new fields),
+                            # fall back to storing the full mapping on the dataset object.
+                            if per_lipid_failed:
+                                try:
+                                    store = getattr(dataset, '_normalized_store', None)
+                                    if store is None:
+                                        setattr(dataset, '_normalized_store', {})
+                                        store = dataset._normalized_store
+                                    store[method_key] = norm_res
+                                except Exception:
+                                    # last-resort: attach attribute directly
+                                    try:
+                                        dataset._normalized_store = {method_key: norm_res}
+                                    except Exception:
+                                        pass
+
+                            st.subheader("Normalized values")
+                            st.write(f"Rows: {df_norm.shape[0]}, Columns: {df_norm.shape[1]}")
+                            st.dataframe(df_norm, hide_index=False)
+                            # offer CSV download
+                            try:
+                                csv_bytes = df_norm.to_csv(index=True).encode('utf-8')
+                                st.download_button("Download normalized CSV", data=csv_bytes, file_name="normalized.csv", mime="text/csv")
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        st.error(f"Normalization failed: {e}")
+            except Exception:
+                st.info("Normalization tools unavailable for this dataset.")
+
             # Note: Query examples are shown in the README; see README.md for usage of dataset.query_lipids
 
             # ---- Pie Charts ----
@@ -620,6 +771,30 @@ def main():
         if not getattr(st.session_state["dataset"], "reactions", None):
             st.info("No reactions fetched yet. Use Tools → Fetch reactions by LM ID.")
         else:
+            # Show plausible reactions filtered by headgroup rules
+            try:
+                plausible = []
+                try:
+                    plausible = dataset.possible_reactions(getattr(st.session_state, "reactions", []))
+                except Exception:
+                    from lipidmaps.data.utils.lipid_reaction_rules import reactions_possible_in_dataset
+                    plausible = reactions_possible_in_dataset(dataset, getattr(st.session_state, "reactions", []))
+
+                if plausible:
+                    st.subheader("Plausible reactions (headgroup-based filter)")
+                    pr_rows = []
+                    for r in plausible:
+                        pr_rows.append({
+                            "reaction_id": getattr(r, "reaction_id", None),
+                            "reaction_name": getattr(r, "reaction_name", None),
+                        })
+                    try:
+                        st.dataframe(pd.DataFrame(pr_rows), hide_index=True)
+                    except Exception:
+                        st.write(pr_rows)
+            except Exception:
+                pass
+
             # Build reactions table, handling pathway dicts or objects
             rxn_rows = []
             for r in getattr(st.session_state["dataset"], "reactions", []):

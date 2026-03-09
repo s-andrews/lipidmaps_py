@@ -1,212 +1,205 @@
-lipid_reaction_rules = {
-  "metadata": {
-    "version": "0.1",
-    "description": "Rules for lipid headgroup remodeling and fatty acid mass shifts for quantitation.",
-    "units": "Daltons (Da)",
-    "usage_note": "Conserve acyl tails (Total C:DB) during headgroup swaps."
-  },
-  "headgroups": {
-    "PA": {
-      "name": "Phosphatidic Acid",
-      "mass_shift": 79.9663,
-      "can_convert_to": ["PC", "PE", "PS", "PI", "PG", "DAG"]
+import re
+from typing import Any, Dict, List, Optional
+
+lipid_reaction_rules: Dict[str, Any] = {
+    "metadata": {
+        "version": "0.1",
+        "description": "Rules for lipid headgroup remodeling and fatty acid mass shifts for quantitation.",
+        "units": "Daltons (Da)",
+        "usage_note": "Conserve acyl tails (Total C:DB) during headgroup swaps.",
     },
-    "PC": {
-      "name": "Phosphatidylcholine",
-      "mass_shift": 165.0555,
-      "can_convert_to": ["PA", "LPC", "DAG", "SM"],
-      "conversion_rules": {
-        "LPC": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
+    "headgroup_reactions": {
+      "PC": {
+        "name": "Phosphatidylcholine",
+        "mass_shift": 165.0555,
+        "can_convert_to": ["PA", "LPC", "DAG", "SM"],
+        "conversion_rules": {
+          "LPC": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "LPC": {
+        "name": "Monoacylglycerophosphocholine",
+        "mass_shift": None,
+        "can_convert_to": ["PC"],
+        "conversion_rules": {
+          "PC": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
+        }
+      },
+      "PC O-": {
+        "name": "Monoalkylglycerophosphocholine (ether)",
+        "mass_shift": None,
+        "can_convert_to": ["LPC O-"],
+        "conversion_rules": {
+          "LPC O-": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "LPC O-": {
+        "name": "Monoalkyl-lyso-phosphocholine (ether)",
+        "mass_shift": None,
+        "can_convert_to": ["PC O-"],
+        "conversion_rules": {
+          "PC O-": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
+        }
+      },
+      "PC P-": {
+        "name": "Plasmenyl-phosphocholine (plasmalogen)",
+        "mass_shift": None,
+        "can_convert_to": ["LPC P-"],
+        "conversion_rules": {
+          "LPC P-": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "LPC P-": {
+        "name": "Plasmenyl-lyso-phosphocholine (plasmalogen)",
+        "mass_shift": None,
+        "can_convert_to": ["PC P-"],
+        "conversion_rules": {
+          "PC P-": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
+        }
+      },
+      "PE": {
+        "name": "Phosphatidylethanolamine",
+        "mass_shift": 123.0085,
+        "can_convert_to": ["PA", "PC", "PS", "LPE"],
+        "conversion_rules": {
+          "LPE": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "LPE": {
+        "name": "Monoacylglycerophosphoethanolamine",
+        "mass_shift": None,
+        "can_convert_to": ["PE"],
+        "conversion_rules": {
+          "PE": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
+        }
+      },
+      "PI": {
+        "name": "Phosphatidylinositol",
+        "mass_shift": 242.0192,
+        "can_convert_to": ["PA", "PIP", "PIP2", "PIP3"]
+      },
+      "PE O-": {
+        "name": "Monoalkylglycerophosphoethanolamine (ether)",
+        "mass_shift": None,
+        "can_convert_to": ["LPE O-"],
+        "conversion_rules": {
+          "LPE O-": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "LPE O-": {
+        "name": "Monoalkyl-lyso-phosphoethanolamine (ether)",
+        "mass_shift": None,
+        "can_convert_to": ["PE O-"],
+        "conversion_rules": {
+          "PE O-": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
+        }
+      },
+      "PE P-": {
+        "name": "Plasmenyl-phosphoethanolamine (plasmalogen)",
+        "mass_shift": None,
+        "can_convert_to": ["LPE P-"],
+        "conversion_rules": {
+          "LPE P-": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "LPE P-": {
+        "name": "Plasmenyl-lyso-phosphoethanolamine (plasmalogen)",
+        "mass_shift": None,
+        "can_convert_to": ["PE P-"],
+        "conversion_rules": {
+          "PE P-": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
+        }
+      },
+      "PG": {
+        "name": "Phosphatidylglycerol",
+        "mass_shift": 154.0031,
+        "can_convert_to": ["CL", "PA"]
+      },
+      "LPA": {
+        "name": "Lysophosphatidic acid",
+        "mass_shift": None,
+        "can_convert_to": ["PA"],
+        "conversion_rules": {
+          "PA": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
+        }
+      },
+      "PA": {
+        "name": "Phosphatidic Acid (augment)",
+        "mass_shift": 79.9663,
+        "can_convert_to": ["PC", "PE", "PS", "PI", "PG", "DAG"]
+      },
+      "Cer": {
+        "name": "Ceramide",
+        "mass_shift": None,
+        "can_convert_to": ["SM"],
+        "conversion_rules": {
+          "SM": {"required_compound": None, "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "dhCer": {
+        "name": "Dihydroceramide",
+        "mass_shift": None,
+        "can_convert_to": ["Cer", "dhSM"],
+        "conversion_rules": {
+          "Cer": {"required_compound": None, "required_acyl_chains": 1, "is_molspecies": False},
+          "dhSM": {"required_compound": None, "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "SM": {
+        "name": "Sphingomyelin",
+        "mass_shift": None,
+        "can_convert_to": ["Cer"],
+        "conversion_rules": {
+          "Cer": {"required_compound": None, "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "LPS": {
+        "name": "Lyso-Phosphatidylserine",
+        "mass_shift": None,
+        "can_convert_to": ["PS"],
+        "conversion_rules": {
+          "PS": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
+        }
+      },
+      "PS": {
+        "name": "Phosphatidylserine (augment)",
+        "mass_shift": 167.0222,
+        "can_convert_to": ["PE", "PA", "LPS"],
+        "conversion_rules": {
+          "LPS": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
+        }
+      },
+      "LPI": {
+        "name": "Lyso-Phosphatidylinositol",
+        "mass_shift": None,
+        "can_convert_to": ["PI"],
+        "conversion_rules": {
+          "PI": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
+        }
+      },
+      "PI": {
+        "name": "Phosphatidylinositol (augment)",
+        "mass_shift": 242.0192,
+        "can_convert_to": ["PA", "PIP", "LPI"],
+      },
+      "DAG": {
+        "name": "Diacylglycerol (augment)",
+        "mass_shift": 17.0027,
+        "can_convert_to": ["PA", "PC", "PE", "TAG"],
+        "conversion_rules": {
+          "TAG": {"required_compound": "facoa", "required_acyl_chains": 3, "is_molspecies": False}
+        }
+      },
+      "DAG": {
+        "name": "Diacylglycerol",
+        "mass_shift": 17.0027,
+        "can_convert_to": ["PA", "PC", "PE", "TAG"]
+      },
+      "TAG": {
+        "name": "Triacylglycerol",
+        "mass_shift": "VARIABLE_BY_TAIL",
+        "can_convert_to": ["DAG"]
       }
-    },
-    "LPC": {
-      "name": "Monoacylglycerophosphocholine",
-      "mass_shift": None,
-      "can_convert_to": ["PC"],
-      "conversion_rules": {
-        "PC": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
-      }
-    },
-    "PC O-": {
-      "name": "Monoalkylglycerophosphocholine (ether)",
-      "mass_shift": None,
-      "can_convert_to": ["LPC O-"],
-      "conversion_rules": {
-        "LPC O-": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
-      }
-    },
-    "LPC O-": {
-      "name": "Monoalkyl-lyso-phosphocholine (ether)",
-      "mass_shift": None,
-      "can_convert_to": ["PC O-"],
-      "conversion_rules": {
-        "PC O-": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
-      }
-    },
-    "PC P-": {
-      "name": "Plasmenyl-phosphocholine (plasmalogen)",
-      "mass_shift": None,
-      "can_convert_to": ["LPC P-"],
-      "conversion_rules": {
-        "LPC P-": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
-      }
-    },
-    "LPC P-": {
-      "name": "Plasmenyl-lyso-phosphocholine (plasmalogen)",
-      "mass_shift": None,
-      "can_convert_to": ["PC P-"],
-      "conversion_rules": {
-        "PC P-": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
-      }
-    },
-    "PE": {
-      "name": "Phosphatidylethanolamine",
-      "mass_shift": 123.0085,
-      "can_convert_to": ["PA", "PC", "PS", "LPE"],
-      "conversion_rules": {
-        "LPE": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
-      }
-    },
-    "LPE": {
-      "name": "Monoacylglycerophosphoethanolamine",
-      "mass_shift": None,
-      "can_convert_to": ["PE"],
-      "conversion_rules": {
-        "PE": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
-      }
-    },
-    "PS": {
-      "name": "Phosphatidylserine",
-      "mass_shift": 167.0222,
-      "can_convert_to": ["PE", "PA"]
-    },
-    "PI": {
-      "name": "Phosphatidylinositol",
-      "mass_shift": 242.0192,
-      "can_convert_to": ["PA", "PIP", "PIP2", "PIP3"]
-    },
-    "PE O-": {
-      "name": "Monoalkylglycerophosphoethanolamine (ether)",
-      "mass_shift": None,
-      "can_convert_to": ["LPE O-"],
-      "conversion_rules": {
-        "LPE O-": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
-      }
-    },
-    "LPE O-": {
-      "name": "Monoalkyl-lyso-phosphoethanolamine (ether)",
-      "mass_shift": None,
-      "can_convert_to": ["PE O-"],
-      "conversion_rules": {
-        "PE O-": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
-      }
-    },
-    "PE P-": {
-      "name": "Plasmenyl-phosphoethanolamine (plasmalogen)",
-      "mass_shift": None,
-      "can_convert_to": ["LPE P-"],
-      "conversion_rules": {
-        "LPE P-": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
-      }
-    },
-    "LPE P-": {
-      "name": "Plasmenyl-lyso-phosphoethanolamine (plasmalogen)",
-      "mass_shift": None,
-      "can_convert_to": ["PE P-"],
-      "conversion_rules": {
-        "PE P-": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
-      }
-    },
-    "PG": {
-      "name": "Phosphatidylglycerol",
-      "mass_shift": 154.0031,
-      "can_convert_to": ["CL", "PA"]
-    },
-    "LPA": {
-      "name": "Lysophosphatidic acid",
-      "mass_shift": None,
-      "can_convert_to": ["PA"],
-      "conversion_rules": {
-        "PA": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
-      }
-    },
-    "PA": {
-      "name": "Phosphatidic Acid (augment)",
-      "mass_shift": 79.9663,
-      "can_convert_to": ["PC", "PE", "PS", "PI", "PG", "DAG"]
-    },
-    "Cer": {
-      "name": "Ceramide",
-      "mass_shift": None,
-      "can_convert_to": ["SM"],
-      "conversion_rules": {
-        "SM": {"required_compound": None, "required_acyl_chains": 1, "is_molspecies": False}
-      }
-    },
-    "dhCer": {
-      "name": "Dihydroceramide",
-      "mass_shift": None,
-      "can_convert_to": ["Cer", "dhSM"],
-      "conversion_rules": {
-        "Cer": {"required_compound": None, "required_acyl_chains": 1, "is_molspecies": False},
-        "dhSM": {"required_compound": None, "required_acyl_chains": 1, "is_molspecies": False}
-      }
-    },
-    "SM": {
-      "name": "Sphingomyelin",
-      "mass_shift": None,
-      "can_convert_to": ["Cer"],
-      "conversion_rules": {
-        "Cer": {"required_compound": None, "required_acyl_chains": 1, "is_molspecies": False}
-      }
-    },
-    "LPS": {
-      "name": "Lyso-Phosphatidylserine",
-      "mass_shift": None,
-      "can_convert_to": ["PS"],
-      "conversion_rules": {
-        "PS": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
-      }
-    },
-    "PS": {
-      "name": "Phosphatidylserine (augment)",
-      "mass_shift": 167.0222,
-      "can_convert_to": ["PE", "PA", "LPS"],
-      "conversion_rules": {
-        "LPS": {"required_compound": "fa", "required_acyl_chains": 1, "is_molspecies": False}
-      }
-    },
-    "LPI": {
-      "name": "Lyso-Phosphatidylinositol",
-      "mass_shift": None,
-      "can_convert_to": ["PI"],
-      "conversion_rules": {
-        "PI": {"required_compound": "facoa", "required_acyl_chains": 2, "is_molspecies": False}
-      }
-    },
-    "PI": {
-      "name": "Phosphatidylinositol (augment)",
-      "mass_shift": 242.0192,
-      "can_convert_to": ["PA", "PIP", "LPI"],
-    },
-    "DAG": {
-      "name": "Diacylglycerol (augment)",
-      "mass_shift": 17.0027,
-      "can_convert_to": ["PA", "PC", "PE", "TAG"],
-      "conversion_rules": {
-        "TAG": {"required_compound": "facoa", "required_acyl_chains": 3, "is_molspecies": False}
-      }
-    },
-    "DAG": {
-      "name": "Diacylglycerol",
-      "mass_shift": 17.0027,
-      "can_convert_to": ["PA", "PC", "PE", "TAG"]
-    },
-    "TAG": {
-      "name": "Triacylglycerol",
-      "mass_shift": "VARIABLE_BY_TAIL",
-      "can_convert_to": ["DAG"]
-    }
   },
   
   "fatty_acids": {
