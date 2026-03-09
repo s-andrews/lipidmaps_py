@@ -164,7 +164,7 @@ class DataManager(LipidmapsBaseModel):
         )
 
         if self.use_headgroups:
-            headgroup_updates = self.dataset.fill_missing_lm_ids_from_headgroups()
+            headgroup_updates = self.dataset.fill_generic_lm_ids_from_headgroups()
             logger.info(f"Filled missing LM IDs using headgroup mapping: {headgroup_updates} updated")
 
         if self.fetch_reactions:
@@ -520,7 +520,7 @@ class DataManager(LipidmapsBaseModel):
         return updated_count
 
 
-    def fill_missing_lm_ids_from_headgroups(self, dataset: Optional[LipidDataset] = None) -> int:
+    def fill_generic_lm_ids_from_headgroups(self, dataset: Optional[LipidDataset] = None) -> int:
         """
         Fill missing lm_id fields on QuantifiedLipid objects using headgroup mapping from headgroups.py.
         Args:
@@ -534,7 +534,7 @@ class DataManager(LipidmapsBaseModel):
             logger.warning("No dataset or lipids to fill with headgroup mapping.")
             return 0
         # Call the new method on LipidDataset
-        return dataset.fill_missing_lm_ids_from_headgroups()
+        return dataset.fill_generic_lm_ids_from_headgroups()
 
     def annotate_lipids_with_lmsd_details(self, dataset: Optional[LipidDataset] = None, molecules: Optional[List[LMSDResult]] = None) -> int:
         """Annotate quantified lipids with additional LMSD details (abbrev, generic_lm_id).

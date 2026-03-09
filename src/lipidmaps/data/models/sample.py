@@ -262,29 +262,38 @@ class LipidDataset(LipidmapsBaseModel):
             if q in (l.input_name or "").lower() or (l.standardized_name and q in l.standardized_name.lower())
         ]
 
-    def _find_generic_lm_id_from_headgroup(self, name: str) -> Optional[str]:
+    def _find_headgroup_from_name(self, name: str) -> Optional[str]:
+        """
+        Find headgroup string using headgroup mapping.
+        Returns:
+           Headgroup string if a match is found, otherwise None.
+        """
+        if name.lower().startswith("fa ") or name.lower().startswith("fa("):
+            return "FA"
+        elif " O-" in name or " P-" in name:
+            dash_index = name.index("-")
+            return name[:dash_index+1]
+        else:
+            match = re.match(r"^([A-Za-z0-9\-]+)", name)
+            if match:
+                return match.group(1)
+        return None
+    
+    def _find_generic_lm_id_from_name(self, name: str) -> Optional[str]:
         """
         Find Generic LM_ID string using headgroup mapping.
         Returns:
            Generic LM_ID string if a headgroup match is found, otherwise None.
         """
-        headgroup = None
-        if name.lower().startswith("fa ") or name.lower().startswith("fa("):
-            headgroup = "FA"
-        elif " O-" in name or " P-" in name:
-            dash_index = name.index("-")
-            headgroup = name[:dash_index+1]
-        else:
-            match = re.match(r"^([A-Za-z0-9\-]+)", name)
-            if match:
-                headgroup = match.group(1)
+        headgroup = self._find_headgroup_from_name(name)
+        
         if headgroup:
             lm_ids = lipidmaps_headgroups.get(headgroup)
             if lm_ids and lm_ids[0]:
                 return lm_ids[0]
         return None
     
-    def fill_missing_lm_ids_from_headgroups(self) -> int:
+    def fill_generic_lm_ids_from_headgroups(self) -> int:
         """
         Fill missing lm_id fields on QuantifiedLipid objects using headgroup mapping from headgroups.py.
         Returns:
@@ -295,9 +304,9 @@ class LipidDataset(LipidmapsBaseModel):
             if not getattr(lipid, "generic_lm_id", None):
                 generic_lm_id = None
                 if lipid.standardized_name:
-                    generic_lm_id = self._find_generic_lm_id_from_headgroup(lipid.standardized_name)
+                    generic_lm_id = self._find_generic_lm_id_from_name(lipid.standardized_name)
                 if not generic_lm_id and (lipid.input_name.lower().startswith("fa ") or lipid.input_name.lower().startswith("fa(")):
-                    generic_lm_id = self._find_generic_lm_id_from_headgroup(lipid.input_name)
+                    generic_lm_id = self._find_generic_lm_id_from_name(lipid.input_name)
                 if generic_lm_id:
                     lipid.generic_lm_id = generic_lm_id
                     lipid.lm_id_found_by = "headgroup"

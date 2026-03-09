@@ -577,7 +577,8 @@ def main():
     # --------------------------------------------------------------
     if generic_lm_id_button and st.session_state["dataset"] is not None:
         ds = st.session_state["dataset"]
-        updated = ds.fill_missing_lm_ids_from_headgroups()
+        updated = ds.fill_headgroups_from_name()
+        updated = ds.fill_generic_lm_ids_from_headgroups()
         st.session_state["generic_lm_id_assigned"] = True
         st.success(f"Updated {updated} lipids using headgroup mapping.")
         st.rerun()  # refresh processed page

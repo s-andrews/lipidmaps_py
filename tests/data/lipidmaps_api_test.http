@@ -24,8 +24,8 @@ content-type: application/json
 {
     "search_mode": "default",
     "search_type": "all",
-    "generic_reactions": false,
-    "lmsd_ids": "all"
+    "generic_reactions": true,
+    "lmsd_ids": ["LMGP01010001", "LMGL02010000"]
 }
 
 ### Refmet lookup by names

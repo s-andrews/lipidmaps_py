@@ -16,7 +16,7 @@ class CompoundComponent(LipidmapsBaseModel):
     compound_lm_id: Optional[str] = None
     compound_sys_name: Optional[str] = None
     compound_synonyms: Optional[str] = None
-    compound_generic_id: Optional[str] = None
+    compound_generic_lm_id: Optional[str] = None
     compound_abbrev: Optional[str] = None
     compound_abbrev_chains: Optional[str] = None
     compound_headgroup: Optional[str] = None
@@ -27,7 +27,7 @@ class CompoundComponent(LipidmapsBaseModel):
         return (
             self.compound_name
             or self.compound_lm_id
-            or self.compound_generic_id
+            or self.compound_generic_lm_id
             or "Unknown"
         )
 

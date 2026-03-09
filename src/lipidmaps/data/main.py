@@ -125,7 +125,7 @@ def main() -> None:
 
     # Optionally fill missing LM IDs using headgroup mapping
     if getattr(args, "fill_headgroups", False):
-        updated_count = manager.fill_missing_lm_ids_from_headgroups(dataset)
+        updated_count = manager.fill_generic_lm_ids_from_headgroups(dataset)
         logger.info(f"Filled {updated_count} missing LM IDs using headgroup mapping")
         
     group_stats = manager.get_group_statistics()
