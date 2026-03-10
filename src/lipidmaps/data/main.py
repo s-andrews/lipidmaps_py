@@ -129,6 +129,20 @@ def main() -> None:
     logger.info(f"Sample column info: {dataset.samples[:3]}")
     logger.info(f"Samples: {dataset.list_sample_names()[:3]}")
 
+    # Generate headgroups from the dataset (will reuse existing Headgroup objects
+    # and keep references to QuantifiedLipid instances rather than copying them).
+    try:
+        headgroups = dataset.generate_headgroups()
+        logger.info(f"Generated {len(headgroups)} headgroups from dataset")
+        for hg in headgroups:
+            try:
+                lipid_names = [l.input_name for l in hg.lipids if getattr(l, 'input_name', None)]
+            except Exception:
+                lipid_names = []
+            print(f"Headgroup: {hg.name} | LM IDs: {hg.lm_ids} | Lipids ({len(lipid_names)}): {lipid_names}")
+    except Exception:
+        logger.exception("Failed to generate or display headgroups")
+
     lmids = dataset.list_lm_ids()
     print(f"LM IDs in dataset: {LMSD.get_molecules_by_lm_id(lmids)}")  # Print first 5 LM IDs
     # Optionally fill missing LM IDs using LMSD and report what changed

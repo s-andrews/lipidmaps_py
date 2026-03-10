@@ -1,6 +1,6 @@
 
 import logging
-from typing import Any, List, Dict, Optional, Union, Callable
+from typing import Any, List, Dict, Optional, Union, Callable, TYPE_CHECKING
 import numpy as np
 import re
 from ..utils.headgroups import lipidmaps_headgroups
@@ -199,9 +199,72 @@ class QuantifiedLipid(LipidmapsBaseModel):
         """Return a NormalizedResult for `method_key` or None if not present."""
         return self.normalized.get(method_key)
 
+
+class Headgroup(LipidmapsBaseModel):
+    """Model representing a lipid headgroup and the quantified lipids that belong to it.
+
+    Attributes:
+        name: short headgroup string (e.g. "PC", "TG")
+        lm_ids: list of canonical LM generic ids associated with this headgroup
+        lipids: list of QuantifiedLipid objects
+    """
+
+    name: str
+    lm_ids: List[str] = Field(default_factory=list)
+    lipids: List[QuantifiedLipid] = Field(default_factory=list)
+
+    def add_lipid(self, lipid: Union[QuantifiedLipid, str], dataset: Optional["LipidDataset"] = None) -> None:
+        """Add a lipid to this headgroup. If `lipid` is a string, resolve via `dataset`."""
+        if isinstance(lipid, str):
+            if dataset is None:
+                raise ValueError("dataset required to resolve lipid name")
+            name_lc = lipid.lower()
+            lipid_obj = next(
+                (
+                    l
+                    for l in dataset.lipids
+                    if (l.input_name or "").lower() == name_lc
+                    or (l.standardized_name and l.standardized_name.lower() == name_lc)
+                ),
+                None,
+            )
+            if lipid_obj is None:
+                raise LookupError(f"Lipid '{lipid}' not found in provided dataset")
+            lipid = lipid_obj
+
+        existing_names = {getattr(l, 'input_name', None) for l in self.lipids}
+        if getattr(lipid, 'input_name', None) in existing_names:
+            return
+        self.lipids.append(lipid)
+
+    def aggregated_value_for_sample(self, sample: SampleMetadata, method: str = "sum", skip_missing: bool = True) -> Optional[float]:
+        vals = []
+        for l in self.lipids:
+            v = l.values.get(sample.sample_name)
+            if v is None:
+                if skip_missing:
+                    continue
+                vals.append(np.nan)
+            else:
+                vals.append(float(v))
+
+        if not vals:
+            return None
+
+        arr = np.array(vals, dtype=float)
+        if method == "sum":
+            return float(np.nansum(arr))
+        if method == "mean":
+            return float(np.nanmean(arr))
+        raise ValueError(f"Unsupported aggregation method: {method}")
+
+    def list_lipid_names(self) -> List[str]:
+        return [l.input_name for l in self.lipids if getattr(l, 'input_name', None)]
+
 class LipidDataset(LipidmapsBaseModel):
     samples: List[SampleMetadata]
     lipids: List[QuantifiedLipid]
+    headgroups: List["Headgroup"] = Field(default_factory=list)
     column_info: Optional[Dict[str, Any]] = None  # Metadata about CSV columns
     reactions: List[ReactionData] = Field(default_factory=list)  # All reactions in dataset
     validation_report: Optional[ValidationReport] = Field(default=None)
@@ -313,6 +376,67 @@ class LipidDataset(LipidmapsBaseModel):
                 seen.add(lid)
                 unique.append(lid)
         return unique
+
+    def get_headgroup(self, name: str) -> Optional["Headgroup"]:
+        """Return a Headgroup by name (case-insensitive) or None if missing."""
+        for hg in getattr(self, 'headgroups', []) or []:
+            try:
+                if hg.name == name or hg.name.lower() == name.lower():
+                    return hg
+            except Exception:
+                continue
+        return None
+
+    def generate_headgroups(self, overwrite: bool = False) -> List["Headgroup"]:
+        """Generate `Headgroup` objects from current `lipids`.
+
+        - Reuses existing `Headgroup` objects unless `overwrite=True`.
+        - Does not duplicate or copy `QuantifiedLipid` objects; headgroups hold references.
+        - Aggregates `generic_lm_id` values into `Headgroup.lm_ids`.
+        Returns the list of generated `Headgroup` objects.
+        """
+        mapping: Dict[str, Headgroup] = {}
+        if not overwrite:
+            for hg in getattr(self, 'headgroups', []) or []:
+                try:
+                    mapping[hg.name.lower()] = hg
+                except Exception:
+                    continue
+
+        for lipid in self.lipids:
+            hgname = getattr(lipid, 'headgroup', None)
+            if not hgname:
+                # attempt to infer from standardized_name or input_name
+                try:
+                    if lipid.standardized_name:
+                        hgname = self._find_headgroup_from_name(lipid.standardized_name)
+                    else:
+                        hgname = self._find_headgroup_from_name(lipid.input_name)
+                except Exception:
+                    hgname = None
+
+            if not hgname:
+                continue
+
+            key = hgname.lower()
+            if key not in mapping:
+                lm_ids = []
+                if getattr(lipid, 'generic_lm_id', None):
+                    lm_ids = [lipid.generic_lm_id]
+                mapping[key] = Headgroup(name=hgname, lm_ids=lm_ids)
+
+            hg = mapping[key]
+            # add lipid by reference without copying; avoid duplicates by input_name
+            existing = {getattr(x, 'input_name', None) for x in hg.lipids}
+            if getattr(lipid, 'input_name', None) not in existing:
+                hg.lipids.append(lipid)
+
+            # aggregate generic lm ids
+            if getattr(lipid, 'generic_lm_id', None) and lipid.generic_lm_id not in hg.lm_ids:
+                hg.lm_ids.append(lipid.generic_lm_id)
+
+        self.headgroups = list(mapping.values())
+        return self.headgroups
 
     def list_lipids_with_reactions(self) -> List[str]:
         return [l.input_name for l in self.lipids if l.reactions is not None and len(l.reactions) > 0]
@@ -798,8 +922,6 @@ class LipidDataset(LipidmapsBaseModel):
                 summary[lipid.input_name] = imputed
         return summary
 
-
-
 class Quantitation(LipidmapsBaseModel):
     lipid: Union["QuantifiedLipid", str]  # Reference to a QuantifiedLipid object or its input_name
     sample_values: Dict[str, Optional[float]]  # sample_name -> value (snapshot)
@@ -822,7 +944,6 @@ class Quantitation(LipidmapsBaseModel):
         if hasattr(self.lipid, "values"):
             return getattr(self.lipid, "values").get(sample_name)  # type: ignore
         return self.sample_values.get(sample_name)
-    
 if __name__ == "__main__":
 
     lipid = QuantifiedLipid(
