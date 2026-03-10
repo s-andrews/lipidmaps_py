@@ -56,6 +56,13 @@ from .utils.chain_parser import (
     ChainParser,
     LipidSpecies,
     SphingoBackbone,
+    # FA/FACoA utilities
+    get_common_fa_names,
+    get_common_facoa_names,
+    get_extended_fa_names,
+    get_extended_facoa_names,
+    infer_fa_from_lipids,
+    infer_facoa_from_lipids,
 )
 
 __all__ = [
@@ -89,5 +96,12 @@ __all__ = [
     "ChainParser",
     "LipidSpecies",
     "SphingoBackbone",
+    # FA/FACoA utilities
+    "get_common_fa_names",
+    "get_common_facoa_names",
+    "get_extended_fa_names",
+    "get_extended_facoa_names",
+    "infer_fa_from_lipids",
+    "infer_facoa_from_lipids",
 ]
 

@@ -9,6 +9,12 @@ from .models.lmsd import LMSD
 from .ingestion.csv_reader import CSVFormat
 from .matching import match_pathway_reactions, create_matcher_context
 from .models.species_reaction import ClassReaction, CompoundRequirement
+from .utils.chain_parser import (
+    get_common_fa_names,
+    get_common_facoa_names,
+    infer_fa_from_lipids,
+    infer_facoa_from_lipids,
+)
 
 
 logging.basicConfig(
@@ -174,10 +180,37 @@ def test_species_matching(dataset) -> None:
     lipid_names = [lipid.input_name for lipid in dataset.lipids]
     logger.info(f"Dataset has {len(lipid_names)} lipids")
     
-    # Extract FA and FACoA species (look for FA( and FACoA( patterns)
-    fa_names = [name for name in lipid_names if name.startswith("FA(")]
-    facoa_names = [name for name in lipid_names if name.startswith("FACoA(")]
-    logger.info(f"Found {len(fa_names)} FA species, {len(facoa_names)} FACoA species")
+    # Extract FA species (check both shorthand "FA 16:0" and legacy "FA(16:0)" formats)
+    fa_names = [name for name in lipid_names 
+                if name.startswith("FA ") or name.startswith("FA(")]
+    # Extract FACoA/CAR species
+    facoa_names = [name for name in lipid_names 
+                   if name.startswith("CAR ") or name.startswith("FACoA") or name.startswith("FaCoA")]
+    
+    # If no FA/FACoA in dataset, try to infer from lipid chains or use common defaults
+    if not fa_names:
+        # First try to infer from full-structure lipids in dataset
+        inferred_fa = infer_fa_from_lipids(lipid_names)
+        if inferred_fa:
+            fa_names = inferred_fa
+            logger.info(f"Inferred {len(fa_names)} FA species from lipid chains")
+        else:
+            # Fall back to common FA
+            fa_names = get_common_fa_names()
+            logger.info(f"Using {len(fa_names)} common FA species (no FA in dataset)")
+    else:
+        logger.info(f"Found {len(fa_names)} FA species in dataset")
+    
+    if not facoa_names:
+        inferred_facoa = infer_facoa_from_lipids(lipid_names)
+        if inferred_facoa:
+            facoa_names = inferred_facoa
+            logger.info(f"Inferred {len(facoa_names)} CAR species from lipid chains")
+        else:
+            facoa_names = get_common_facoa_names()
+            logger.info(f"Using {len(facoa_names)} common CAR species (no CAR in dataset)")
+    else:
+        logger.info(f"Found {len(facoa_names)} CAR species in dataset")
     
     # Define some common class reactions to test
     test_reactions = [
@@ -194,8 +227,8 @@ def test_species_matching(dataset) -> None:
     results = match_pathway_reactions(
         lipid_names=lipid_names,
         reactions=test_reactions,
-        fa_names=fa_names if fa_names else None,
-        facoa_names=facoa_names if facoa_names else None,
+        fa_names=fa_names,
+        facoa_names=facoa_names,
     )
     
     # Report results

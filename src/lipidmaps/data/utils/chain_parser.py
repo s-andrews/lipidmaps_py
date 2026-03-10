@@ -140,8 +140,8 @@ class ChainParser:
         "Gal-SPB",
         # Sterols
         "CE", "ST",
-        # Fatty acids
-        "FA", "FaCoA", "FACoA", "FACOA",
+        # Fatty acids and acyl compounds
+        "FA", "FaCoA", "FACoA", "FACOA", "CAR",
     ]
     
     # Sphingoid backbone prefixes
@@ -220,17 +220,31 @@ class ChainParser:
         # Sort by length descending to match longer patterns first
         for hg in sorted(cls.HEADGROUPS, key=len, reverse=True):
             if name.startswith(hg):
-                # Make sure it's followed by ( or end of string
+                # Make sure it's followed by (, space, or end of string
                 remainder = name[len(hg):]
-                if not remainder or remainder.startswith("("):
+                if not remainder or remainder.startswith("(") or remainder.startswith(" "):
                     return hg
         return None
     
     @classmethod
     def _extract_structure(cls, name: str) -> Optional[str]:
-        """Extract the structure portion from parentheses."""
+        """Extract the structure portion from parentheses or space-separated.
+        
+        Handles both formats:
+        - PC(34:1) -> 34:1
+        - FA 16:0 -> 16:0
+        """
+        # First try parentheses format
         match = re.search(r"\(([^)]+)\)", name)
-        return match.group(1) if match else None
+        if match:
+            return match.group(1)
+        
+        # Try space-separated format (e.g., "FA 16:0")
+        match = re.search(r"^[A-Za-z-]+\s+(\S+)$", name)
+        if match:
+            return match.group(1)
+        
+        return None
     
     @classmethod
     def _determine_linkage(cls, headgroup: str) -> str:
@@ -342,3 +356,189 @@ class ChainParser:
 def parse_lipid(name: str) -> LipidSpecies:
     """Parse a lipid species name into structured components."""
     return ChainParser.parse(name)
+
+
+# =============================================================================
+# Common Fatty Acids
+# =============================================================================
+
+# Standard fatty acids found in biological membranes
+# Format: (carbons, double_bonds, common_name)
+COMMON_FATTY_ACIDS: List[Tuple[int, int, str]] = [
+    # Saturated fatty acids
+    (12, 0, "lauric acid"),
+    (14, 0, "myristic acid"),
+    (16, 0, "palmitic acid"),
+    (18, 0, "stearic acid"),
+    (20, 0, "arachidic acid"),
+    (22, 0, "behenic acid"),
+    (24, 0, "lignoceric acid"),
+    # Monounsaturated fatty acids
+    (16, 1, "palmitoleic acid"),
+    (18, 1, "oleic acid"),
+    (20, 1, "gondoic acid"),
+    (22, 1, "erucic acid"),
+    (24, 1, "nervonic acid"),
+    # Polyunsaturated fatty acids (omega-6)
+    (18, 2, "linoleic acid"),
+    (18, 3, "gamma-linolenic acid"),
+    (20, 3, "dihomo-gamma-linolenic acid"),
+    (20, 4, "arachidonic acid"),
+    (22, 4, "adrenic acid"),
+    # Polyunsaturated fatty acids (omega-3)
+    (18, 3, "alpha-linolenic acid"),
+    (20, 5, "eicosapentaenoic acid (EPA)"),
+    (22, 5, "docosapentaenoic acid (DPA)"),
+    (22, 6, "docosahexaenoic acid (DHA)"),
+]
+
+# Extended set including less common but biologically relevant FAs
+EXTENDED_FATTY_ACIDS: List[Tuple[int, int, str]] = COMMON_FATTY_ACIDS + [
+    # Short chain
+    (8, 0, "caprylic acid"),
+    (10, 0, "capric acid"),
+    # Very long chain saturated
+    (26, 0, "cerotic acid"),
+    (28, 0, "montanic acid"),
+    # Odd chain (bacterial, dietary)
+    (15, 0, "pentadecanoic acid"),
+    (17, 0, "margaric acid"),
+    (17, 1, "heptadecenoic acid"),
+    # Additional unsaturated
+    (14, 1, "myristoleic acid"),
+    (20, 2, "eicosadienoic acid"),
+    (22, 2, "docosadienoic acid"),
+]
+
+
+def get_common_fa_chains() -> List[AcylChain]:
+    """Get common fatty acids as AcylChain objects.
+    
+    Returns the most common fatty acids found in biological systems.
+    """
+    seen = set()
+    chains = []
+    for carbons, double_bonds, _ in COMMON_FATTY_ACIDS:
+        key = (carbons, double_bonds)
+        if key not in seen:
+            seen.add(key)
+            chains.append(AcylChain(carbons=carbons, double_bonds=double_bonds))
+    return chains
+
+
+def get_extended_fa_chains() -> List[AcylChain]:
+    """Get extended set of fatty acids as AcylChain objects.
+    
+    Includes less common but biologically relevant fatty acids.
+    """
+    seen = set()
+    chains = []
+    for carbons, double_bonds, _ in EXTENDED_FATTY_ACIDS:
+        key = (carbons, double_bonds)
+        if key not in seen:
+            seen.add(key)
+            chains.append(AcylChain(carbons=carbons, double_bonds=double_bonds))
+    return chains
+
+
+def get_common_fa_names() -> List[str]:
+    """Get common fatty acid names in LIPID MAPS shorthand format.
+    
+    Example: ['FA 12:0', 'FA 14:0', 'FA 16:0', ...]
+    """
+    seen = set()
+    names = []
+    for carbons, double_bonds, _ in COMMON_FATTY_ACIDS:
+        name = f"FA {carbons}:{double_bonds}"
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
+def get_common_facoa_names() -> List[str]:
+    """Get common fatty acyl-CoA names in LIPID MAPS shorthand format.
+    
+    Example: ['CAR 12:0', 'CAR 14:0', 'CAR 16:0', ...]
+    
+    Note: Uses CAR (acylcarnitine) as the LIPID MAPS shorthand for acyl-CoA.
+    """
+    seen = set()
+    names = []
+    for carbons, double_bonds, _ in COMMON_FATTY_ACIDS:
+        name = f"CAR {carbons}:{double_bonds}"
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
+def get_extended_fa_names() -> List[str]:
+    """Get extended fatty acid names in LIPID MAPS shorthand format."""
+    seen = set()
+    names = []
+    for carbons, double_bonds, _ in EXTENDED_FATTY_ACIDS:
+        name = f"FA {carbons}:{double_bonds}"
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
+def get_extended_facoa_names() -> List[str]:
+    """Get extended fatty acyl-CoA names in LIPID MAPS shorthand format."""
+    seen = set()
+    names = []
+    for carbons, double_bonds, _ in EXTENDED_FATTY_ACIDS:
+        name = f"CAR {carbons}:{double_bonds}"
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
+def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
+    """Infer possible FA species from the acyl chains in a lipid dataset.
+    
+    Extracts all unique acyl chains from full-structure lipid names
+    (those with individual chains like PC(16:0_18:1)) and returns them as FA names
+    in LIPID MAPS shorthand format.
+    
+    Sum composition species like PC(34:1) are NOT used for inference.
+    
+    Args:
+        lipid_names: List of lipid species names
+        
+    Returns:
+        List of FA names inferred from the dataset
+        
+    Example:
+        >>> infer_fa_from_lipids(['PC(16:0_18:1)', 'PE(18:0_20:4)'])
+        ['FA 16:0', 'FA 18:1', 'FA 18:0', 'FA 20:4']
+    """
+    parser = ChainParser()
+    seen = set()
+    fa_names = []
+    
+    for name in lipid_names:
+        species = parser.parse(name)
+        # Only use chains from FULL structure level species
+        if species and species.level == StructureLevel.FULL and species.chains:
+            for chain in species.chains:
+                fa_name = f"FA {chain.notation}"
+                if fa_name not in seen:
+                    seen.add(fa_name)
+                    fa_names.append(fa_name)
+    
+    return fa_names
+
+
+def infer_facoa_from_lipids(lipid_names: List[str]) -> List[str]:
+    """Infer possible FACoA species from the acyl chains in a lipid dataset.
+    
+    Same as infer_fa_from_lipids but returns CAR (acylcarnitine) names
+    in LIPID MAPS shorthand format.
+    """
+    fa_names = infer_fa_from_lipids(lipid_names)
+    return [name.replace("FA ", "CAR ") for name in fa_names]
+

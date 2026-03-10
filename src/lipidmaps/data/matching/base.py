@@ -160,8 +160,8 @@ def create_matcher_context(
     
     Args:
         lipid_names: List of lipid species names (e.g., ['PC(34:1)', 'PE(36:2)'])
-        fa_names: Optional list of FA names (e.g., ['FA(16:0)', 'FA(18:1)'])
-        facoa_names: Optional list of FACoA names (e.g., ['FACoA(16:0)'])
+        fa_names: Optional list of FA names (e.g., ['FA 16:0', 'FA 18:1'])
+        facoa_names: Optional list of FACoA/CAR names (e.g., ['CAR 16:0'])
         
     Returns:
         MatcherContext populated with parsed species
@@ -181,7 +181,7 @@ def create_matcher_context(
                 species_by_class[headgroup] = []
             species_by_class[headgroup].append(species)
     
-    # Parse FA species
+    # Parse FA species (handles both "FA 16:0" and "FA(16:0)" formats)
     fa_dict: Dict[str, AcylChain] = {}
     if fa_names:
         for name in fa_names:
@@ -190,14 +190,18 @@ def create_matcher_context(
                 chain = species.chains[0]
                 fa_dict[chain.notation] = chain
     
-    # Parse FACoA species
+    # Parse FACoA/CAR species (handles multiple formats)
     facoa_dict: Dict[str, AcylChain] = {}
     if facoa_names:
         for name in facoa_names:
-            # FACoA(16:0) -> extract 16:0
-            if "FACoA" in name:
-                # Parse the chain portion
-                species = parser.parse(name.replace("FACoA", "FA"))
+            # Try parsing directly (handles "CAR 16:0" format)
+            species = parser.parse(name)
+            if species and species.headgroup in ("CAR", "FACoA", "FaCoA", "FACOA") and species.chains:
+                chain = species.chains[0]
+                facoa_dict[chain.notation] = chain
+            elif "FACoA" in name or "FaCoA" in name:
+                # Legacy format: FACoA(16:0) -> parse as FA
+                species = parser.parse(name.replace("FACoA", "FA").replace("FaCoA", "FA"))
                 if species and species.chains:
                     chain = species.chains[0]
                     facoa_dict[chain.notation] = chain
