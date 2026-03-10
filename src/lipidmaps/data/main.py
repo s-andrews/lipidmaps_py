@@ -7,6 +7,8 @@ from pathlib import Path
 from .data_manager import DataManager
 from .models.lmsd import LMSD
 from .ingestion.csv_reader import CSVFormat
+from .matching import match_pathway_reactions, create_matcher_context
+from .models.species_reaction import ClassReaction, CompoundRequirement
 
 
 logging.basicConfig(
@@ -62,6 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         metavar="GROUP=S1,S2",
         help="Optional group mapping entries (e.g. Control=S1,S2 Treatment=S3,S4)",
+    )
+    parser.add_argument(
+        "--test-matching",
+        dest="test_matching",
+        action="store_true",
+        help="Test species-level reaction matching on the dataset",
     )
     return parser
 
@@ -150,6 +158,71 @@ def main() -> None:
               f"Reactant names: {[(r.compound_name, r.compound_lm_id) for r in (reaction.reactants or [])]}\n"
 
               f"Product names: {[(p.compound_name, p.compound_lm_id) for p in (reaction.products or [])]}")
+
+    # Test species-level reaction matching
+    if getattr(args, "test_matching", False):
+        test_species_matching(dataset)
+
+
+def test_species_matching(dataset) -> None:
+    """Test species-level reaction matching on the dataset."""
+    logger.info("=" * 60)
+    logger.info("Testing species-level reaction matching")
+    logger.info("=" * 60)
+    
+    # Get all lipid names from dataset
+    lipid_names = [lipid.input_name for lipid in dataset.lipids]
+    logger.info(f"Dataset has {len(lipid_names)} lipids")
+    
+    # Extract FA and FACoA species (look for FA( and FACoA( patterns)
+    fa_names = [name for name in lipid_names if name.startswith("FA(")]
+    facoa_names = [name for name in lipid_names if name.startswith("FACoA(")]
+    logger.info(f"Found {len(fa_names)} FA species, {len(facoa_names)} FACoA species")
+    
+    # Define some common class reactions to test
+    test_reactions = [
+        ClassReaction(reactant_class="PC", product_class="PA"),
+        ClassReaction(reactant_class="PE", product_class="PC"),
+        ClassReaction(reactant_class="PA", product_class="DG"),
+        ClassReaction(reactant_class="DG", product_class="TG", compound_require=CompoundRequirement.FACOA, acyl_add=True),
+        ClassReaction(reactant_class="PC", product_class="LPC", compound_require=CompoundRequirement.FA),
+        ClassReaction(reactant_class="Cer", product_class="SM"),
+        ClassReaction(reactant_class="PG", product_class="CL"),
+    ]
+    
+    # Run matching
+    results = match_pathway_reactions(
+        lipid_names=lipid_names,
+        reactions=test_reactions,
+        fa_names=fa_names if fa_names else None,
+        facoa_names=facoa_names if facoa_names else None,
+    )
+    
+    # Report results
+    logger.info(f"\nMatching Summary:")
+    logger.info(f"  Reactions checked: {results.reactions_checked}")
+    logger.info(f"  Reactions with matches: {results.reactions_with_pairs}")
+    total_pairs = sum(len(r.pairs) for r in results.results.values())
+    logger.info(f"  Total species pairs: {total_pairs}")
+    
+    # Show details for each reaction
+    for reaction_key, result in results.results.items():
+        if result.has_pairs:
+            logger.info(f"\n{result.class_reaction.reactant_class} -> {result.class_reaction.product_class}:")
+            logger.info(f"  Reactant species: {result.reactant_species_found}")
+            logger.info(f"  Product species: {result.product_species_found}")
+            logger.info(f"  Valid pairs: {len(result.pairs)}")
+            
+            # Show first few pairs
+            for pair in result.pairs[:5]:
+                compound_info = ""
+                if pair.required_compound:
+                    compound_info = f" (via {pair.required_compound.notation})"
+                logger.info(f"    {pair.reactant.full_name} -> {pair.product.full_name}{compound_info}")
+            
+            if len(result.pairs) > 5:
+                logger.info(f"    ... and {len(result.pairs) - 5} more pairs")
+
 
 if __name__ == "__main__":
     main()

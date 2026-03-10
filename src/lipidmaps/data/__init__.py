@@ -36,6 +36,28 @@ from .quantitation import (
     create_analyzer,
 )
 
+# Pathway analysis
+from .matching import (
+    MatcherContext,
+    MatcherRegistry,
+    match_pathway_reactions,
+    create_matcher_context,
+)
+from .models.species_reaction import (
+    ClassReaction,
+    CompoundRequirement,
+    PathwayReactionSet,
+    ReactionMatchResult,
+    ReactionType,
+    SpeciesReactionPair,
+)
+from .utils.chain_parser import (
+    AcylChain,
+    ChainParser,
+    LipidSpecies,
+    SphingoBackbone,
+)
+
 __all__ = [
     "DataManager",
     "LipidDataset",
@@ -52,4 +74,20 @@ __all__ = [
     "NormalizationMethod",
     "QuantitationUnit",
     "create_analyzer",
+    # Matching
+    "MatcherContext",
+    "MatcherRegistry",
+    "match_pathway_reactions",
+    "create_matcher_context",
+    "ClassReaction",
+    "CompoundRequirement",
+    "PathwayReactionSet",
+    "ReactionMatchResult",
+    "ReactionType",
+    "SpeciesReactionPair",
+    "AcylChain",
+    "ChainParser",
+    "LipidSpecies",
+    "SphingoBackbone",
 ]
+
