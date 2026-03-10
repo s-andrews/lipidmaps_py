@@ -728,8 +728,9 @@ def main():
     # --------------------------------------------------------------
     if generic_lm_id_button and st.session_state["dataset"] is not None:
         ds = st.session_state["dataset"]
-        updated = ds.fill_headgroups_from_name()
-        updated = ds.fill_generic_lm_ids_from_headgroups()
+        updated = ds.fill_headgroups_from_names()
+        compound_headgroups_updated = ds.fill_compound_headgroups_from_lipids
+        generic_lm_ids_updated = ds.fill_generic_lm_ids_from_headgroups()
         st.session_state["generic_lm_id_assigned"] = True
         st.success(f"Updated {updated} lipids using headgroup mapping.")
         st.rerun()  # refresh processed page
@@ -833,12 +834,14 @@ def main():
                     "reaction_name": getattr(r, "reaction_name", None),
                     "reactants": reactants_str,
                     "products": products_str,
-                    "pathways": pathways_str,
+                    # "pathways": pathways_str,
                     "ec_number": ec_str,
                     "organisms": organisms,
+                    "possible": getattr(r, "possible", None),
+                    "possible_explanation": getattr(r, "possible_explanation", None),
                 })
 
-            rxn_df = pd.DataFrame(rxn_rows)
+            rxn_df = pd.DataFrame(rxn_rows)[0:20]
             st.write(f"Rows: {rxn_df.shape[0]}, Columns: {rxn_df.shape[1]}")
             # Display with HTML rendering for clickable EC number links
             st.write(rxn_df.to_html(escape=False, index=False), unsafe_allow_html=True)
@@ -918,6 +921,62 @@ def main():
                             else:
                                 pathways_list.append(getattr(p, "pathway_name", None) or getattr(p, "name", None))
                         st.write("**Pathways:**", ", ".join([p for p in pathways_list if p]))
+                        # Show rule evaluation result with detailed diagnostics
+                        possible = getattr(r, "possible", None)
+                        explanation = getattr(r, "possible_explanation", None)
+                        evaluation = getattr(r, "evaluation", None) or {}
+                        if possible is not None:
+                            color = "green" if possible else "red"
+                            st.markdown(f"**Possible:** <span style='color:{color}; font-weight:bold'>{possible}</span>", unsafe_allow_html=True)
+
+                        # human-readable explanation (summary)
+                        if explanation:
+                            with st.expander("Explanation", expanded=False):
+                                st.write(explanation)
+
+                        # structured evaluation details
+                        if evaluation:
+                            with st.expander("Evaluation details", expanded=False):
+                                # show the explanation from the evaluator if present
+                                if evaluation.get("explanation"):
+                                    st.markdown("**Summary:**")
+                                    st.write(evaluation.get("explanation"))
+
+                                details = evaluation.get("details") or []
+                                if details:
+                                    rows = []
+                                    for pdict in details:
+                                        rinfo = pdict.get("reactant", {})
+                                        pinfo = pdict.get("product", {})
+                                        rule = pdict.get("rule", {})
+                                        rows.append({
+                                            "reactant_hg": rinfo.get("headgroup"),
+                                            "reactant_linkage": rinfo.get("linkage"),
+                                            "reactant_chain_count": rinfo.get("chain_count"),
+                                            "reactant_total_carbons": rinfo.get("total_carbons"),
+                                            "reactant_total_DB": rinfo.get("total_double_bonds"),
+                                            "product_hg": pinfo.get("headgroup"),
+                                            "product_linkage": pinfo.get("linkage"),
+                                            "product_chain_count": pinfo.get("chain_count"),
+                                            "product_total_carbons": pinfo.get("total_carbons"),
+                                            "product_total_DB": pinfo.get("total_double_bonds"),
+                                            "require_same_linkage": rule.get("require_same_linkage"),
+                                            "required_acyl_chains": rule.get("required_acyl_chains"),
+                                            "can_convert_to": ",".join(rule.get("can_convert_to") or []) if rule.get("can_convert_to") else None,
+                                        })
+
+                                    try:
+                                        df_eval = pd.DataFrame(rows)
+                                        st.dataframe(df_eval, hide_index=True)
+                                    except Exception:
+                                        st.write(rows)
+
+                                # raw JSON view
+                                try:
+                                    st.subheader("Raw evaluation JSON")
+                                    st.json(evaluation)
+                                except Exception:
+                                    pass
 
             # Build pathways table, handling pathway dicts or objects and multiple pathways per reaction
             pathway_rows = []

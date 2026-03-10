@@ -44,6 +44,10 @@ class ReactionData(LipidmapsBaseModel):
     reaction_name: Optional[str] = None
     reaction_id: Optional[int] = None
     reaction_type: Optional[str] = None
+    # Detailed evaluation produced by `ReactionEvaluator.evaluate_reaction()`.
+    # Contains keys like `possible` (bool), `explanation` (str), and any
+    # additional diagnostic `details` the evaluator may include.
+    evaluation: Optional[Dict[str, Any]] = None
 
     @property
     def organisms(self) -> List[str]:

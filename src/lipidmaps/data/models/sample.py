@@ -4,6 +4,7 @@ from typing import Any, List, Dict, Optional, Union, Callable
 import numpy as np
 import re
 from ..utils.headgroups import lipidmaps_headgroups
+from ..utils.lipid_reaction_rules import lipid_reaction_rules
 from .query import Query, from_callable, attr_eq, attr_in, attr_contains, attr_gt, has_attr
 from .base import LipidmapsBaseModel
 from pydantic import Field
@@ -97,6 +98,7 @@ class QuantifiedLipid(LipidmapsBaseModel):
     lm_id_found_by: Optional[str] = None  # e.g., "LMSD", "RefMet"
     matched_field: Optional[str] = None
     generic_lm_id: Optional[str] = None
+    headgroup: Optional[str] = None
     sub_class: Optional[str] = None
     super_class: Optional[str] = None
     main_class: Optional[str] = None
@@ -416,6 +418,15 @@ class LipidDataset(LipidmapsBaseModel):
 
                 lipid.reactions = matched_reactions if matched_reactions else None
 
+            # Annotate using centralized ReactionEvaluator
+            try:
+                from ..utils.reaction_evaluator import ReactionEvaluator
+
+                evaluator = ReactionEvaluator(lipid_reaction_rules)
+                evaluator.annotate_reactions(self.reactions, dataset=self)
+            except Exception:
+                logger.exception("ReactionEvaluator failed; leaving reactions unannotated")
+
             return self.reactions
         except Exception:
             logger.exception("Failed to fetch reactions from ReactionChecker API.")
@@ -474,6 +485,51 @@ class LipidDataset(LipidmapsBaseModel):
             if lm_ids and lm_ids[0]:
                 return lm_ids[0]
         return None
+
+    def _find_linkage_from_name(self, name: str) -> Optional[str]:
+        """
+        Detect linkage type from lipid name patterns.
+        Returns one of: 'ester', 'ether_alkyl', 'ether_vinyl', 'amide', or None.
+        """
+        if not name:
+            return None
+        n = name.strip()
+        # plasmalogen marker (P-)
+        if " P-" in n or n.startswith("P-"):
+            return "ether_vinyl"
+        # alkyl ether marker (O-)
+        if " O-" in n or n.startswith("O-"):
+            return "ether_alkyl"
+        # sphingolipids often have 'Cer' or 'SM' in name
+        if n.startswith("Cer") or n.startswith("SM") or n.lower().startswith("dhcer"):
+            return "amide"
+        # default: assume ester for glycerophospholipids
+        return "ester"
+
+    def _get_headgroup_from_compound(self, comp: CompoundComponent) -> Optional[str]:
+        if not comp:
+            return None
+        # Prefer explicit field
+        if getattr(comp, "compound_headgroup", None):
+            return comp.compound_headgroup
+        # Fall back to generic id or name parsing
+        if getattr(comp, "compound_generic_lm_id", None):
+            return comp.compound_generic_lm_id
+        if getattr(comp, "compound_name", None):
+            return self._find_headgroup_from_name(comp.compound_name)
+        return None
+
+    def _get_linkage_from_compound(self, comp: CompoundComponent) -> Optional[str]:
+        # Prefer explicit abbrev markers
+        if not comp:
+            return None
+        if getattr(comp, "compound_abbrev", None):
+            return self._find_linkage_from_name(comp.compound_abbrev)
+        if getattr(comp, "compound_headgroup", None):
+            return self._find_linkage_from_name(comp.compound_headgroup)
+        if getattr(comp, "compound_name", None):
+            return self._find_linkage_from_name(comp.compound_name)
+        return None
     
     def fill_generic_lm_ids_from_headgroups(self) -> int:
         """
@@ -498,6 +554,89 @@ class LipidDataset(LipidmapsBaseModel):
         logger.info(f"Updated {updated} generic_lm_id fields using headgroup mapping (via LipidDataset)")
         return updated
 
+    def fill_headgroups_from_names(self) -> int:
+        """
+        Fill missing headgroup fields on QuantifiedLipid objects using headgroup mapping from headgroups.py.
+        Returns:
+            Number of lipids updated with a headgroup.
+        """
+        updated = 0
+        for lipid in self.lipids:
+            if not getattr(lipid, "headgroup", None):
+                headgroup = None
+                if lipid.standardized_name:
+                    headgroup = self._find_headgroup_from_name(lipid.standardized_name)
+                if not headgroup and (lipid.input_name.lower().startswith("fa ") or lipid.input_name.lower().startswith("fa(")):
+                    headgroup = self._find_headgroup_from_name(lipid.input_name)
+                if headgroup:
+                    lipid.headgroup = headgroup
+                    # also attempt to set linkage_type when possible
+                    if not getattr(lipid, "linkage_type", None):
+                        linkage = None
+                        if lipid.standardized_name:
+                            linkage = self._find_linkage_from_name(lipid.standardized_name)
+                        if not linkage:
+                            linkage = self._find_linkage_from_name(lipid.input_name)
+                        if linkage:
+                            lipid.linkage_type = linkage
+                    updated += 1
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"Updated {updated} headgroup fields using name parsing (via LipidDataset)")
+        return updated
+
+    def fill_compound_headgroups_from_lipids(self) -> int:
+        """
+        Fill missing `compound_headgroup` fields on `CompoundComponent` objects
+        inside `self.reactions` by matching `compound_lm_id` (or
+        `compound_generic_lm_id`) against `QuantifiedLipid.lm_id` /
+        `QuantifiedLipid.generic_lm_id` and copying `QuantifiedLipid.headgroup`.
+
+        Only updates components where `compound_type == 'lm_main'` and
+        `compound_headgroup` is not already set.
+
+        Returns:
+            Number of components updated.
+        """
+        updated = 0
+        if not getattr(self, 'reactions', None):
+            return 0
+
+        # build quick lookup by lm_id and generic_lm_id
+        lookup = {}
+        for l in self.lipids:
+            if getattr(l, 'lm_id', None):
+                lookup.setdefault(str(l.lm_id), []).append(l)
+            if getattr(l, 'generic_lm_id', None):
+                lookup.setdefault(str(l.generic_lm_id), []).append(l)
+
+        for rx in self.reactions:
+            for comp in (getattr(rx, 'reactants', []) or []) + (getattr(rx, 'products', []) or []):
+                try:
+                    ctype = getattr(comp, 'compound_type', None)
+                    if ctype != 'lm_main':
+                        continue
+                    if getattr(comp, 'compound_headgroup', None):
+                        continue
+                    lm = getattr(comp, 'compound_lm_id', None) or getattr(comp, 'compound_generic_lm_id', None)
+                    if not lm:
+                        continue
+                    # exact-string lookup (use str keys)
+                    matches = lookup.get(str(lm)) or []
+                    if not matches:
+                        continue
+                    # prefer first match with headgroup set
+                    for ml in matches:
+                        if getattr(ml, 'headgroup', None):
+                            comp.compound_headgroup = ml.headgroup
+                            updated += 1
+                            break
+                except Exception:
+                    continue
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"Updated {updated} compound headgroups from quantified lipids")
+        return updated
     def get_value(self, sample: "SampleMetadata", lipid: "QuantifiedLipid") -> Optional[float]:
         """
         Retrieve the quantitation value for a given sample and lipid object.
