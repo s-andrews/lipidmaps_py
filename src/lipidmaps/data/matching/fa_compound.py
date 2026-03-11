@@ -12,17 +12,17 @@ from ..models.species_reaction import (
     ReactionMatchResult,
     ReactionType,
 )
-from ..utils.chain_parser import AcylChain, LipidSpecies
+from ..utils.chain_parser import AcylChain, LipidStructure
 from .base import MatcherContext, ReactionMatcher
 
 
 class FACompoundMatcher(ReactionMatcher):
     """Matches pairs where an FA chain is released.
     
-    For PC(34:1) -> LPC(16:0):
+    For PC 34:1 -> LPC 16:0:
     1. Product must have fewer carbons/bonds than reactant
     2. Difference (34-16=18, 1-0=1) must match an available FA
-    3. FA(18:1) must exist in the dataset
+    3. FA 18:1 must exist in the dataset
     
     Corresponds to R's `is_valid_reaction()` with acyl_add=FALSE.
     """
@@ -75,7 +75,7 @@ class FACompoundMatcher(ReactionMatcher):
 class FACompoundMatcherFullStructure(ReactionMatcher):
     """FA release matcher with full structure awareness.
     
-    When lipids are reported at full structure level (PC(16:0_18:1)),
+    When lipids are reported at full structure level (PC 16:0_18:1),
     we can directly check if the released FA matches a specific chain.
     """
     
@@ -113,10 +113,10 @@ class FACompoundMatcherFullStructure(ReactionMatcher):
     
     def _find_fa_release_matches(
         self,
-        reactant: LipidSpecies,
-        products: List[LipidSpecies],
+        reactant: LipidStructure,
+        products: List[LipidStructure],
         context: MatcherContext,
-    ) -> List[tuple[LipidSpecies, AcylChain]]:
+    ) -> List[tuple[LipidStructure, AcylChain]]:
         """Find products that can result from FA release from reactant."""
         matches = []
         

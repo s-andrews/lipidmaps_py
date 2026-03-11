@@ -51,6 +51,7 @@ def main():
         "show_validation_section": True,
         "reactions": [],              # persistent reactions
         "taxonomy_group": "all",
+        "refmet_failed": False,
     }
 
     for k, v in defaults.items():
@@ -272,6 +273,9 @@ def main():
                 st.session_state["has_validation_report"] = False
                 st.session_state["validation_issues"] = []
 
+            # Track RefMet API status
+            st.session_state["refmet_failed"] = getattr(dataset, "refmet_failed", False)
+
             st.rerun()   # important
 
         except Exception as e:
@@ -287,6 +291,13 @@ def main():
             processed_table_container.info("No processed dataset yet.")
         else:
             processed_table_container.subheader("Processed Lipid Annotations")
+
+            # Show warning if RefMet API failed
+            if st.session_state.get("refmet_failed"):
+                processed_table_container.warning(
+                    "RefMet API request failed. Lipid standardization and classification data may be incomplete. "
+                    "This can happen due to network issues or API unavailability. You can try reprocessing later."
+                )
 
             # Build DataFrame and keep mapping to lipid objects
             lipid_rows = []

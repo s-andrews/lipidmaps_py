@@ -14,11 +14,13 @@ from ..models.species_reaction import (
     ReactionMatchResult,
     ReactionType,
 )
-from ..utils.chain_parser import AcylChain, LipidSpecies, SphingoBackbone
+from ..utils.chain_parser import AcylChain, LipidStructure, SphingoBackbone
 from .base import MatcherContext, ReactionMatcher
 
 
 # Sphingoid base classes
+# TODO: Check if these are the correct class names in the dataset (SPB vs SPH, etc.)
+# TODO: Check if they have LM_ID's and they have their own group extractable from lm_id
 SPHINGOID_BASES = {"SPB", "SPBP", "dhSPB", "dhSPBP", "S1P", "dhS1P"}
 
 # Ceramide and related classes
@@ -57,7 +59,7 @@ class SphingoSameStructureMatcher(ReactionMatcher):
             return result
         
         # Index products by backbone composition
-        products_by_backbone: dict[tuple[int, int], List[LipidSpecies]] = {}
+        products_by_backbone: dict[tuple[int, int], List[LipidStructure]] = {}
         for prod in products:
             # Use backbone if available, else total composition
             if prod.backbone:
@@ -130,10 +132,10 @@ class SphingoFAReleaseMatcher(ReactionMatcher):
     
     def _find_sphingo_fa_release_matches(
         self,
-        ceramide: LipidSpecies,
-        spb_products: List[LipidSpecies],
+        ceramide: LipidStructure,
+        spb_products: List[LipidStructure],
         context: MatcherContext,
-    ) -> List[tuple[LipidSpecies, AcylChain]]:
+    ) -> List[tuple[LipidStructure, AcylChain]]:
         """Find SPB products from ceramide FA release."""
         matches = []
         
@@ -225,10 +227,10 @@ class SphingoFACoAAdditionMatcher(ReactionMatcher):
     
     def _find_sphingo_facoa_addition_matches(
         self,
-        spb: LipidSpecies,
-        ceramide_products: List[LipidSpecies],
+        spb: LipidStructure,
+        ceramide_products: List[LipidStructure],
         context: MatcherContext,
-    ) -> List[tuple[LipidSpecies, AcylChain]]:
+    ) -> List[tuple[LipidStructure, AcylChain]]:
         """Find ceramide products from SPB + FACoA."""
         matches = []
         

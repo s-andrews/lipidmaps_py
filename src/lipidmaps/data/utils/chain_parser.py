@@ -2,22 +2,24 @@
 Chain parser for lipid species nomenclature.
 
 Parses lipid species names into structured components for reaction matching.
-Handles sum composition (e.g., PC(34:1)) and full structure (e.g., PC(16:0_18:1)).
+Handles sum composition (e.g., PC 34:1) and full structure (e.g., PC 16:0_18:1).
 """
 
 import re
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from pydantic import BaseModel, Field, field_validator, computed_field
+
+if TYPE_CHECKING:
+    from lipidmaps.data.models.reaction import ReactionData
 
 
 class StructureLevel(str, Enum):
     """Level of structural detail in lipid nomenclature."""
-    SUM = "sum"           # Total carbons:bonds (e.g., PC(34:1))
-    FULL = "full"         # Individual chains (e.g., PC(16:0_18:1))
+    SUM = "sum"           # Total carbons:bonds (e.g., PC 34:1)
+    FULL = "full"         # Individual chains (e.g., PC 16:0_18:1)
     MOLECULAR = "molecular"  # Named species without structure (e.g., ST, cholesterol)
-
 
 class AcylChain(BaseModel):
     """Represents a single fatty acyl chain."""
@@ -63,8 +65,8 @@ class SphingoBackbone(BaseModel):
         return self.notation
 
 
-class LipidSpecies(BaseModel):
-    """Parsed lipid species with structural components."""
+class LipidStructure(BaseModel):
+    """Parsed structural components of a lipid name."""
     input_name: str = Field(..., description="Original input name")
     headgroup: str = Field(..., description="Lipid class/headgroup (e.g., PC, PE, Cer)")
     
@@ -95,15 +97,15 @@ class LipidSpecies(BaseModel):
         
         if self.backbone and self.chains:
             chain_str = "/".join(str(c) for c in self.chains)
-            return f"{self.headgroup}({self.backbone}/{chain_str})"
+            return f"{self.headgroup} {self.backbone}/{chain_str}"
         elif self.chains and self.level == StructureLevel.FULL:
             chain_str = "_".join(str(c) for c in self.chains)
-            return f"{self.headgroup}({chain_str})"
+            return f"{self.headgroup} {chain_str}"
         else:
-            return f"{self.headgroup}({self.sum_composition})"
+            return f"{self.headgroup} {self.sum_composition}"
     
-    def matches_sum_composition(self, other: "LipidSpecies") -> bool:
-        """Check if two species have matching sum composition."""
+    def matches_sum_composition(self, other: "LipidStructure") -> bool:
+        """Check if two structures have matching sum composition."""
         return (self.total_carbons == other.total_carbons and
                 self.total_double_bonds == other.total_double_bonds)
     
@@ -141,7 +143,7 @@ class ChainParser:
         # Sterols
         "CE", "ST",
         # Fatty acids and acyl compounds
-        "FA", "FaCoA", "FACoA", "FACOA", "CAR",
+        "FA", "FaCoA", "FACoA", "FACOA", "CAR","CoA"
     ]
     
     # Sphingoid backbone prefixes
@@ -161,13 +163,13 @@ class ChainParser:
     }
     
     @classmethod
-    def parse(cls, name: str) -> LipidSpecies:
+    def parse(cls, name: str) -> LipidStructure:
         """Parse a lipid species name into structured components.
         
         Examples:
-            parse("PC(34:1)") -> sum composition
-            parse("PC(16:0_18:1)") -> full structure
-            parse("Cer(d18:1/18:0)") -> sphingolipid with backbone
+            parse("PC 34:1") -> sum composition
+            parse("PC 16:0_18:1") -> full structure
+            parse("Cer d18:1/18:0") -> sphingolipid with backbone
             parse("ST") -> molecular species
         """
         name = name.strip()
@@ -176,7 +178,7 @@ class ChainParser:
         headgroup = cls._extract_headgroup(name)
         if not headgroup:
             # Might be a molecular species without parentheses
-            return LipidSpecies(
+            return LipidStructure(
                 input_name=name,
                 headgroup=name,
                 level=StructureLevel.MOLECULAR,
@@ -190,7 +192,7 @@ class ChainParser:
         
         if not structure:
             # No structure info (e.g., just "PC" or "SPB")
-            return LipidSpecies(
+            return LipidStructure(
                 input_name=name,
                 headgroup=headgroup,
                 level=StructureLevel.MOLECULAR,
@@ -203,7 +205,7 @@ class ChainParser:
         # Calculate totals
         total_c, total_db = cls._calculate_totals(backbone, chains, structure)
         
-        return LipidSpecies(
+        return LipidStructure(
             input_name=name,
             headgroup=headgroup,
             chains=chains,
@@ -231,8 +233,9 @@ class ChainParser:
         """Extract the structure portion from parentheses or space-separated.
         
         Handles both formats:
-        - PC(34:1) -> 34:1
+        - PC 34:1 -> 34:1
         - FA 16:0 -> 16:0
+        - PC(34:1) -> 34:1 (legacy format)
         """
         # First try parentheses format
         match = re.search(r"\(([^)]+)\)", name)
@@ -353,9 +356,14 @@ class ChainParser:
 
 
 # Convenience function
-def parse_lipid(name: str) -> LipidSpecies:
+def parse_lipid(name: str) -> LipidStructure:
     """Parse a lipid species name into structured components."""
+    if name is None:
+        return None
     return ChainParser.parse(name)
+
+
+
 
 
 # =============================================================================
@@ -501,10 +509,10 @@ def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
     """Infer possible FA species from the acyl chains in a lipid dataset.
     
     Extracts all unique acyl chains from full-structure lipid names
-    (those with individual chains like PC(16:0_18:1)) and returns them as FA names
+    (those with individual chains like PC 16:0_18:1) and returns them as FA names
     in LIPID MAPS shorthand format.
     
-    Sum composition species like PC(34:1) are NOT used for inference.
+    Sum composition species like PC 34:1 are NOT used for inference.
     
     Args:
         lipid_names: List of lipid species names
@@ -513,7 +521,7 @@ def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
         List of FA names inferred from the dataset
         
     Example:
-        >>> infer_fa_from_lipids(['PC(16:0_18:1)', 'PE(18:0_20:4)'])
+        >>> infer_fa_from_lipids(['PC 16:0_18:1', 'PE 18:0_20:4'])
         ['FA 16:0', 'FA 18:1', 'FA 18:0', 'FA 20:4']
     """
     parser = ChainParser()
@@ -536,9 +544,131 @@ def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
 def infer_facoa_from_lipids(lipid_names: List[str]) -> List[str]:
     """Infer possible FACoA species from the acyl chains in a lipid dataset.
     
-    Same as infer_fa_from_lipids but returns CAR (acylcarnitine) names
+    Same as infer_fa_from_lipids but returns CoA (acyl-CoA) names
     in LIPID MAPS shorthand format.
     """
     fa_names = infer_fa_from_lipids(lipid_names)
-    return [name.replace("FA ", "CAR ") for name in fa_names]
+    return [name.replace("FA ", "CoA ") for name in fa_names]
 
+
+# =============================================================================
+# LM ID-based extraction from LIPID MAPS reactions
+# =============================================================================
+
+# LIPID MAPS FA subclass prefixes
+# See: https://www.lipidmaps.org/databases/lmsd/overview#FA
+FA_LMID_PREFIX = "LMFA0101"       # Fatty acids and conjugates
+FACOA_LMID_PREFIX = "LMFA0705"   # Fatty acyl coenzyme A
+# CAR_LMID_PREFIX = "LMFA0707"     # Fatty acyl carnitines
+
+
+def extract_fa_from_reactions(reactions: List["ReactionData"]) -> List[str]:
+    """Extract unique FA species names from LIPID MAPS reactions.
+    
+    Uses compound LM IDs to identify fatty acids (LMFA0101xxxx).
+    Returns normalized shorthand names (e.g., 'FA 16:0').
+    
+    Args:
+        reactions: List of ReactionData objects from LIPID MAPS
+        
+    Returns:
+        List of unique FA names in LIPID MAPS shorthand format
+        
+    Example:
+        >>> reactions = [...]  # from LIPID MAPS API
+        >>> extract_fa_from_reactions(reactions)
+        ['FA 16:0', 'FA 18:1', 'FA 20:4']
+    """
+    seen = set()
+    fa_names = []
+    parser = ChainParser()
+    
+    for reaction in reactions:
+        all_compounds = reaction.reactants + reaction.products
+        for compound in all_compounds:
+            lm_id = compound.compound_lm_id or ""
+            if not lm_id.startswith(FA_LMID_PREFIX):
+                continue
+                
+            # Try compound_abbrev first (e.g., "FA 16:0"), then name
+            name = compound.compound_abbrev or compound.compound_name
+            if not name:
+                continue
+                
+            # Parse to normalize the name
+            species = parser.parse(name)
+            if species and species.headgroup == "FA" and species.chains:
+                normalized = f"FA {species.chains[0].notation}"
+                if normalized not in seen:
+                    seen.add(normalized)
+                    fa_names.append(normalized)
+    
+    return fa_names
+
+
+def extract_facoa_from_reactions(reactions: List["ReactionData"]) -> List[str]:
+    """Extract unique FACoA/CoA species names from LIPID MAPS reactions.
+    
+    Uses compound LM IDs to identify:
+    - Fatty acyl coenzyme A (LMFA0705xxxx)  
+    
+    TODO: Fatty acyl carnitines (LMFA0707xxxx) ?
+    
+    Returns normalized shorthand names (e.g., 'CoA 16:0').
+    
+    Args:
+        reactions: List of ReactionData objects from LIPID MAPS
+        
+    Returns:
+        List of unique CoA names in LIPID MAPS shorthand format
+        
+    Example:
+        >>> reactions = [...]  # from LIPID MAPS API
+        >>> extract_facoa_from_reactions(reactions)
+        ['CoA 4:0', 'CoA 16:0', 'CoA 18:1']
+    """
+    seen = set()
+    facoa_names = []
+    parser = ChainParser()
+    
+    for reaction in reactions:
+        all_compounds = reaction.reactants + reaction.products
+        for compound in all_compounds:
+            lm_id = compound.compound_lm_id or ""
+            # Match both CoA and carnitine subclasses
+            if not (lm_id.startswith(FACOA_LMID_PREFIX)):
+                continue
+                
+            # Try compound_abbrev first (e.g., "CoA 4:0"), then name
+            name = compound.compound_abbrev or compound.compound_name
+            if not name:
+                continue
+                
+            # Parse to normalize the name
+            species = parser.parse(name)
+            if species and species.headgroup in ("CoA", "FACoA", "FaCoA", "FACOA") and species.chains:
+                normalized = f"CoA {species.chains[0].notation}"
+                if normalized not in seen:
+                    seen.add(normalized)
+                    facoa_names.append(normalized)
+    
+    return facoa_names
+
+
+def extract_fa_facoa_from_reactions(
+    reactions: List["ReactionData"]
+) -> Tuple[List[str], List[str]]:
+    """Extract both FA and FACoA species from LIPID MAPS reactions.
+    
+    Convenience function that returns both FA and FACoA names.
+    
+    Args:
+        reactions: List of ReactionData objects from LIPID MAPS
+        
+    Returns:
+        Tuple of (fa_names, facoa_names) in LIPID MAPS shorthand format
+    """
+    return (
+        extract_fa_from_reactions(reactions),
+        extract_facoa_from_reactions(reactions)
+    )

@@ -150,7 +150,10 @@ class LipidData(BaseModel):
         return [
             lipid
             for lipid in self.dataset.lipids
-            if lipid.main_class == lipid_class or lipid.sub_class == lipid_class
+            if lipid.annotation and (
+                lipid.annotation.main_class == lipid_class or 
+                lipid.annotation.sub_class == lipid_class
+            )
         ]
 
     def get_lm_ids(self) -> List[str]:

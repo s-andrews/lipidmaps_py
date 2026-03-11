@@ -125,7 +125,7 @@ lipidmaps_headgroups = {
     "PC O-": [
         "LMGP01020000"
     ],
-    "PA-O": [
+    "PA O-": [
         "LMGP10020000"
     ],
     "PE O-": [
@@ -281,16 +281,16 @@ lipidmaps_headgroups = {
     "PE O-": [
         "LMGP02020000"
     ],
-    "PC-O": [
+    "PC O-": [
         "LMGP01020000"
     ],
-    "LPE-O": [
+    "LPE O-": [
         "LMGP02060000"
     ],
     "LPC O-": [
         "LMGP01060000"
     ],
-    "LPA-O": [
+    "LPA O-": [
         "LMGP10060000"
     ],
     "PE P-": [
@@ -305,7 +305,7 @@ lipidmaps_headgroups = {
     "LPC P-": [
         "LMGP01070000"
     ],
-    "LPA-P": [
+    "LPA P-": [
         "LMGP10070000"
     ],
     "GlcCer": [

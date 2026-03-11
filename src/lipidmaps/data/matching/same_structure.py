@@ -12,7 +12,7 @@ from ..models.species_reaction import (
     ReactionMatchResult,
     ReactionType,
 )
-from ..utils.chain_parser import LipidSpecies
+from ..utils.chain_parser import LipidStructure
 from .base import MatcherContext, ReactionMatcher
 
 
@@ -45,7 +45,7 @@ class SameStructureMatcher(ReactionMatcher):
             return result
         
         # Index products by total composition for O(1) lookup
-        products_by_composition: dict[tuple[int, int], List[LipidSpecies]] = {}
+        products_by_composition: dict[tuple[int, int], List[LipidStructure]] = {}
         for prod in products:
             key = (prod.total_carbons, prod.total_double_bonds)
             if key not in products_by_composition:

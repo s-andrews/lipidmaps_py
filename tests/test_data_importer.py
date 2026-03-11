@@ -122,17 +122,17 @@ class TestDataImporter(unittest.TestCase):
         """Test filtering lipids by class."""
         data = lipidmaps.import_data(str(self.test_file))
 
-        # Find a lipid with a class
+        # Find a lipid with an annotation that has a class
         lipid_with_class = None
         for lipid in data.lipids():
-            if lipid.sub_class or lipid.main_class:
+            if lipid.annotation and (lipid.annotation.sub_class or lipid.annotation.main_class):
                 lipid_with_class = lipid
                 break
 
         if lipid_with_class:
             # Get lipids by sub_class
-            if lipid_with_class.sub_class:
-                lipids_in_class = data.get_lipids_by_class(lipid_with_class.sub_class)
+            if lipid_with_class.annotation.sub_class:
+                lipids_in_class = data.get_lipids_by_class(lipid_with_class.annotation.sub_class)
                 self.assertIsInstance(lipids_in_class, list)
                 self.assertGreater(len(lipids_in_class), 0)
                 # Verify the original lipid is in the results
@@ -221,8 +221,8 @@ class TestDataImporter(unittest.TestCase):
 
         # Get all lipids of a specific class (if any exist)
         for lipid in data.lipids():
-            if lipid.sub_class:
-                lipids_in_class = data.get_lipids_by_class(lipid.sub_class)
+            if lipid.annotation and lipid.annotation.sub_class:
+                lipids_in_class = data.get_lipids_by_class(lipid.annotation.sub_class)
                 self.assertIsInstance(lipids_in_class, list)
                 break
 

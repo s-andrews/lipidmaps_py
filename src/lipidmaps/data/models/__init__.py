@@ -11,7 +11,6 @@ from .species_reaction import (
     ReactionType,
     SpeciesReactionPair,
 )
-from .sample import Headgroup
 
 __all__ = [
     "LipidmapsBaseModel",

@@ -14,6 +14,8 @@ from .utils.chain_parser import (
     get_common_facoa_names,
     infer_fa_from_lipids,
     infer_facoa_from_lipids,
+    extract_fa_from_reactions,
+    extract_facoa_from_reactions,
 )
 
 
@@ -129,19 +131,16 @@ def main() -> None:
     logger.info(f"Sample column info: {dataset.samples[:3]}")
     logger.info(f"Samples: {dataset.list_sample_names()[:3]}")
 
-    # Generate headgroups from the dataset (will reuse existing Headgroup objects
-    # and keep references to QuantifiedLipid instances rather than copying them).
+    # Get structures grouped by headgroup from the dataset
     try:
-        headgroups = dataset.generate_headgroups()
-        logger.info(f"Generated {len(headgroups)} headgroups from dataset")
-        for hg in headgroups:
-            try:
-                lipid_names = [l.input_name for l in hg.lipids if getattr(l, 'input_name', None)]
-            except Exception:
-                lipid_names = []
-            print(f"Headgroup: {hg.name} | LM IDs: {hg.lm_ids} | Lipids ({len(lipid_names)}): {lipid_names}")
+        structures_by_headgroup = dataset.get_structures_by_headgroup()
+        logger.info(f"Found {len(structures_by_headgroup)} unique headgroups from dataset")
+        logger.info(f"Headgroup names: {list(structures_by_headgroup.keys())[:5]}")
+        for hg_name, structures in list(structures_by_headgroup.items())[:10]:
+            structure_names = [s.full_name for s in structures]
+            print(f"Headgroup: {hg_name} | Structures ({len(structures)}): {structure_names[:5]}")
     except Exception:
-        logger.exception("Failed to generate or display headgroups")
+        logger.exception("Failed to get structures by headgroup")
 
     lmids = dataset.list_lm_ids()
     print(f"LM IDs in dataset: {LMSD.get_molecules_by_lm_id(lmids)}")  # Print first 5 LM IDs
@@ -165,19 +164,19 @@ def main() -> None:
 
     # Fetch reactions for all LM IDs in the dataset
     reactions = dataset.fetch_reactions_by_lm_id(reaction_type="class-level", only_lipid_components=True, taxonomy_group="bacteria")
-    print(reactions[:1])  # Print first 1 reaction for brevity
+    # print(reactions[:1])  # Print first 1 reaction for brevity
     logger.info(f"Lipids with reactions: {dataset.list_lipids_with_reactions()[:1]}")
     
     lipid_objects_with_reactions = dataset.get_lipids_with_reactions()
     logger.info(f"Total lipids with reactions: {len(lipid_objects_with_reactions)}")
     logger.info(f"Total reaction object in dataset: {len(dataset.reactions)}")
-    for reaction_name in dataset.list_reactions():  # Print first 1 reaction name
-        logger.info(f"{reaction_name}")
-    for reaction in dataset.reactions[:3]:  # Print first 3 lipid with reactions
-        print(f"Reaction name: {reaction.reaction_name} {reaction.reaction_id}\n"
-              f"Reactant names: {[(r.compound_name, r.compound_lm_id) for r in (reaction.reactants or [])]}\n"
+    # for reaction_name in dataset.list_reactions():  # Print first 1 reaction name
+    #     logger.info(f"{reaction_name}")
+    # for reaction in dataset.reactions[:3]:  # Print first 3 lipid with reactions
+    #     print(f"Reaction name: {reaction.reaction_name} {reaction.reaction_id}\n"
+    #           f"Reactant names: {[(r.compound_name, r.compound_lm_id) for r in (reaction.reactants or [])]}\n"
 
-              f"Product names: {[(p.compound_name, p.compound_lm_id) for p in (reaction.products or [])]}")
+    #           f"Product names: {[(p.compound_name, p.compound_lm_id) for p in (reaction.products or [])]}")
 
     # Test species-level reaction matching
     if getattr(args, "test_matching", False):
@@ -191,40 +190,61 @@ def test_species_matching(dataset) -> None:
     logger.info("=" * 60)
     
     # Get all lipid names from dataset
-    lipid_names = [lipid.input_name for lipid in dataset.lipids]
+    lipid_names = [lipid.standardized_name for lipid in dataset.lipids]
     logger.info(f"Dataset has {len(lipid_names)} lipids")
     
-    # Extract FA species (check both shorthand "FA 16:0" and legacy "FA(16:0)" formats)
-    fa_names = [name for name in lipid_names 
-                if name.startswith("FA ") or name.startswith("FA(")]
-    # Extract FACoA/CAR species
-    facoa_names = [name for name in lipid_names 
-                   if name.startswith("CAR ") or name.startswith("FACoA") or name.startswith("FaCoA")]
+    # --- FA extraction strategy (priority order) ---
+    # 1. Extract from LIPID MAPS reactions (if available)
+    # 2. Check if present in dataset lipid names
+    # 3. Infer from full-structure lipid chains
+    # 4. Fall back to common defaults
     
-    # If no FA/FACoA in dataset, try to infer from lipid chains or use common defaults
+    fa_names = []
+    if dataset.reactions:
+        fa_names = extract_fa_from_reactions(dataset.reactions)
+        if fa_names:
+            logger.info(f"Extracted {len(fa_names)} FA species from LIPID MAPS reactions (LM IDs)")
+    
     if not fa_names:
-        # First try to infer from full-structure lipids in dataset
-        inferred_fa = infer_fa_from_lipids(lipid_names)
-        if inferred_fa:
-            fa_names = inferred_fa
+        # Check dataset lipids (both shorthand "FA 16:0" and legacy "FA(16:0)" formats)
+        fa_names = [name for name in lipid_names 
+                    if name.startswith("FA ") or name.startswith("FA(")]
+        if fa_names:
+            logger.info(f"Found {len(fa_names)} FA species in dataset")
+    
+    if not fa_names:
+        # Try to infer from full-structure lipids in dataset
+        fa_names = infer_fa_from_lipids(lipid_names)
+        if fa_names:
             logger.info(f"Inferred {len(fa_names)} FA species from lipid chains")
-        else:
-            # Fall back to common FA
-            fa_names = get_common_fa_names()
-            logger.info(f"Using {len(fa_names)} common FA species (no FA in dataset)")
-    else:
-        logger.info(f"Found {len(fa_names)} FA species in dataset")
+    
+    if not fa_names:
+        # Fall back to common FA
+        fa_names = get_common_fa_names()
+        logger.info(f"Using {len(fa_names)} common FA species (no FA in dataset)")
+    
+    # --- FACoA/CAR extraction strategy (same priority order) ---
+    facoa_names = []
+    if dataset.reactions:
+        facoa_names = extract_facoa_from_reactions(dataset.reactions)
+        if facoa_names:
+            logger.info(f"Extracted {len(facoa_names)} CAR species from LIPID MAPS reactions (LM IDs)")
     
     if not facoa_names:
-        inferred_facoa = infer_facoa_from_lipids(lipid_names)
-        if inferred_facoa:
-            facoa_names = inferred_facoa
-            logger.info(f"Inferred {len(facoa_names)} CAR species from lipid chains")
-        else:
-            facoa_names = get_common_facoa_names()
-            logger.info(f"Using {len(facoa_names)} common CAR species (no CAR in dataset)")
-    else:
-        logger.info(f"Found {len(facoa_names)} CAR species in dataset")
+        # Check dataset lipids
+        facoa_names = [name for name in lipid_names 
+                       if name.startswith("CoA ") or name.startswith("FACoA") or name.startswith("FaCoA")]
+        if facoa_names:
+            logger.info(f"Found {len(facoa_names)} CoA species in dataset")
+    
+    if not facoa_names:
+        facoa_names = infer_facoa_from_lipids(lipid_names)
+        if facoa_names:
+            logger.info(f"Inferred {len(facoa_names)} CoA species from lipid chains")
+    
+    if not facoa_names:
+        facoa_names = get_common_facoa_names()
+        logger.info(f"Using {len(facoa_names)} common CoA species (no CoA in dataset)")
     
     # Define some common class reactions to test
     test_reactions = [

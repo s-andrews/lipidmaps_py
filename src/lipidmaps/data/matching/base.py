@@ -17,7 +17,7 @@ from ..models.species_reaction import (
     ReactionType,
     SpeciesReactionPair,
 )
-from ..utils.chain_parser import AcylChain, ChainParser, LipidSpecies
+from ..utils.chain_parser import AcylChain, ChainParser, LipidStructure
 
 
 class MatcherContext(BaseModel):
@@ -26,7 +26,7 @@ class MatcherContext(BaseModel):
     Contains the available lipid species and compounds from the dataset.
     """
     # Species grouped by headgroup
-    species_by_class: Dict[str, List[LipidSpecies]] = Field(default_factory=dict)
+    species_by_class: Dict[str, List[LipidStructure]] = Field(default_factory=dict)
     
     # Available FA and FACoA compounds
     fa_species: Dict[str, AcylChain] = Field(default_factory=dict,
@@ -40,7 +40,7 @@ class MatcherContext(BaseModel):
     class Config:
         arbitrary_types_allowed = True
     
-    def get_species(self, lipid_class: str) -> List[LipidSpecies]:
+    def get_species(self, lipid_class: str) -> List[LipidStructure]:
         """Get all species for a given lipid class."""
         # Handle class name variations
         normalized = lipid_class.upper()
@@ -103,8 +103,8 @@ class ReactionMatcher(ABC):
     def _create_result(
         self,
         class_reaction: ClassReaction,
-        reactants: List[LipidSpecies],
-        products: List[LipidSpecies],
+        reactants: List[LipidStructure],
+        products: List[LipidStructure],
     ) -> ReactionMatchResult:
         """Helper to create a base result with metadata."""
         return ReactionMatchResult(
@@ -115,8 +115,8 @@ class ReactionMatcher(ABC):
     
     def _create_pair(
         self,
-        reactant: LipidSpecies,
-        product: LipidSpecies,
+        reactant: LipidStructure,
+        product: LipidStructure,
         class_reaction: ClassReaction,
         required_compound: Optional[AcylChain] = None,
     ) -> SpeciesReactionPair:
@@ -130,8 +130,8 @@ class ReactionMatcher(ABC):
     
     def _get_chain_difference(
         self,
-        larger: LipidSpecies,
-        smaller: LipidSpecies,
+        larger: LipidStructure,
+        smaller: LipidStructure,
     ) -> Tuple[int, int]:
         """Calculate the carbon/bond difference between two species.
         
@@ -143,8 +143,8 @@ class ReactionMatcher(ABC):
     
     def _chains_match(
         self,
-        species1: LipidSpecies,
-        species2: LipidSpecies,
+        species1: LipidStructure,
+        species2: LipidStructure,
     ) -> bool:
         """Check if two species have the same total chain composition."""
         return (species1.total_carbons == species2.total_carbons and
@@ -159,7 +159,7 @@ def create_matcher_context(
     """Create a MatcherContext from lipid names.
     
     Args:
-        lipid_names: List of lipid species names (e.g., ['PC(34:1)', 'PE(36:2)'])
+        lipid_names: List of lipid species names (e.g., ['PC 34:1', 'PE 36:2'])
         fa_names: Optional list of FA names (e.g., ['FA 16:0', 'FA 18:1'])
         facoa_names: Optional list of FACoA/CAR names (e.g., ['CAR 16:0'])
         
@@ -169,9 +169,8 @@ def create_matcher_context(
     parser = ChainParser()
     
     # Group species by class
-    species_by_class: Dict[str, List[LipidSpecies]] = {}
+    species_by_class: Dict[str, List[LipidStructure]] = {}
     all_names = set()
-    
     for name in lipid_names:
         all_names.add(name)
         species = parser.parse(name)
@@ -196,7 +195,7 @@ def create_matcher_context(
         for name in facoa_names:
             # Try parsing directly (handles "CAR 16:0" format)
             species = parser.parse(name)
-            if species and species.headgroup in ("CAR", "FACoA", "FaCoA", "FACOA") and species.chains:
+            if species and species.headgroup in ("CoA", "FACoA", "FaCoA", "FACOA") and species.chains:
                 chain = species.chains[0]
                 facoa_dict[chain.notation] = chain
             elif "FACoA" in name or "FaCoA" in name:

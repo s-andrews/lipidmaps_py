@@ -9,7 +9,7 @@ import pandas as pd
 from pydantic import Field, field_validator
 from .models.base import LipidmapsBaseModel
 # import the data models we will produce
-from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset
+from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset, LipidAnnotation
 from .models.refmet import RefMet
 from .models.lmsd import LMSD, LMSDResult
 # from .reaction_checker import ReactionChecker, ReactionData
@@ -177,10 +177,12 @@ class DataManager(LipidmapsBaseModel):
 
         # If refmet is enabled, annotate lipids with refmet results before creating the dataset, so that standardized names and lm_ids are available on the QuantifiedLipid objects within the dataset from the start
         # Default is true since it provides standardized names and can improve LMSD matching downstream, but can be disabled if users want to skip that step or handle annotation separately
+        refmet_failed = False
         if self.use_refmet:
-            self.annotate_lipids_with_refmet(quantified)
+            refmet_success = self.annotate_lipids_with_refmet(quantified)
+            refmet_failed = not refmet_success
 
-        dataset = LipidDataset(samples=samples_meta, lipids=quantified, column_info=column_info)
+        dataset = LipidDataset(samples=samples_meta, lipids=quantified, column_info=column_info, refmet_failed=refmet_failed)
         self.dataset = dataset
         logger.info(
             f"Created LipidDataset: {len(samples_meta)} samples, {len(quantified)} lipids"
@@ -387,8 +389,12 @@ class DataManager(LipidmapsBaseModel):
             logger.info(f"Total skipped rows: {skipped_rows}")
         return quantified
 
-    def annotate_lipids_with_refmet(self, quantified: List[Any]) -> None:
-        """Annotate QuantifiedLipid objects with RefMet data."""
+    def annotate_lipids_with_refmet(self, quantified: List[Any]) -> bool:
+        """Annotate QuantifiedLipid objects with RefMet data.
+        
+        Returns:
+            True if annotation succeeded, False if it failed.
+        """
         try:
             # Extract lipid names
             lipid_names = [q.input_name for q in quantified]
@@ -414,18 +420,31 @@ class DataManager(LipidmapsBaseModel):
                         q.lm_id_found_by = "RefMet"
                 except Exception:
                     pass
-                q.sub_class = result.sub_class
-                q.formula = result.formula
-                q.mass = result.exact_mass
-                q.super_class = result.super_class
-                q.main_class = result.main_class
-                q.chebi_id = result.chebi_id
-                q.kegg_id = result.kegg_id
-                q.refmet_id = result.refmet_id
+                
+                # Create annotation object with classification and IDs
+                q.annotation = LipidAnnotation(
+                    sub_class=result.sub_class,
+                    main_class=result.main_class,
+                    super_class=result.super_class,
+                    chebi_id=result.chebi_id,
+                    kegg_id=result.kegg_id,
+                    refmet_id=result.refmet_id,
+                    formula=result.formula,
+                    mass=result.exact_mass,
+                )
+            return True
         except Exception:
             logger.exception(
                 "RefMet annotation failed; continuing without standardized names"
             )
+            return False
+
+    #NOTE: This method is separate from the main CSV processing flow since we get lm_id results 
+    # from RefMet annotation, and later we fill generic lm_id's from headgroups.
+    #NOTE: This method updates input list of quantified object and if no dataset is provided, 
+    # it will update the manager's current dataset.lipids list if available. 
+    # This allows it to be used as a standalone method for filling lm_id details on any list of 
+    # QuantifiedLipid objects, or as part of the main CSV processing flow.
 
     def fill_missing_lm_ids_from_lmsd(
         self, quantified: Optional[List[Any]] = None, use_standardized_name: bool = True

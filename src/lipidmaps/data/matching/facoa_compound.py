@@ -12,17 +12,17 @@ from ..models.species_reaction import (
     ReactionMatchResult,
     ReactionType,
 )
-from ..utils.chain_parser import AcylChain, LipidSpecies
+from ..utils.chain_parser import AcylChain, LipidStructure
 from .base import MatcherContext, ReactionMatcher
 
 
 class FACoACompoundMatcher(ReactionMatcher):
     """Matches pairs where an FACoA is added to form product.
-    
-    For DG(34:1) + FACoA(16:0) -> TG(50:1):
+    FACoA shorthand is CoA 
+    For DG 34:1 + CoA 16:0 -> TG 50:1:
     1. Product must have more carbons than reactant
     2. Difference (50-34=16, 1-1=0) must match an available FACoA
-    3. FACoA(16:0) must exist in the dataset
+    3. CoA 16:0 must exist in the dataset
     
     Corresponds to R's `is_valid_reaction()` with acyl_add=TRUE.
     """
@@ -113,10 +113,10 @@ class FACoACompoundMatcherFullStructure(ReactionMatcher):
     
     def _find_facoa_addition_matches(
         self,
-        reactant: LipidSpecies,
-        products: List[LipidSpecies],
+        reactant: LipidStructure,
+        products: List[LipidStructure],
         context: MatcherContext,
-    ) -> List[tuple[LipidSpecies, AcylChain]]:
+    ) -> List[tuple[LipidStructure, AcylChain]]:
         """Find products that can result from FACoA addition to reactant."""
         matches = []
         

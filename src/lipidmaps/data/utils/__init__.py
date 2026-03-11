@@ -5,7 +5,7 @@ Utility modules for lipid data processing.
 from .chain_parser import (
     AcylChain,
     ChainParser,
-    LipidSpecies,
+    LipidStructure,
     SphingoBackbone,
     StructureLevel,
     # Common FA/FACoA
@@ -19,12 +19,16 @@ from .chain_parser import (
     get_extended_facoa_names,
     infer_fa_from_lipids,
     infer_facoa_from_lipids,
+    # LM ID-based extraction from reactions
+    extract_fa_from_reactions,
+    extract_facoa_from_reactions,
+    extract_fa_facoa_from_reactions,
 )
 
 __all__ = [
     "AcylChain",
     "ChainParser",
-    "LipidSpecies",
+    "LipidStructure",
     "SphingoBackbone",
     "StructureLevel",
     # Common FA/FACoA
@@ -38,4 +42,8 @@ __all__ = [
     "get_extended_facoa_names",
     "infer_fa_from_lipids",
     "infer_facoa_from_lipids",
+    # LM ID-based extraction from reactions
+    "extract_fa_from_reactions",
+    "extract_facoa_from_reactions",
+    "extract_fa_facoa_from_reactions",
 ]

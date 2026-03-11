@@ -17,7 +17,7 @@ from ..models.species_reaction import (
     ReactionType,
     SpeciesReactionPair,
 )
-from ..utils.chain_parser import LipidSpecies
+from ..utils.chain_parser import LipidStructure
 from .base import MatcherContext, ReactionMatcher
 
 
@@ -123,7 +123,7 @@ class CardiolipinCompositionMatcher(ReactionMatcher):
             return result
         
         # Index CL by composition
-        cl_by_composition: Dict[Tuple[int, int], List[LipidSpecies]] = {}
+        cl_by_composition: Dict[Tuple[int, int], List[LipidStructure]] = {}
         for cl in cl_species:
             key = (cl.total_carbons, cl.total_double_bonds)
             if key not in cl_by_composition:
@@ -180,7 +180,7 @@ class CardiolipinCompositionMatcher(ReactionMatcher):
             return result
         
         # Index PG by composition
-        pg_by_composition: Dict[Tuple[int, int], List[LipidSpecies]] = {}
+        pg_by_composition: Dict[Tuple[int, int], List[LipidStructure]] = {}
         for pg in pg_species:
             key = (pg.total_carbons, pg.total_double_bonds)
             if key not in pg_by_composition:

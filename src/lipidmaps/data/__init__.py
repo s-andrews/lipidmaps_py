@@ -14,10 +14,15 @@ Main components:
 
 from .data_manager import DataManager
 from .models.sample import (
+    LipidAnnotation,
     LipidDataset,
     QuantifiedLipid,
     SampleMetadata,
     Quantitation,
+)
+from .utils.chain_parser import (
+    LipidStructure,
+    parse_lipid,
 )
 from .models.refmet import (
     RefMet
@@ -54,7 +59,7 @@ from .models.species_reaction import (
 from .utils.chain_parser import (
     AcylChain,
     ChainParser,
-    LipidSpecies,
+    LipidStructure,
     SphingoBackbone,
     # FA/FACoA utilities
     get_common_fa_names,
@@ -94,7 +99,7 @@ __all__ = [
     "SpeciesReactionPair",
     "AcylChain",
     "ChainParser",
-    "LipidSpecies",
+    "LipidStructure",
     "SphingoBackbone",
     # FA/FACoA utilities
     "get_common_fa_names",

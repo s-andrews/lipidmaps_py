@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Set
 from pydantic import BaseModel, Field, computed_field
 
 from .base import LipidmapsBaseModel
-from ..utils.chain_parser import LipidSpecies, AcylChain
+from ..utils.chain_parser import LipidStructure, AcylChain
 
 
 class CompoundRequirement(str, Enum):
@@ -98,8 +98,8 @@ class SpeciesReactionPair(LipidmapsBaseModel):
     
     Represents one specific reaction, e.g., PC(34:1) -> PA(34:1).
     """
-    reactant: LipidSpecies = Field(..., description="Reactant molecular species")
-    product: LipidSpecies = Field(..., description="Product molecular species")
+    reactant: LipidStructure = Field(..., description="Reactant molecular species")
+    product: LipidStructure = Field(..., description="Product molecular species")
     
     # Parent class reaction
     class_reaction: ClassReaction = Field(..., description="Parent class-level reaction")
@@ -150,12 +150,12 @@ class ReactionMatchResult(LipidmapsBaseModel):
         """Whether any valid pairs were found."""
         return len(self.pairs) > 0
     
-    def get_grouped_by_reactant(self) -> List[tuple[LipidSpecies, List[LipidSpecies]]]:
+    def get_grouped_by_reactant(self) -> List[tuple[LipidStructure, List[LipidStructure]]]:
         """Group product species by their reactant species.
         
         Returns list of (reactant, [products]) tuples.
         """
-        grouped: Dict[str, tuple[LipidSpecies, List[LipidSpecies]]] = {}
+        grouped: Dict[str, tuple[LipidStructure, List[LipidStructure]]] = {}
         for pair in self.pairs:
             key = pair.reactant.full_name
             if key not in grouped:
