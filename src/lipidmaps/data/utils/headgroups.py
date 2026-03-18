@@ -173,9 +173,6 @@ lipidmaps_headgroups = {
     "LPA O-": [
         "LMGP10060000"
     ],
-    "PA O-": [
-        "LMGP10020000"
-    ],
     "LPC O-": [
         "LMGP01060000"
     ],
@@ -278,36 +275,6 @@ lipidmaps_headgroups = {
     "DG P-": [
         "LMGL02040000"
     ],
-    "PE O-": [
-        "LMGP02020000"
-    ],
-    "PC O-": [
-        "LMGP01020000"
-    ],
-    "LPE O-": [
-        "LMGP02060000"
-    ],
-    "LPC O-": [
-        "LMGP01060000"
-    ],
-    "LPA O-": [
-        "LMGP10060000"
-    ],
-    "PE P-": [
-        "LMGP02030000"
-    ],
-    "PC P-": [
-        "LMGP01030000"
-    ],
-    "LPE P-": [
-        "LMGP02070000"
-    ],
-    "LPC P-": [
-        "LMGP01070000"
-    ],
-    "LPA P-": [
-        "LMGP10070000"
-    ],
     "GlcCer": [
         "LMSP0501AA00"
     ],
@@ -368,4 +335,8 @@ lipidmaps_headgroups = {
     "CE": [
         "LMST01020000"
     ]
+}
+
+lm_id_to_headgroup = {
+    lm_id: hg for hg, ids in lipidmaps_headgroups.items() for lm_id in ids
 }

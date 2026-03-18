@@ -18,7 +18,6 @@ from .models.reaction import ReactionData
 # import new ingestion and validation modules
 from .ingestion.csv_reader import CSVIngestion, CSVFormat
 from .validation.data_validator import DataValidator, ValidationReport
-from .utils.headgroups import lipidmaps_headgroups
 
 
 logger = logging.getLogger(__name__)

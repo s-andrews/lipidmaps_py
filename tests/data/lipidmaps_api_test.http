@@ -24,8 +24,8 @@ content-type: application/json
 {
     "search_mode": "default",
     "search_type": "all",
-    "generic_reactions": true,
-    "lmsd_ids": ["LMGP01010001", "LMGL02010000"]
+    "generic_reactions": false,
+    "lmsd_ids": ["LMFA07050000"]
 }
 
 ### Refmet lookup by names
@@ -33,7 +33,7 @@ POST https://www.metabolomicsworkbench.org/databases/refmet/name_to_refmet_new_m
 content-type: application/json
 
 {
-    "metabolite_name":"PC(16:0/18:1)\nCholesterol\nTAG(16:0/18:1/18:2)"
+    "metabolite_name":"acyl CoA\nPC(16:0/18:1)\nCholesterol\nTAG(16:0/18:1/18:2)"
 }
 
 ### LMSD lookup by lm_ids
