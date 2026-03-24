@@ -295,6 +295,35 @@ class LipidDataset(LipidmapsBaseModel):
     def list_lipid_names(self) -> List[str]:
         return [l.input_name for l in self.lipids]
 
+    def list_headgroups(self) -> List[str]:
+        headgroups = set()
+        for lipid in self.lipids:
+            hg = None
+            try:
+                if hasattr(lipid, "structure") and lipid.structure and getattr(lipid.structure, "headgroup", None):
+                    hg = lipid.structure.headgroup
+            except Exception:
+                hg = None
+            if hg is not None:
+                headgroups.add(hg)
+        return sorted(headgroups)
+    
+    def list_generic_lm_ids(self) -> List[str]:
+        generic_lm_ids = set()        
+        for lipid in self.lipids:
+            glid = getattr(lipid, "generic_lm_id", None)
+            if glid is not None:
+                generic_lm_ids.add(glid)
+        return list(generic_lm_ids)
+    
+    def generic_lm_ids_exist(self, generic_lm_ids: List[str]) -> bool:
+        existing = self.list_generic_lm_ids()
+        return all(glid in existing for glid in generic_lm_ids)
+    
+    def headgroups_exist(self, headgroups: List[str]) -> bool:
+        existing = self.list_headgroups()
+        return all(hg in existing for hg in headgroups)
+    
     def normalized_dataframe(self, method_key: str):
         """Return a pandas DataFrame of normalized values for `method_key`.
 
@@ -379,16 +408,8 @@ class LipidDataset(LipidmapsBaseModel):
                 structs.append(s)
         return structs
 
-    def get_structures_by_headgroup(self) -> Dict[str, List[LipidStructure]]:
-        """Group LipidStructure objects by headgroup.
-        
-        Returns:
-            Dict mapping headgroup names to lists of LipidStructure objects.
-            
-        Example:
-            >>> structures = dataset.get_structures_by_headgroup()
-            >>> pc_structures = structures.get('PC', [])
-        """
+    def get_structures_by_headgroup(self, headgroup: Optional[str] = None) -> Dict[str, List[LipidStructure]]:
+        """Group LipidStructure objects by headgroup, or filter by headgroup if supplied."""
         result: Dict[str, List[LipidStructure]] = {}
         for lipid in self.lipids:
             try:
@@ -396,10 +417,16 @@ class LipidDataset(LipidmapsBaseModel):
             except Exception:
                 s = None
             if s is None:
-                # skip lipids that have no parsed structure
                 continue
             hg = getattr(s, "headgroup", None) or "Unknown"
-            result.setdefault(hg, []).append(s)
+            if headgroup is not None:
+                if hg == headgroup:
+                    result.setdefault(hg, []).append(s)
+            else:
+                result.setdefault(hg, []).append(s)
+        if headgroup is not None:
+            # Only return the dict for the requested headgroup
+            return {headgroup: result.get(headgroup, [])}
         return result
 
     def fetch_reactions(self, lm_ids: List[str], reaction_type: Optional[str] = None, only_lipid_components: bool = True, taxonomy_group: Optional[str] = "all") -> List[ReactionData]:

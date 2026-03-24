@@ -67,6 +67,30 @@ class ReactionData(LipidmapsBaseModel):
     # Allow additional fields from API response
     model_config = {"extra": "allow"}
 
+    def list_generic_lm_ids(self) -> List[str]:
+        """List all generic_lm_ids from reactants and products."""
+        ids = set()
+        for comp in self.reactants + self.products:
+            if comp.compound_generic_lm_id or comp.compound_lm_id:
+                ids.add(comp.compound_generic_lm_id or comp.compound_lm_id)
+        return sorted(ids)
+    
+    def list_reactant_lm_ids(self) -> List[str]:
+        """List all lm_ids from reactants."""
+        ids = set()
+        for component in self.reactants:
+            if component.compound_lm_id:
+                ids.add(component.compound_lm_id)
+        return sorted(ids)
+    
+    def list_product_lm_ids(self) -> List[str]:
+        """List all lm_ids from products."""
+        ids = set()
+        for component in self.products:
+            if component.compound_lm_id:
+                ids.add(component.compound_lm_id)
+        return sorted(ids)
+
     def has_lm_main_components(self) -> bool:
         """Check if reaction has any lm_main compounds."""
         all_components = self.reactants + self.products
