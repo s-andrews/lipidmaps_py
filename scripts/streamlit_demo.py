@@ -195,6 +195,11 @@ def main():
                 value=st.session_state["show_validation_section"]
             )
 
+        # ---- RUN / DEBUG ----
+        with st.expander("Run demo locally", expanded=False):
+            st.markdown("Run the Streamlit demo using your virtual environment:")
+            st.code("source venv/bin/activate\nstreamlit run scripts/streamlit_demo.py", language="bash")
+
     # ---------------------- TABS ----------------------
     # If user requested All Reactions, load and run `scripts/reactions.py` as main content
     if st.session_state.get("show_all_reactions"):
@@ -216,7 +221,7 @@ def main():
         except Exception as e:
             st.error(f"Failed to load All Reactions page: {e}")
         return
-    tab_labels = ["Preview", "Processed", "Reactions", "Validation"]
+    tab_labels = ["Preview", "Processed", "Reactions", "Validation", "Parser"]
     tabs = st.tabs(tab_labels)
 
     tab_index = {name.lower(): i for i, name in enumerate(tab_labels)}
@@ -275,6 +280,34 @@ def main():
 
             # Track RefMet API status
             st.session_state["refmet_failed"] = getattr(dataset, "refmet_failed", False)
+
+            # Auto-refresh headgroup -> lipid-index mapping for UI convenience
+            try:
+                hg_map_idx = {}
+                for i, lipid in enumerate(dataset.lipids):
+                    try:
+                        s = lipid.structure
+                    except Exception:
+                        s = None
+                    if s is None:
+                        continue
+                    hg = getattr(s, "headgroup", None) or "Unknown"
+                    hg_map_idx.setdefault(hg, []).append(i)
+                st.session_state["hg_map_idx"] = hg_map_idx
+            except Exception:
+                # Non-fatal; mapping is only a convenience for the UI
+                pass
+
+            # If labels were supplied in the CSV, prefer them for sample groups
+            try:
+                if has_labels:
+                    for s in getattr(dataset, "samples", []) or []:
+                        lbl = getattr(s, "label", None)
+                        if lbl:
+                            s.group = lbl
+            except Exception:
+                # non-fatal UI convenience
+                pass
 
             st.rerun()   # important
 
@@ -429,7 +462,38 @@ def main():
 
             # Simple per-sample listing using dataset helper
             st.subheader("Per-sample lipid values")
-            sample_opts = dataset.list_sample_names() if getattr(dataset, 'samples', None) else []
+            # Show experimental conditions (groups) and allow filtering samples by condition
+            try:
+                conds = sorted({(s.group or "Unknown") for s in (dataset.samples or [])})
+            except Exception:
+                conds = []
+
+            cond_sel = None
+            if conds:
+                cond_sel = st.selectbox("Filter by condition (group)", ["(all)"] + conds, key="condition_select")
+
+            # Build sample options, optionally filtered by selected condition
+            try:
+                if cond_sel and cond_sel != "(all)":
+                    sample_opts = [s.sample_name for s in dataset.samples if (s.group or "Unknown") == cond_sel]
+                else:
+                    sample_opts = dataset.list_sample_names() if getattr(dataset, 'samples', None) else []
+            except Exception:
+                sample_opts = dataset.list_sample_names() if getattr(dataset, 'samples', None) else []
+
+            # If labels were read from CSV, display them alongside sample names
+            try:
+                sample_rows = []
+                for s in (dataset.samples or []):
+                    if sample_opts and s.sample_name not in sample_opts:
+                        continue
+                    sample_rows.append({"sample_name": s.sample_name, "group": getattr(s, 'group', None), "label": getattr(s, 'label', None)})
+                if sample_rows:
+                    st.write("Sample metadata")
+                    st.dataframe(pd.DataFrame(sample_rows), hide_index=True)
+            except Exception:
+                pass
+
             if sample_opts:
                 sample_sel = st.selectbox("Select sample to list lipid values", sample_opts, key="sample_list_select")
                 data = dataset.get_lipid_values_for_samples(sample_sel)
@@ -584,6 +648,9 @@ def main():
                         st.info(desc)
                 except Exception:
                     pass
+
+    # Parser tab moved to avoid interfering with surrounding try/except blocks.
+    # The interactive parser UI will be rendered just before the Validation tab.
 
                 internal_std = None
                 if sel_method == NormalizationMethod.INTERNAL_STANDARD:
@@ -1050,10 +1117,172 @@ def main():
                 else:
                     st.info("No lipids in the dataset have reactions.")
 
+            # Reaction-level quantitation: z-scores between two groups
+            try:
+                if dataset and getattr(dataset, 'reactions', None):
+                    st.subheader("Reaction-level comparison (z-scores)")
+                    from lipidmaps.data.quantitation import QuantitationAnalyzer
+                    analyzer = QuantitationAnalyzer(dataset=dataset)
+                    groups = sorted({analyzer._sample_group_name(s) for s in dataset.samples})
+                    if len(groups) >= 2:
+                        g1 = st.selectbox("Group 1 (numerator)", groups, key="rx_g1")
+                        g2 = st.selectbox("Group 2 (denominator)", [g for g in groups if g != g1], key="rx_g2")
+                        method = st.selectbox("Flux method", ["ratio", "difference"], index=0, key="rx_method")
+                        if st.button("Compute reaction z-scores", key="compute_rx_z"):
+                            try:
+                                rz = analyzer.reaction_zscores(g1, g2, method=method)
+                                if not rz:
+                                    st.info("No reaction flux data available for selected groups.")
+                                else:
+                                    rows = []
+                                    for rid, info in rz.items():
+                                        rows.append({
+                                            "reaction_id": rid,
+                                            "reaction_name": info.get("reaction_name"),
+                                            "group1_mean": info.get("group1_mean"),
+                                            "group2_mean": info.get("group2_mean"),
+                                            "zscore": info.get("zscore"),
+                                            "n1": info.get("n1"),
+                                            "n2": info.get("n2"),
+                                        })
+                                    df_rz = pd.DataFrame(rows)
+                                    try:
+                                        df_rz = df_rz.sort_values(by='zscore', key=lambda s: s.abs(), ascending=False)
+                                    except Exception:
+                                        pass
+                                    st.dataframe(df_rz, hide_index=True)
+                                    try:
+                                        csv_bytes = df_rz.to_csv(index=False).encode('utf-8')
+                                        st.download_button(
+                                            "Download z-scores CSV",
+                                            data=csv_bytes,
+                                            file_name=f"reaction_zscores_{g1}_vs_{g2}_{method}.csv",
+                                            mime="text/csv",
+                                        )
+                                    except Exception:
+                                        pass
+                            except Exception as e:
+                                st.error(f"Failed to compute reaction z-scores: {e}")
+                    else:
+                        st.info("Need at least two groups in dataset to compute reaction comparisons.")
+            except Exception:
+                pass
+
 
     # --------------------------------------------------------------
     # VALIDATION TAB
     # --------------------------------------------------------------
+    # Insert Parser tab just before Validation to avoid nesting issues
+    with tabs[tab_index["parser"]]:
+        st.subheader("Lipid Parser Tester")
+        st.write("Enter a lipid species name to parse using the ChainParser.")
+        parser_input = st.text_input("Lipid name", value="PC 16:0_18:1", key="parser_input")
+        parse_now = st.button("Parse", key="parser_parse")
+        if parse_now:
+            try:
+                from lipidmaps.data.utils.chain_parser import parse_lipid, ChainParser
+
+                parsed = parse_lipid(parser_input)
+                # Prefer pydantic v2 model_dump, fall back to dict()
+                try:
+                    parsed_dict = parsed.model_dump()
+                except Exception:
+                    try:
+                        parsed_dict = parsed.dict()
+                    except Exception:
+                        parsed_dict = str(parsed)
+
+                st.json(parsed_dict)
+
+                # show available headgroups for reference
+                try:
+                    hgs = list(ChainParser.HEADGROUPS)
+                    st.expander("Available headgroups (from headgroups.py)", expanded=False).write(hgs)
+                except Exception:
+                    pass
+            except Exception as e:
+                st.error(f"Parser failed: {e}")
+
+        # If a dataset is loaded, offer the option to summarize parsed structures
+        if st.session_state.get("dataset") is not None:
+            ds = st.session_state.get("dataset")
+            # Build and store a lightweight mapping: headgroup -> list of lipid indices
+            if st.button("Refresh structures by headgroup", key="get_struct_by_hg"):
+                try:
+                    hg_map_idx = {}
+                    for i, lipid in enumerate(ds.lipids):
+                        try:
+                            s = lipid.structure
+                        except Exception:
+                            s = None
+                        if s is None:
+                            continue
+                        hg = getattr(s, "headgroup", None) or "Unknown"
+                        hg_map_idx.setdefault(hg, []).append(i)
+
+                    st.session_state["hg_map_idx"] = hg_map_idx
+                except Exception as e:
+                    st.error(f"Failed to build headgroup mapping: {e}")
+
+            # Allow clearing the mapping explicitly
+            if st.button("Clear headgroup mapping", key="clear_hg_map"):
+                if "hg_map_idx" in st.session_state:
+                    st.session_state.pop("hg_map_idx", None)
+                    st.success("Headgroup mapping cleared.")
+                else:
+                    st.info("No headgroup mapping to clear.")
+
+            # If a mapping exists in session state, render it persistently so selections survive reruns
+            hg_map_idx = st.session_state.get("hg_map_idx")
+            if hg_map_idx:
+                try:
+                    summary = {hg: len(v) for hg, v in hg_map_idx.items()}
+                    df_summary = pd.DataFrame(list(summary.items()), columns=["headgroup", "count"]).sort_values("count", ascending=False)
+                    st.subheader("Structures by headgroup")
+                    st.dataframe(df_summary, hide_index=True)
+
+                    sel = st.selectbox("Select headgroup to list structures", ["(all)"] + sorted(list(hg_map_idx.keys())), key="hg_map_select")
+                    if sel and sel != "(all)":
+                        indices = hg_map_idx.get(sel, [])
+                        liprows = []
+                        for idx in indices:
+                            try:
+                                lip = ds.lipids[idx]
+                            except Exception:
+                                continue
+                            reactions = []
+                            for r in getattr(lip, "reactions", []) or []:
+                                reactions.append(getattr(r, "reaction_name", None) or getattr(r, "reaction_id", None))
+                            liprows.append({
+                                "index": idx,
+                                "input_name": getattr(lip, "input_name", None),
+                                "lm_id": getattr(lip, "lm_id", None),
+                                "generic_lm_id": getattr(lip, "generic_lm_id", None),
+                                "reactions_count": len(reactions),
+                                "reactions": ", ".join([r for r in reactions if r])
+                            })
+                        if liprows:
+                            st.subheader(f"Lipids in headgroup: {sel}")
+                            st.dataframe(pd.DataFrame(liprows), hide_index=True)
+                        else:
+                            st.info(f"No lipids or reactions for headgroup {sel}.")
+                    else:
+                        # show brief sample of structures for all headgroups
+                        sample_rows = []
+                        for hg, indices in list(hg_map_idx.items())[:50]:
+                            examples = []
+                            for idx in indices[:3]:
+                                try:
+                                    s = ds.lipids[idx].standardized_name or ds.lipids[idx].input_name
+                                except Exception:
+                                    s = None
+                                if s:
+                                    examples.append(s)
+                            sample_rows.append({"headgroup": hg, "examples": examples})
+                        st.dataframe(pd.DataFrame(sample_rows), hide_index=True)
+                except Exception as e:
+                    st.error(f"Failed to display headgroup mapping: {e}")
+
     with tabs[tab_index["validation"]]:
         if not st.session_state["show_validation_section"]:
             st.info("Validation report is hidden.")

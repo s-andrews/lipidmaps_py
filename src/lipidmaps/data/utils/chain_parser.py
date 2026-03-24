@@ -10,6 +10,7 @@ from enum import Enum
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from pydantic import BaseModel, Field, field_validator, computed_field
+from .headgroups import lipidmaps_headgroups
 
 if TYPE_CHECKING:
     from lipidmaps.data.models.reaction import ReactionData
@@ -120,32 +121,8 @@ class ChainParser:
     """Parser for lipid species nomenclature."""
     
     # Headgroup patterns - order matters (longer matches first)
-    HEADGROUPS = [
-        # Ether lipids (must come before standard)
-        "O-PC", "O-PE", "O-PS", "O-PI", "O-PG", "O-PA",
-        "P-PC", "P-PE", "P-PS", "P-PI", "P-PG", "P-PA",
-        "O-LPC", "O-LPE", "O-LPS", "O-LPI", "O-LPG", "O-LPA",
-        "P-LPC", "P-LPE", "P-LPS", "P-LPI", "P-LPG", "P-LPA",
-        "O-DG", "O-MG",
-        # Standard glycerophospholipids
-        "PC", "PE", "PS", "PI", "PG", "PA", "CL",
-        "LPC", "LPE", "LPS", "LPI", "LPG", "LPA",
-        "PIP", "PIP2", "PIP3",
-        # Glycerolipids
-        "DG", "TG", "MG", "DAG", "TAG", "MAG",
-        # Sphingolipids
-        "dhCer", "dhSM", "dhSPB", "dhSPBP",
-        "Cer", "SM", "SPB", "SPBP", "SPC",
-        "Cer1P", "dhCer1P",
-        "Hex-Cer", "Hex-dhCer", "Glc-Cer", "Gal-Cer",
-        "Lac-Cer", "Lac-dhCer",
-        "Gal-SPB",
-        # Sterols
-        "CE", "ST",
-        # Fatty acids and acyl compounds
-        "FA", "FaCoA", "FACoA", "FACOA", "CAR","CoA"
-    ]
-    
+    HEADGROUPS = list(lipidmaps_headgroups.keys())
+
     # Sphingoid backbone prefixes
     SPHINGO_PREFIXES = {"d", "t", "m"}
     

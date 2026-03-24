@@ -14,7 +14,6 @@ from datetime import datetime
 from .reaction import ReactionData, CompoundComponent, ReactionChecker
 from ...config import LMSD_REACTIONS_BASE_URL
 from ..validation.data_validator import DataValidator, ValidationReport
-from lipidmaps.data.utils.chain_parser import LipidStructure, StructureLevel, parse_lipid
 
 
 
@@ -370,7 +369,15 @@ class LipidDataset(LipidmapsBaseModel):
         Returns:
             List of LipidStructure objects for all lipids in the dataset.
         """
-        return [lipid.structure for lipid in self.lipids]
+        structs: List[LipidStructure] = []
+        for lipid in self.lipids:
+            try:
+                s = lipid.structure
+            except Exception:
+                s = None
+            if s is not None:
+                structs.append(s)
+        return structs
 
     def get_structures_by_headgroup(self) -> Dict[str, List[LipidStructure]]:
         """Group LipidStructure objects by headgroup.
@@ -384,11 +391,53 @@ class LipidDataset(LipidmapsBaseModel):
         """
         result: Dict[str, List[LipidStructure]] = {}
         for lipid in self.lipids:
-            hg = lipid.structure.headgroup
-            if hg not in result:
-                result[hg] = []
-            result[hg].append(lipid.structure)
+            try:
+                s = lipid.structure
+            except Exception:
+                s = None
+            if s is None:
+                # skip lipids that have no parsed structure
+                continue
+            hg = getattr(s, "headgroup", None) or "Unknown"
+            result.setdefault(hg, []).append(s)
         return result
+
+    def fetch_reactions(self, lm_ids: List[str], reaction_type: Optional[str] = None, only_lipid_components: bool = True, taxonomy_group: Optional[str] = "all") -> List[ReactionData]:
+        """
+        Fetch reactions for a list of LM IDs using the ReactionChecker API.
+
+        This is a focused helper which only performs the network call and
+        returns a deduplicated list of ReactionData objects. It does NOT
+        mutate the dataset or annotate lipids.
+        """
+        if not lm_ids:
+            return []
+
+        try:
+            checker = ReactionChecker(base_url=LMSD_REACTIONS_BASE_URL)
+            response = checker.check_reactions(
+                lm_ids=lm_ids,
+                generic_reactions=False,
+                reaction_type=("class-level" if reaction_type is None else reaction_type),
+                only_lipid_components=only_lipid_components,
+                taxonomy_group=taxonomy_group,
+            )
+            reactions = getattr(response, "reactions", []) or []
+
+            # Deduplicate by id
+            reaction_dict = {}
+            for reaction in reactions:
+                rid = getattr(reaction, "reaction_id", None) or getattr(reaction, "id", None)
+                if rid is None:
+                    continue
+                rid = str(rid)
+                if rid not in reaction_dict:
+                    reaction_dict[rid] = reaction
+
+            return list(reaction_dict.values())
+        except Exception:
+            logger.exception("Failed to fetch reactions from ReactionChecker API.")
+            return []
 
 
 
@@ -423,7 +472,7 @@ class LipidDataset(LipidmapsBaseModel):
 
         return [l for l in self.lipids if combined.matches(l)]
 
-    def fetch_reactions_by_lm_id(self, reaction_type: Optional[str] = None, only_lipid_components: bool = True, taxonomy_group: Optional[str] = "all") -> List[ReactionData]:
+    def fetch_reactions_by_lm_id(self, reaction_type: Optional[str] = None, only_lipid_components: bool = True, taxonomy_group: Optional[str] = "all", annotate_lipids: bool = True, annotate_using_evaluator: bool = True) -> List[ReactionData]:
         """
         Fetch reactions for LM IDs present in this dataset using the ReactionChecker API.
         Attaches the fetched reactions to `self.reactions` and annotates lipids in-place.
@@ -439,31 +488,15 @@ class LipidDataset(LipidmapsBaseModel):
             self.reactions = []
             return []
 
-        try:
-            checker = ReactionChecker(base_url=LMSD_REACTIONS_BASE_URL)
-            response = checker.check_reactions(
-                lm_ids=lm_ids,
-                generic_reactions=False,
-                reaction_type=("class-level" if reaction_type is None else reaction_type),
-                only_lipid_components=only_lipid_components,
-                taxonomy_group=taxonomy_group
-            )
-            reactions = getattr(response, "reactions", []) or []
-            logger.info(f"Fetched {len(reactions)} reactions from ReactionChecker API.")
-            # logger.debug(f"Reaction fetching parameters: lm_ids={lm_ids}, reaction_type={reaction_type}, only_lipid_components={only_lipid_components}, taxonomy_group={taxonomy_group}")
-            # Deduplicate reactions by id and assign to dataset
-            reaction_dict = {}
-            for reaction in reactions:
-                rid = getattr(reaction, "reaction_id", None) or getattr(reaction, "id", None)
-                if rid is None:
-                    continue
-                rid = str(rid)
-                if rid not in reaction_dict:
-                    reaction_dict[rid] = reaction
+        # Use the focused helper to perform the network fetch and deduplication
+        reactions = self.fetch_reactions(lm_ids=lm_ids, reaction_type=reaction_type, only_lipid_components=only_lipid_components, taxonomy_group=taxonomy_group)
+        logger.info(f"Fetched {len(reactions)} reactions from ReactionChecker API.")
 
-            self.reactions = list(reaction_dict.values())
+        # Assign to dataset
+        self.reactions = reactions
 
-            # Annotate lipids with matching reactions
+        if annotate_lipids and reactions:
+            # Annotate lipids with matching reactions (simple LM ID matching)
             for lipid in self.lipids:
                 lipid_ids = set()
                 if getattr(lipid, "lm_id", None):
@@ -496,7 +529,7 @@ class LipidDataset(LipidmapsBaseModel):
 
                 lipid.reactions = matched_reactions if matched_reactions else None
 
-            # Annotate using centralized ReactionEvaluator
+        if annotate_using_evaluator and self.reactions:
             try:
                 from ..utils.reaction_evaluator import ReactionEvaluator
 
@@ -505,11 +538,7 @@ class LipidDataset(LipidmapsBaseModel):
             except Exception:
                 logger.exception("ReactionEvaluator failed; leaving reactions unannotated")
 
-            return self.reactions
-        except Exception:
-            logger.exception("Failed to fetch reactions from ReactionChecker API.")
-            self.reactions = []
-            return []
+        return self.reactions
 
     def get_lipids_for_component(self, component: CompoundComponent) -> List[QuantifiedLipid]:
         """
