@@ -20,180 +20,83 @@ class ReactionEvaluator:
         for r in reactions:
             try:
                 res = self.evaluate_reaction(r, dataset=dataset)
-                print(f"Evaluated reaction {r.reaction_id}: possible={res.get('possible', False)}, explanation={res.get('explanation', '')}")
+                if res.get('possible', False):
+                    print(f"Evaluated reaction {r.reaction_id}: possible={res.get('possible', False)}, explanation={res.get('explanation', '')}")
             except Exception as e:
                 # ensure reactions are always annotated even if evaluator errors
-                setattr(r, "possible", False)
-                setattr(r, "possible_explanation", f"error_evaluating:{e}")
-                setattr(r, "evaluation", {"possible": False, "explanation": f"error_evaluating:{e}"})
-            else:
-                setattr(r, "possible", res.get("possible", False))
-                setattr(r, "possible_explanation", res.get("explanation", ""))
-                # also attach the full evaluation dict for UI selection / detailed view
-                try:
-                    setattr(r, "evaluation", res)
-                except Exception:
-                    # best-effort: evaluation may be non-serializable; fall back to basic fields
-                    setattr(r, "evaluation", {"possible": res.get("possible", False), "explanation": res.get("explanation", "")})
-
+                print(f"Error evaluating reaction {r.reaction_id}: {str(e)}")
+                r.possible = False
+    
     def evaluate_reaction(self, reaction: ReactionData, dataset: Optional[Any] = None) -> Dict[str, Any]:
         """
         For each reactant and product generic_lm_id, check which species in the dataset can participate in the reaction.
         Return a dict with possible species for each reactant/product.
         """
         reasons: List[str] = []
-        possible = True
+        possible = False
         pairs_info: List[Dict[str, Any]] = []
         possible_species: Dict[str, List[str]] = {"reactants": [], "products": []}
 
         #STEP 1: Build lookup for dataset species by generic_lm_id
-        
         reaction_gids = set(reaction.list_generic_lm_ids())
         generic_lm_ids_exist = dataset.generic_lm_ids_exist(list(reaction_gids)) if dataset else False
         if not generic_lm_ids_exist:
             return {"possible": False, "explanation": "Missing generic_lm_id for reactants/products in dataset."}
 
+        print(f"Looking at reaction {reaction.reaction_id} - {reaction.reaction_name} with generic LM IDs: {reaction_gids}")
+        if reaction.reaction_id == 33:
+            main_product = next((compound for compound in reaction.products if getattr(compound, "compound_name", None) == "LPC"), None)
+            product_lipids = dataset.get_lipids_for_component(main_product)
+            for lipid in product_lipids:
+                print(f"Product lipid: {lipid.standardized_name}\n {lipid.structure}")
         #STEP 2: For reactions with 1 reactant lipid and 1 product lipid
         if len(reaction.list_reactant_lm_ids()) == 1 and len(reaction.list_product_lm_ids()) == 1:
-            # print(f"Reactant : {reaction.reaction_id} - {reaction.reaction_name}")
-            # Find the first reactant with compound_type == 'lm_main'
             main_reactant = next((compound for compound in reaction.reactants if getattr(compound, "compound_type", None) == "lm_main"), None)
-            component_lipids = dataset.get_lipids_for_component(main_reactant) if dataset and main_reactant else []
-            if component_lipids:
-                print(f" Reactant lipids: {', '.join([lipid.standardized_name for lipid in component_lipids[:5]])}")  # Print first 5 lipids for inspection
-            else:
-                print(f"No lipids found in dataset for component {getattr(main_reactant, 'compound_name', 'None')}.")
+            reactant_lipids = dataset.get_lipids_for_component(main_reactant) if dataset and main_reactant else []
+            if reactant_lipids:
+                print(f" Reactant lipids: {', '.join([lipid.standardized_name for lipid in reactant_lipids[:5]])}")
 
             main_product = next((compound for compound in reaction.products if getattr(compound, "compound_type", None) == "lm_main"), None)
             product_lipids = dataset.get_lipids_for_component(main_product) if dataset and main_product else []
             if product_lipids:
-                print(f" Product lipids: {', '.join([lipid.standardized_name for lipid in product_lipids[:5]])}")  # Print first 5 lipids for inspection
-            else:
-                print(f"No lipids found in dataset for product {getattr(main_product, 'compound_name', 'None')}.")
-        #STEP 3: For each reactant and product, determine possible species based on headgroup reaction rules and dataset species under the same generic_lm_id
+                print(f" Product lipids: {', '.join([lipid.standardized_name for lipid in product_lipids[:5]])}")
 
-        # Build lookup for dataset species by generic_lm_id
-        dataset_lipids = getattr(dataset, "lipids", []) if dataset else []
-        generic_id_to_species = {}
-        for lipid in dataset_lipids:
-            generic_id = getattr(lipid, "generic_lm_id", None)
-            if generic_id:
-                generic_id_to_species.setdefault(generic_id, []).append(lipid)
+            
+            for reactant_lipid in reactant_lipids:
+                reactant_headgroup = getattr(reactant_lipid.structure, "headgroup", None)
+                reactant_input_name = getattr(reactant_lipid.structure, "input_name", None) 
+                reactant_rule = self.rules.get("headgroup_reactions", {}).get(reactant_headgroup, {})
+                reactant_chains = getattr(reactant_lipid.structure, "chains", [])
+                reactant_total_carbons = getattr(reactant_lipid.structure, "total_carbons", 0)
+                reactant_total_double_bonds = getattr(reactant_lipid.structure, "total_double_bonds", 0)
+                reactant_linkage_type = getattr(reactant_lipid.structure, "linkage_type", None)
+                for product_lipid in product_lipids:
+                    product_headgroup = getattr(product_lipid.structure, "headgroup", None)
+                    if product_headgroup in reactant_rule.get("can_convert_to", []) or []:
+                        product_input_name = getattr(product_lipid.structure, "input_name", None)
+                        product_rule = self.rules.get("headgroup_reactions", {}).get(product_headgroup, {})
+                        product_chains = getattr(product_lipid.structure, "chains", [])
+                        product_total_carbons = getattr(product_lipid.structure, "total_carbons", 0)
+                        product_total_double_bonds = getattr(product_lipid.structure, "total_double_bonds", 0)
+                        product_linkage_type = getattr(product_lipid.structure, "linkage_type", None)
 
-        def _get_val(compound, field: str):
-            if compound is None:
-                return None
-            if isinstance(compound, dict):
-                return compound.get(field)
-            return getattr(compound, field, None)
+                        #CONDITION 1 IF BOTH ESTER LINKAGE: Check if acyl chain count matches rule requirement (if specified)
+                        if reactant_linkage_type == "ester" and product_linkage_type == "ester":
+                            if reactant_total_carbons == product_total_carbons and reactant_total_double_bonds == product_total_double_bonds:
+                                possible = True
+                                reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
+                                pairs_info.append({
+                                    "reactant_lipid": reactant_lipid.standardized_name,
+                                    "product_lipid": product_lipid.standardized_name,
+                                    "reactant_headgroup": reactant_headgroup,
+                                    "product_headgroup": product_headgroup
+                                })
+        else:
+            pass
 
-        def _get_headgroup_from_compound(compound) -> Optional[str]:
-            if not compound:
-                return None
-            generic_lm_id = _get_val(compound, "compound_generic_lm_id")
-            if generic_lm_id:
-                hg = lm_id_to_headgroup.get(generic_lm_id)
-                if hg:
-                    return hg
-            lm_id = _get_val(compound, "compound_lm_id")
-            if lm_id:
-                hg = lm_id_to_headgroup.get(lm_id)
-                if hg:
-                    return hg
-            hg = _get_val(compound, "compound_headgroup")
-            if hg:
-                return hg
-            return None
-
-        def _get_linkage_from_compound(compound) -> Optional[str]:
-            if not compound:
-                return None
-            hg = _get_headgroup_from_compound(compound) or _get_val(compound, "compound_headgroup") or _get_val(compound, "compound_abbrev") or  _get_val(compound, "compound_name") or ""
-            if hg:
-                if "P-" in hg:
-                    return "ether_vinyl"
-                if "O-" in hg:
-                    return "ether_alkyl"
-                hg_lower = hg.lower()
-                if hg_lower.startswith("cer") or hg_lower.startswith("sm") or hg_lower.startswith("dhcer"):
-                    return "amide"
-            return "ester"
-
-        def _chain_count_from_compound(compound) -> Optional[int]:
-            if not compound:
-                return None
-
-            # Use chain parser for robust chain counting
-            from .chain_parser import parse_lipid
-            text = _get_val(compound, "compound_abbrev") or _get_val(compound, "compound_name") or _get_val(compound, "compound_full_struct") or ""
-            if text:
-                parsed = parse_lipid(text)
-                if parsed and hasattr(parsed, "chains"):
-                    return len(parsed.chains)
-            return None
-
-        # For each reactant, check which dataset species under its generic_lm_id can participate
-        for react in reaction.reactants:
-            gid = _get_val(react, "compound_generic_lm_id") or _get_val(react, "compound_lm_id")
-            if not gid or gid not in generic_id_to_species:
-                continue
-            hg = _get_headgroup_from_compound(react)
-            rules = self.rules.get("headgroup_reactions", {}).get(hg, {})
-            conv = rules.get("conversion_rules", {}) or {}
-            # For each product, check conversion
-            for prod in reaction.products:
-                hp = _get_headgroup_from_compound(prod)
-                rule = conv.get(hp)
-                if not rule:
-                    continue
-                # For each species under this generic_lm_id, check if it matches rule requirements
-                for lip in generic_id_to_species[gid]:
-                    # Build a fake comp dict from lipid species for checking
-                    comp = lip.__dict__ if hasattr(lip, "__dict__") else lip
-                    # Check acyl chain count if required
-                    req_ch = rule.get("required_acyl_chains")
-                    if req_ch is not None:
-                        rc = _chain_count_from_compound(comp)
-                        if rc is None or rc != req_ch:
-                            continue
-                    # Check linkage if required
-                    if rule.get("require_same_linkage", True):
-                        lr = _get_linkage_from_compound(comp) or rules.get("linkage_type")
-                        lp = _get_linkage_from_compound(prod) or self.rules.get("headgroup_reactions", {}).get(hp, {}).get("linkage_type")
-                        if lr and lp and lr != lp:
-                            continue
-                    # If all checks pass, add species lm_id
-                    possible_species["reactants"].append(getattr(lip, "lm_id", str(lip)))
-
-        # Repeat for products
-        for prod in reaction.products:
-            gid = _get_val(prod, "compound_generic_lm_id") or _get_val(prod, "compound_lm_id")
-            if not gid or gid not in generic_id_to_species:
-                continue
-            hp = _get_headgroup_from_compound(prod)
-            rules = self.rules.get("headgroup_reactions", {}).get(hp, {})
-            conv = rules.get("conversion_rules", {}) or {}
-            for react in reaction.reactants:
-                hr = _get_headgroup_from_compound(react)
-                rule = conv.get(hr)
-                if not rule:
-                    continue
-                for lip in generic_id_to_species[gid]:
-                    comp = lip.__dict__ if hasattr(lip, "__dict__") else lip
-                    req_ch = rule.get("required_acyl_chains")
-                    if req_ch is not None:
-                        pc = _chain_count_from_compound(comp)
-                        if pc is None or pc != req_ch:
-                            continue
-                    if rule.get("require_same_linkage", True):
-                        lp = _get_linkage_from_compound(comp) or rules.get("linkage_type")
-                        lr = _get_linkage_from_compound(react) or self.rules.get("headgroup_reactions", {}).get(hr, {}).get("linkage_type")
-                        if lr and lp and lr != lp:
-                            continue
-                    possible_species["products"].append(getattr(lip, "lm_id", str(lip)))
-
-        evaluation: Dict[str, Any] = {"possible": bool(possible_species["reactants"] or possible_species["products"])}
+        evaluation: Dict[str, Any] = {"possible": possible, "reasons": reasons, "pairs_info": pairs_info}
         evaluation["possible_species"] = possible_species
+
         if not evaluation["possible"]:
             evaluation["explanation"] = "No matching species in dataset for this reaction."
         else:

@@ -18,10 +18,11 @@ lipid_reaction_rules: Dict[str, Any] = {
             "linkage_type": "ester",
             "acyl_chains": 2,
             "mass_shift": 165.0555,
-            "can_convert_to": ["PA", "LPC", "DAG", "SM"],
+            "can_convert_to": ["PA","PS", "LPC", "DAG", "SM"],
             "conversion_rules": {
                 "LPC": {"required_compound": "fa", "required_acyl_chains": 1,
-                        "is_molspecies": False, "require_same_linkage": True}
+                        "is_molspecies": False, "require_same_linkage": True},
+                "PS": {"required_acyl_chains": 2, "is_molspecies": False, "require_same_linkage": True}
             }
         },
         "LPC": {
