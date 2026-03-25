@@ -20,6 +20,7 @@ class ReactionEvaluator:
         for r in reactions:
             try:
                 res = self.evaluate_reaction(r, dataset=dataset)
+                print(f"Evaluated reaction {r.reaction_id}: possible={res.get('possible', False)}, explanation={res.get('explanation', '')}")
             except Exception as e:
                 # ensure reactions are always annotated even if evaluator errors
                 setattr(r, "possible", False)
@@ -50,26 +51,23 @@ class ReactionEvaluator:
         reaction_gids = set(reaction.list_generic_lm_ids())
         generic_lm_ids_exist = dataset.generic_lm_ids_exist(list(reaction_gids)) if dataset else False
         if not generic_lm_ids_exist:
-            return {"possible": False, "explanation": "One or more generic_lm_id in reaction not found in dataset."}
+            return {"possible": False, "explanation": "Missing generic_lm_id for reactants/products in dataset."}
 
         #STEP 2: For reactions with 1 reactant lipid and 1 product lipid
         if len(reaction.list_reactant_lm_ids()) == 1 and len(reaction.list_product_lm_ids()) == 1:
-            print("Reaction has 1 reactant and 1 product with generic_lm_id.")
-            print(f"Reactant : {reaction.reaction_id} - {reaction.reaction_name}")
+            # print(f"Reactant : {reaction.reaction_id} - {reaction.reaction_name}")
             # Find the first reactant with compound_type == 'lm_main'
             main_reactant = next((compound for compound in reaction.reactants if getattr(compound, "compound_type", None) == "lm_main"), None)
             component_lipids = dataset.get_lipids_for_component(main_reactant) if dataset and main_reactant else []
             if component_lipids:
-                print(f"Dataset has {len(component_lipids)} lipids for component {getattr(main_reactant, 'compound_name', 'None')}.")
-                print([lipid.standardized_name for lipid in component_lipids[:5]])  # Print first 5 lipids for inspection
+                print(f" Reactant lipids: {', '.join([lipid.standardized_name for lipid in component_lipids[:5]])}")  # Print first 5 lipids for inspection
             else:
                 print(f"No lipids found in dataset for component {getattr(main_reactant, 'compound_name', 'None')}.")
 
             main_product = next((compound for compound in reaction.products if getattr(compound, "compound_type", None) == "lm_main"), None)
             product_lipids = dataset.get_lipids_for_component(main_product) if dataset and main_product else []
             if product_lipids:
-                print(f"Dataset has {len(product_lipids)} lipids for product {getattr(main_product, 'compound_name', 'None')}.")
-                print([lipid.standardized_name for lipid in product_lipids[:5]])  # Print first 5 lipids for inspection
+                print(f" Product lipids: {', '.join([lipid.standardized_name for lipid in product_lipids[:5]])}")  # Print first 5 lipids for inspection
             else:
                 print(f"No lipids found in dataset for product {getattr(main_product, 'compound_name', 'None')}.")
         #STEP 3: For each reactant and product, determine possible species based on headgroup reaction rules and dataset species under the same generic_lm_id
@@ -124,13 +122,7 @@ class ReactionEvaluator:
         def _chain_count_from_compound(compound) -> Optional[int]:
             if not compound:
                 return None
-            # Prefer explicit chain count if present
-            cab = _get_val(compound, "compound_abbrev_chains")
-            if cab:
-                try:
-                    return int(cab)
-                except Exception:
-                    pass
+
             # Use chain parser for robust chain counting
             from .chain_parser import parse_lipid
             text = _get_val(compound, "compound_abbrev") or _get_val(compound, "compound_name") or _get_val(compound, "compound_full_struct") or ""
@@ -142,7 +134,7 @@ class ReactionEvaluator:
 
         # For each reactant, check which dataset species under its generic_lm_id can participate
         for react in reaction.reactants:
-            gid = _get_val(react, "compound_generic_lm_id")
+            gid = _get_val(react, "compound_generic_lm_id") or _get_val(react, "compound_lm_id")
             if not gid or gid not in generic_id_to_species:
                 continue
             hg = _get_headgroup_from_compound(react)
@@ -175,7 +167,7 @@ class ReactionEvaluator:
 
         # Repeat for products
         for prod in reaction.products:
-            gid = _get_val(prod, "compound_generic_lm_id")
+            gid = _get_val(prod, "compound_generic_lm_id") or _get_val(prod, "compound_lm_id")
             if not gid or gid not in generic_id_to_species:
                 continue
             hp = _get_headgroup_from_compound(prod)
@@ -208,16 +200,4 @@ class ReactionEvaluator:
             evaluation["explanation"] = f"Possible reactant species: {possible_species['reactants']}; Possible product species: {possible_species['products']}"
         return evaluation
 
-    def all_generic_ids_present(self, reaction: ReactionData, dataset: Optional[Any]) -> bool:
-        """
-        Return True if all generic_lm_id's in reactants and products are present in the dataset.
-        """
-        if not dataset or not hasattr(dataset, "lipids"):
-            return False
-        dataset_gids = {getattr(l, "generic_lm_id", None) for l in dataset.lipids if getattr(l, "generic_lm_id", None)}
-        reaction_gids = set()
-        for comp in (getattr(reaction, "reactants", []) + getattr(reaction, "products", [])):
-            gid = getattr(comp, "compound_generic_lm_id", None)
-            if gid:
-                reaction_gids.add(gid)
-        return reaction_gids.issubset(dataset_gids)
+
