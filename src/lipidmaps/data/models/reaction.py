@@ -75,19 +75,19 @@ class ReactionData(LipidmapsBaseModel):
                 ids.add(comp.compound_generic_lm_id or comp.compound_lm_id)
         return sorted(ids)
     
-    def list_reactant_lm_ids(self) -> List[str]:
+    def list_nonfa_noncoa_reactant_lm_ids(self) -> List[str]:
         """List all lm_ids from reactants."""
         ids = set()
         for component in self.reactants:
-            if component.compound_lm_id:
+            if component.compound_lm_id and not (component.compound_lm_id == "LMFA01010000" or component.compound_lm_id == "LMFA07050000"):
                 ids.add(component.compound_lm_id)
         return sorted(ids)
     
-    def list_product_lm_ids(self) -> List[str]:
+    def list_nonfa_noncoa_product_lm_ids(self) -> List[str]:
         """List all lm_ids from products."""
         ids = set()
         for component in self.products:
-            if component.compound_lm_id:
+            if component.compound_lm_id and not (component.compound_lm_id == "LMFA01010000" or component.compound_lm_id == "LMFA07050000"):
                 ids.add(component.compound_lm_id)
         return sorted(ids)
 

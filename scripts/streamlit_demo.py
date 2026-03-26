@@ -1127,7 +1127,7 @@ def main():
                     if len(groups) >= 2:
                         g1 = st.selectbox("Group 1 (numerator)", groups, key="rx_g1")
                         g2 = st.selectbox("Group 2 (denominator)", [g for g in groups if g != g1], key="rx_g2")
-                        method = st.selectbox("Flux method", ["ratio", "difference"], index=0, key="rx_method")
+                        method = st.selectbox("Method", ["ratio", "difference"], index=0, key="rx_method")
                         if st.button("Compute reaction z-scores", key="compute_rx_z"):
                             try:
                                 rz = analyzer.reaction_zscores(g1, g2, method=method)
