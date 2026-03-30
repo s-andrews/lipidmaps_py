@@ -31,6 +31,7 @@ content-type: application/json
 ### Refmet lookup by names
 POST https://www.metabolomicsworkbench.org/databases/refmet/name_to_refmet_new_minID.php HTTP/1.1
 content-type: application/json
+user-agent: "LipidMaps Api Test Agent/1.0"
 
 {
     "metabolite_name":"acyl CoA\nPC(16:0/18:1)\nCholesterol\nTAG(16:0/18:1/18:2)"

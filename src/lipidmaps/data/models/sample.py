@@ -146,8 +146,10 @@ class QuantifiedLipid(LipidmapsBaseModel):
     
     @property
     def structure(self) -> LipidStructure:
-        if self._structure is None and self.standardized_name is not None:
+        if self._structure is None and self.standardized_name is not None and "FA" not in self.input_name:
             self._structure = parse_lipid(self.standardized_name)
+        elif "FA" in self.input_name:
+            self._structure = parse_lipid(self.input_name)
         return self._structure
     
     @property
@@ -429,6 +431,28 @@ class LipidDataset(LipidmapsBaseModel):
             return {headgroup: result.get(headgroup, [])}
         return result
 
+    def check_structure_exist(self, headgroup: Optional[str] = None, total_carbons: Optional[int] = None, total_double_bonds: Optional[int] = None) -> bool:
+        """LipidStructure object by headgroup, total_carbons, total_double_bonds"""
+        if headgroup is None or total_carbons is None or total_double_bonds is None:
+            return None
+        result = False
+        for lipid in self.lipids:
+            try:
+                s = lipid.structure
+            except Exception:
+                s = None
+            if s is None:
+                continue
+            hg = getattr(s, "headgroup", None)
+            total_carbons = getattr(s, "total_carbons", None)
+            total_double_bonds = getattr(s, "total_double_bonds", None)
+            if hg == headgroup and total_carbons == total_carbons and total_double_bonds == total_double_bonds:
+                return True
+            else:
+                continue
+
+        return result
+        
     def fetch_reactions(self, lm_ids: List[str], reaction_type: Optional[str] = None, only_lipid_components: bool = True, taxonomy_group: Optional[str] = "all") -> List[ReactionData]:
         """
         Fetch reactions for a list of LM IDs using the ReactionChecker API.
@@ -893,19 +917,21 @@ class LipidDataset(LipidmapsBaseModel):
         return [l for l in self.lipids if l.lm_id in lm_ids]
 
     def possible_reactions(self, reactions: Optional[List[Any]] = None) -> List[Any]:
-        """Return reactions from `reactions` that are plausible for this dataset.
+        """Return reactions from `reactions` that are plausible for this dataset."""
 
-        Wraps the rule-based `reactions_possible_in_dataset` helper which inspects
-        headgroups present in this dataset and filters based on known headgroup
-        conversion rules.
-        """
         try:
             if reactions is None:
                 reactions = getattr(self, 'reactions', []) or []
-            # local import to avoid top-level dependency cycles
-            from ..utils.lipid_reaction_rules import reactions_possible_in_dataset
 
-            return reactions_possible_in_dataset(self, reactions)
+            # Extract all "possible" reactions from each reaction.evaluation
+            possible_reactions = [
+                r
+                for reaction in reactions
+                for r in (reaction.evaluation.get("possible") or [])
+            ]
+
+            return possible_reactions
+
         except Exception:
             logger.exception("Failed to compute plausible reactions for dataset.")
             return []

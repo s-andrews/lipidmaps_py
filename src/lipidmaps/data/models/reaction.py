@@ -75,6 +75,14 @@ class ReactionData(LipidmapsBaseModel):
                 ids.add(comp.compound_generic_lm_id or comp.compound_lm_id)
         return sorted(ids)
     
+    def list_lm_ids(self) -> List[str]:
+        """List all lm_ids from reactants and products."""
+        ids = set()
+        for comp in self.reactants + self.products:
+            if comp.compound_lm_id:
+                ids.add(comp.compound_lm_id)
+        return sorted(ids)
+    
     def list_nonfa_noncoa_reactant_lm_ids(self) -> List[str]:
         """List all lm_ids from reactants."""
         ids = set()

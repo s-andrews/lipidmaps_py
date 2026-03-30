@@ -3,218 +3,282 @@ from typing import Any, Dict, List, Optional
 
 lipid_reaction_rules: Dict[str, Any] = {
     "metadata": {
-        "version": "0.1",
-        "description": "Rules for lipid headgroup remodeling and fatty acid mass shifts for quantitation.",
+        "version": "0.2-delta-schema",
+        "description": "Lipid headgroup and acyl-chain remodeling rules using delta-based schema.",
         "units": "Daltons (Da)",
-        "usage_note": "Conserve acyl tails (Total C:DB) during headgroup swaps.",
+        "usage_note": "Acyl-chain conservation is enforced via delta rules; linkage type is preserved unless stated."
     },
 
     "headgroup_reactions": {
-        # -------------------
+
+        # ----------------------------------------------------------
         # PC / LPC (ester)
-        # -------------------
+        # ----------------------------------------------------------
         "PC": {
             "name": "Phosphatidylcholine",
             "linkage_type": "ester",
             "acyl_chains": 2,
             "mass_shift": 165.0555,
-            "can_convert_to": ["PA","PS", "LPC", "DAG", "SM"],
+            "can_convert_to": ["PA","PS","LPC","DAG","SM"],
             "conversion_rules": {
-                "LPC": {"required_compound": "fa", "required_acyl_chains": 1,
-                        "is_molspecies": False, "require_same_linkage": True},
-                "PS": {"required_acyl_chains": 2, "is_molspecies": False, "require_same_linkage": True}
+                "LPC": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                },
+                "PS": {
+                    "reaction_requirements": {"external_compounds": ["serine"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_swap"
+                }
             }
         },
+
         "LPC": {
-            "name": "Monoacylglycerophosphocholine",
+            "name": "Lyso-PC",
             "linkage_type": "ester",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["PC"],
             "conversion_rules": {
-                "PC": {"required_compound": "facoa", "required_acyl_chains": 2,
-                       "is_molspecies": False, "require_same_linkage": True}
+                "PC": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
             }
         },
 
-        # -------------------
-        # Ether PC
-        # -------------------
+        # ----------------------------------------------------------
+        # Ether PC O-
+        # ----------------------------------------------------------
         "PC O-": {
-            "name": "Monoalkylglycerophosphocholine (ether)",
+            "name": "Ether phosphatidylcholine",
             "linkage_type": "ether_alkyl",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["LPC O-"],
             "conversion_rules": {
-                "LPC O-": {"required_compound": "fa", "required_acyl_chains": 1,
-                           "is_molspecies": False, "require_same_linkage": True}
+                "LPC O-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
             }
         },
+
         "LPC O-": {
-            "name": "Monoalkyl-lyso-phosphocholine (ether)",
+            "name": "Ether lyso-PC",
             "linkage_type": "ether_alkyl",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["PC O-"],
             "conversion_rules": {
-                "PC O-": {"required_compound": "facoa", "required_acyl_chains": 2,
-                          "is_molspecies": False, "require_same_linkage": True}
+                "PC O-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
             }
         },
 
-        # -------------------
+        # ----------------------------------------------------------
         # Plasmalogen PC P-
-        # -------------------
+        # ----------------------------------------------------------
         "PC P-": {
-            "name": "Plasmenyl-phosphocholine (plasmalogen)",
+            "name": "Plasmalogen PC (vinyl ether)",
             "linkage_type": "ether_vinyl",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["LPC P-"],
             "conversion_rules": {
-                "LPC P-": {"required_compound": "fa", "required_acyl_chains": 1,
-                           "is_molspecies": False, "require_same_linkage": True}
+                "LPC P-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "plasmalogen"
+                }
             }
         },
+
         "LPC P-": {
-            "name": "Plasmenyl-lyso-phosphocholine (plasmalogen)",
+            "name": "Lyso-plasmalogen PC",
             "linkage_type": "ether_vinyl",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["PC P-"],
             "conversion_rules": {
-                "PC P-": {"required_compound": "facoa", "required_acyl_chains": 2,
-                          "is_molspecies": False, "require_same_linkage": True}
+                "PC P-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
             }
         },
 
-        # -------------------
+        # ----------------------------------------------------------
         # PE / LPE (ester)
-        # -------------------
+        # ----------------------------------------------------------
         "PE": {
             "name": "Phosphatidylethanolamine",
             "linkage_type": "ester",
             "acyl_chains": 2,
             "mass_shift": 123.0085,
-            "can_convert_to": ["PA", "PC", "PS", "LPE"],
+            "can_convert_to": ["PA","PC","PS","LPE"],
             "conversion_rules": {
-                "LPE": {"required_compound": "fa", "required_acyl_chains": 1,
-                        "is_molspecies": False, "require_same_linkage": True}
+                "LPE": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
             }
         },
+
         "LPE": {
-            "name": "Monoacylglycerophosphoethanolamine",
+            "name": "Lyso-PE",
             "linkage_type": "ester",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["PE"],
             "conversion_rules": {
-                "PE": {"required_compound": "facoa", "required_acyl_chains": 2,
-                       "is_molspecies": False, "require_same_linkage": True}
+                "PE": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
             }
         },
 
-        # -------------------
+        # ----------------------------------------------------------
         # Ether PE O-
-        # -------------------
+        # ----------------------------------------------------------
         "PE O-": {
-            "name": "Monoalkylglycerophosphoethanolamine (ether)",
+            "name": "Ether PE",
             "linkage_type": "ether_alkyl",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["LPE O-"],
             "conversion_rules": {
-                "LPE O-": {"required_compound": "fa", "required_acyl_chains": 1,
-                           "is_molspecies": False, "require_same_linkage": True}
+                "LPE O-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
             }
         },
+
         "LPE O-": {
-            "name": "Monoalkyl-lyso-phosphoethanolamine (ether)",
+            "name": "Ether LPE",
             "linkage_type": "ether_alkyl",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["PE O-"],
             "conversion_rules": {
-                "PE O-": {"required_compound": "facoa", "required_acyl_chains": 2,
-                          "is_molspecies": False, "require_same_linkage": True}
+                "PE O-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
             }
         },
 
-        # -------------------
+        # ----------------------------------------------------------
         # Plasmalogen PE P-
-        # -------------------
+        # ----------------------------------------------------------
         "PE P-": {
-            "name": "Plasmenyl-phosphoethanolamine (plasmalogen)",
+            "name": "Plasmalogen PE",
             "linkage_type": "ether_vinyl",
             "acyl_chains": 1,
-            "mass_shift": None,
             "can_convert_to": ["LPE P-"],
             "conversion_rules": {
-                "LPE P-": {"required_compound": "fa", "required_acyl_chains": 1,
-                           "is_molspecies": False, "require_same_linkage": True}
-            }
-        },
-        "LPE P-": {
-            "name": "Plasmenyl-lyso-phosphoethanolamine (plasmalogen)",
-            "linkage_type": "ether_vinyl",
-            "acyl_chains": 1,
-            "mass_shift": None,
-            "can_convert_to": ["PE P-"],
-            "conversion_rules": {
-                "PE P-": {"required_compound": "facoa", "required_acyl_chains": 2,
-                          "is_molspecies": False, "require_same_linkage": True}
+                "LPE P-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "plasmalogen"
+                }
             }
         },
 
-        # -------------------
+        "LPE P-": {
+            "name": "Lyso-plasmalogen PE",
+            "linkage_type": "ether_vinyl",
+            "acyl_chains": 1,
+            "can_convert_to": ["PE P-"],
+            "conversion_rules": {
+                "PE P-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
         # PG
-        # -------------------
+        # ----------------------------------------------------------
         "PG": {
             "name": "Phosphatidylglycerol",
             "linkage_type": "ester",
             "acyl_chains": 2,
             "mass_shift": 154.0031,
-            "can_convert_to": ["CL", "PA"]
+            "can_convert_to": ["CL","PA"]
         },
 
-        # -------------------
+        # ----------------------------------------------------------
         # LPA / PA
-        # -------------------
+        # ----------------------------------------------------------
         "LPA": {
-            "name": "Lysophosphatidic acid",
-            "linkage_type": "ester",
+            "name": "Lyso-PA",
             "acyl_chains": 1,
-            "mass_shift": None,
+            "linkage_type": "ester",
             "can_convert_to": ["PA"],
             "conversion_rules": {
-                "PA": {"required_compound": "facoa", "required_acyl_chains": 2,
-                       "is_molspecies": False, "require_same_linkage": True}
+                "PA": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
             }
         },
 
         "PA": {
-            "name": "Phosphatidic Acid",
+            "name": "Phosphatidic acid",
             "linkage_type": "ester",
             "acyl_chains": 2,
             "mass_shift": 79.9663,
-            "can_convert_to": ["PC", "PE", "PS", "PI", "PG", "DAG"]
+            "can_convert_to": ["PC","PE","PS","PI","PG","DAG"]
         },
 
-        # -------------------
-        # Sphingolipids
-        # -------------------
+        # ----------------------------------------------------------
+        # Sphingolipids (always delta = 0)
+        # ----------------------------------------------------------
         "Cer": {
             "name": "Ceramide",
             "linkage_type": "amide",
             "has_sphingoid": True,
-            "sphingoid_chains": 1,
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["SM"],
             "conversion_rules": {
-                "SM": {"required_compound": None, "required_acyl_chains": 1,
-                       "is_molspecies": False, "require_same_linkage": True}
+                "SM": {
+                    "reaction_requirements": {"external_compounds": ["PC"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "sphingolipid"
+                }
             }
         },
 
@@ -222,15 +286,22 @@ lipid_reaction_rules: Dict[str, Any] = {
             "name": "Dihydroceramide",
             "linkage_type": "amide",
             "has_sphingoid": True,
-            "sphingoid_chains": 1,
             "acyl_chains": 1,
             "mass_shift": None,
-            "can_convert_to": ["Cer", "dhSM"],
+            "can_convert_to": ["Cer","dhSM"],
             "conversion_rules": {
-                "Cer": {"required_compound": None, "required_acyl_chains": 1,
-                        "is_molspecies": False, "require_same_linkage": True},
-                "dhSM": {"required_compound": None, "required_acyl_chains": 1,
-                         "is_molspecies": False, "require_same_linkage": True}
+                "Cer": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "sphingolipid"
+                },
+                "dhSM": {
+                    "reaction_requirements": {"external_compounds": ["PC"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "sphingolipid"
+                }
             }
         },
 
@@ -238,28 +309,35 @@ lipid_reaction_rules: Dict[str, Any] = {
             "name": "Sphingomyelin",
             "linkage_type": "amide",
             "has_sphingoid": True,
-            "sphingoid_chains": 1,
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["Cer"],
             "conversion_rules": {
-                "Cer": {"required_compound": None, "required_acyl_chains": 1,
-                        "is_molspecies": False, "require_same_linkage": True}
+                "Cer": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "sphingolipid"
+                }
             }
         },
 
-        # -------------------
+        # ----------------------------------------------------------
         # PS / LPS
-        # -------------------
+        # ----------------------------------------------------------
         "LPS": {
-            "name": "Lyso-Phosphatidylserine",
+            "name": "Lyso-PS",
             "linkage_type": "ester",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["PS"],
             "conversion_rules": {
-                "PS": {"required_compound": "facoa", "required_acyl_chains": 2,
-                       "is_molspecies": False, "require_same_linkage": True}
+                "PS": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
             }
         },
 
@@ -268,25 +346,33 @@ lipid_reaction_rules: Dict[str, Any] = {
             "linkage_type": "ester",
             "acyl_chains": 2,
             "mass_shift": 167.0222,
-            "can_convert_to": ["PE", "PA", "LPS"],
+            "can_convert_to": ["PE","PA","LPS"],
             "conversion_rules": {
-                "LPS": {"required_compound": "fa", "required_acyl_chains": 1,
-                        "is_molspecies": False, "require_same_linkage": True}
+                "LPS": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
             }
         },
 
-        # -------------------
-        # LPI / PI
-        # -------------------
+        # ----------------------------------------------------------
+        # PI / LPI
+        # ----------------------------------------------------------
         "LPI": {
-            "name": "Lyso-Phosphatidylinositol",
+            "name": "Lyso-PI",
             "linkage_type": "ester",
             "acyl_chains": 1,
             "mass_shift": None,
             "can_convert_to": ["PI"],
             "conversion_rules": {
-                "PI": {"required_compound": "facoa", "required_acyl_chains": 2,
-                       "is_molspecies": False, "require_same_linkage": True}
+                "PI": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
             }
         },
 
@@ -295,21 +381,25 @@ lipid_reaction_rules: Dict[str, Any] = {
             "linkage_type": "ester",
             "acyl_chains": 2,
             "mass_shift": 242.0192,
-            "can_convert_to": ["PA", "PIP", "LPI"]
+            "can_convert_to": ["PA","PIP","LPI"]
         },
 
-        # -------------------
+        # ----------------------------------------------------------
         # DAG / TAG
-        # -------------------
+        # ----------------------------------------------------------
         "DAG": {
-            "name": "Diacylglycerol (merged)",
+            "name": "Diacylglycerol",
             "linkage_type": "ester",
             "acyl_chains": 2,
             "mass_shift": 17.0027,
-            "can_convert_to": ["PA", "PC", "PE", "TAG"],
+            "can_convert_to": ["PA","PC","PE","TAG"],
             "conversion_rules": {
-                "TAG": {"required_compound": "facoa", "required_acyl_chains": 3,
-                        "is_molspecies": False, "require_same_linkage": True}
+                "TAG": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
             }
         },
 
@@ -318,13 +408,21 @@ lipid_reaction_rules: Dict[str, Any] = {
             "linkage_type": "ester",
             "acyl_chains": 3,
             "mass_shift": "VARIABLE_BY_TAIL",
-            "can_convert_to": ["DAG"]
+            "can_convert_to": ["DAG"],
+            "conversion_rules": {
+                "DAG": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+            }
         }
     },
 
-    # -------------------
-    # Fatty Acid Masses
-    # -------------------
+    # ----------------------------------------------------------
+    # Fatty acid masses (unchanged from original)
+    # ----------------------------------------------------------
     "fatty_acids": {
         "12:0": {"name": "Lauric", "mass_delta": 182.1671},
         "14:0": {"name": "Myristic", "mass_delta": 210.1984},
@@ -350,9 +448,9 @@ lipid_reaction_rules: Dict[str, Any] = {
         "24:1": {"name": "Nervonic", "mass_delta": 348.3392}
     },
 
-    # -------------------
-    # Biochemical adjustments
-    # -------------------
+    # ----------------------------------------------------------
+    # Biochemical deltas (unchanged)
+    # ----------------------------------------------------------
     "biochemical_deltas": {
         "methylation_CH2": 14.0156,
         "desaturation_H2_loss": -2.0156,

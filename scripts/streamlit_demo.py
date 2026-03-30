@@ -850,30 +850,6 @@ def main():
         if not getattr(st.session_state["dataset"], "reactions", None):
             st.info("No reactions fetched yet. Use Tools → Fetch reactions by LM ID.")
         else:
-            # Show plausible reactions filtered by headgroup rules
-            try:
-                plausible = []
-                try:
-                    plausible = dataset.possible_reactions(getattr(st.session_state, "reactions", []))
-                except Exception:
-                    from lipidmaps.data.utils.lipid_reaction_rules import reactions_possible_in_dataset
-                    plausible = reactions_possible_in_dataset(dataset, getattr(st.session_state, "reactions", []))
-
-                if plausible:
-                    st.subheader("Plausible reactions (headgroup-based filter)")
-                    pr_rows = []
-                    for r in plausible:
-                        pr_rows.append({
-                            "reaction_id": getattr(r, "reaction_id", None),
-                            "reaction_name": getattr(r, "reaction_name", None),
-                        })
-                    try:
-                        st.dataframe(pd.DataFrame(pr_rows), hide_index=True)
-                    except Exception:
-                        st.write(pr_rows)
-            except Exception:
-                pass
-
             # Build reactions table, handling pathway dicts or objects
             rxn_rows = []
             for r in getattr(st.session_state["dataset"], "reactions", []):
@@ -907,6 +883,7 @@ def main():
                     s for s in ((p.get("gene_name") if isinstance(p, dict) else getattr(p, "gene_name", None)) for p in getattr(r, "genes", [])) if s
                 ])
                 organisms = ", ".join(r.organisms) if r.organisms else "N/A"
+                evaluation = getattr(r, "evaluation", {}) or {}
                 rxn_rows.append({
                     "reaction_id": getattr(r, "reaction_id", None),
                     "reaction_name": getattr(r, "reaction_name", None),
@@ -915,8 +892,8 @@ def main():
                     # "pathways": pathways_str,
                     "ec_number": ec_str,
                     "organisms": organisms,
-                    "possible": getattr(r, "possible", None),
-                    "possible_explanation": getattr(r, "possible_explanation", None),
+                    "possible": evaluation.get("possible"),
+                    "possible_explanation": evaluation.get("explanation")
                 })
 
             rxn_df = pd.DataFrame(rxn_rows)[0:20]
