@@ -36,7 +36,7 @@ class ReactionEvaluator:
         """
         reasons: List[str] = []
         possible = False
-        pairs_info: List[Dict[str, Any]] = []
+        pairs_info: List[str] = []
         possible_species: Dict[str, List[str]] = {"reactants": [], "products": []}
 
         #STEP 1: Build lookup for dataset species by generic_lm_id
@@ -95,12 +95,7 @@ class ReactionEvaluator:
                                 if reactant_total_carbons == product_total_carbons and reactant_total_double_bonds == product_total_double_bonds:
                                     possible = True
                                     reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
-                                    pairs_info.append({
-                                        "reactant_lipid": reactant_lipid.standardized_name,
-                                        "product_lipid": product_lipid.standardized_name,
-                                        "reactant_headgroup": reactant_headgroup,
-                                        "product_headgroup": product_headgroup
-                                    })
+                                    pairs_info.append(f"{reactant_lipid.standardized_name} -> {product_lipid.standardized_name}")
                                 
                             elif product_rule.get("acyl_chain_change")==-1:
                                 if product_rule.get("reaction_requirements").get("external_compounds") == []:
@@ -108,12 +103,8 @@ class ReactionEvaluator:
                                     if dataset.check_structure_exist(headgroup="FA", total_carbons = {reactant_total_carbons-product_total_carbons}, total_double_bonds = {reactant_total_double_bonds-product_total_double_bonds}):
                                         possible = True
                                         reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
-                                        pairs_info.append({
-                                            "reactant_lipid": reactant_lipid.standardized_name,
-                                            "product_lipid": product_lipid.standardized_name,
-                                            "reactant_headgroup": reactant_headgroup,
-                                            "product_headgroup": product_headgroup
-                                        })
+                                        pairs_info.append(f"{reactant_lipid.standardized_name} -> {product_lipid.standardized_name}")
+                                        
                                         # print(f"    {reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                 reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
 
@@ -124,12 +115,8 @@ class ReactionEvaluator:
                                     if dataset.check_structure_exist(headgroup="acyl CoA", total_carbons = {product_total_carbons - reactant_total_carbons}, total_double_bonds = {reactant_total_double_bonds-product_total_double_bonds}):
                                         possible = True
                                         reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
-                                        pairs_info.append({
-                                            "reactant_lipid": reactant_lipid.standardized_name,
-                                            "product_lipid": product_lipid.standardized_name,
-                                            "reactant_headgroup": reactant_headgroup,
-                                            "product_headgroup": product_headgroup
-                                        })
+                                        pairs_info.append(f"{reactant_lipid.standardized_name} -> {product_lipid.standardized_name}")
+
                                         # print(f"    {reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                 reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
 

@@ -205,11 +205,6 @@ def main():
                 value=st.session_state["show_validation_section"]
             )
 
-        # ---- RUN / DEBUG ----
-        with st.expander("Run demo locally", expanded=False):
-            st.markdown("Run the Streamlit demo using your virtual environment:")
-            st.code("source venv/bin/activate\nstreamlit run scripts/streamlit_demo.py", language="bash")
-
     # ---------------------- TABS ----------------------
     # If user requested All Reactions, load and run `scripts/reactions.py` as main content
     if st.session_state.get("show_all_reactions"):
