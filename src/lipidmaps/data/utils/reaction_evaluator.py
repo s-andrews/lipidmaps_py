@@ -133,45 +133,6 @@ class ReactionEvaluator:
                                         # print(f"    {reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                 reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
 
-                                '''
-                                        "LPC": {
-                                            "name": "Lyso-PC",
-                                            "linkage_type": "ester",
-                                            "acyl_chains": 1,
-                                            "mass_shift": None,
-                                            "can_convert_to": ["PC"],
-                                            "conversion_rules": {
-                                                "PC": {
-                                                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
-                                                    "acyl_chain_change": 1,
-                                                    "require_same_linkage": True,
-                                                    "reaction_type": "acylation"
-                                                }
-                                            }
-                                        },
-
-                                "PC": {
-                                    "name": "Phosphatidylcholine",
-                                    "linkage_type": "ester",
-                                    "acyl_chains": 2,
-                                    "mass_shift": 165.0555,
-                                    "can_convert_to": ["PA","PS","LPC","DAG","SM"],
-                                    "conversion_rules": {
-                                        "LPC": {
-                                            "reaction_requirements": {"external_compounds": []},
-                                            "acyl_chain_change": -1,
-                                            "require_same_linkage": True,
-                                            "reaction_type": "deacylation"
-                                        },
-                                        "PS": {
-                                            "reaction_requirements": {"external_compounds": ["serine"]},
-                                            "acyl_chain_change": {"delta": 0},
-                                            "require_same_linkage": True,
-                                            "reaction_type": "headgroup_swap"
-                                        }
-                                    }
-                                },
-                                '''
                             elif product_rule.get("required_compound") == "fa" and not any(chain.get("is_fa", False) for chain in product_chains):
                                 reasons.append(f"{product_input_name} does not have the required fatty acid chain to be a possible product of {reactant_input_name}.")
                             else:

@@ -903,7 +903,7 @@ def main():
                     "ec_number": ec_str,
                     "organisms": organisms,
                     "possible": evaluation.get("possible"),
-                    "possible_explanation": evaluation.get("explanation")
+                    "possible_explanation": evaluation.get("pairs_info")
                 })
 
             rxn_df = pd.DataFrame(rxn_rows)[0:20]
