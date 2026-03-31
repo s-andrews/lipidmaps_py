@@ -197,6 +197,9 @@ class ChainParser:
     def _extract_headgroup(cls, name: str) -> Optional[str]:
         """Extract the headgroup from a lipid name."""
         # Sort by length descending to match longer patterns first
+        if "coa" in name.lower():
+            # Handle CoA species (e.g., "CoA 16:0", "FACoA(16:0)")
+            return "acyl CoA"
         for hg in sorted(cls.HEADGROUPS, key=len, reverse=True):
             if name.startswith(hg):
                 # Make sure it's followed by (, space, or end of string

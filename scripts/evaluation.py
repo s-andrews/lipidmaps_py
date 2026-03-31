@@ -1,5 +1,5 @@
 from lipidmaps import process_csv
-dataset = process_csv("../tests/data/inputs/demo/dontsync.csv", 
+dataset = process_csv("/lipidmaps/lipidmaps_py/tests/data/inputs/demo/BioPan_large_demo.csv", 
                       validate_data=True, 
                       use_refmet=True, 
                       use_headgroups=True, 

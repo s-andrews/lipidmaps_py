@@ -1,9 +1,11 @@
 import streamlit as st
+import hashlib
 import os
 import sys
 import pandas as pd
 import plotly.express as px
 from lipidmaps.data.data_manager import DataManager
+from lipidmaps.data.models.refmet import RefMet
 from lipidmaps.data.models import reaction
 from lipidmaps.data.quantitation import QuantitationAnalyzer, NormalizationMethod
 
@@ -20,6 +22,14 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+
+    # Patch RefMet.validate_metabolite_names to use Streamlit cache
+    if not hasattr(RefMet, '_orig_validate_metabolite_names'):
+        RefMet._orig_validate_metabolite_names = RefMet.validate_metabolite_names
+        @st.cache_data(show_spinner=False)
+        def _cached_validate_metabolite_names(metabolite_names):
+            return RefMet._orig_validate_metabolite_names(metabolite_names)
+        RefMet.validate_metabolite_names = staticmethod(_cached_validate_metabolite_names)
 
     st.header("Quantitative Data Demo")
     

@@ -87,7 +87,7 @@ class ReactionData(LipidmapsBaseModel):
         """List all lm_ids from reactants."""
         ids = set()
         for component in self.reactants:
-            if component.compound_lm_id and not (component.compound_lm_id == "LMFA01010000" or component.compound_lm_id == "LMFA07050000"):
+            if component.compound_lm_id and not (component.compound_lm_id == "LMFA01010000" or component.compound_lm_id.startswith("LMFA0705")):
                 ids.add(component.compound_lm_id)
         return sorted(ids)
     
@@ -95,7 +95,7 @@ class ReactionData(LipidmapsBaseModel):
         """List all lm_ids from products."""
         ids = set()
         for component in self.products:
-            if component.compound_lm_id and not (component.compound_lm_id == "LMFA01010000" or component.compound_lm_id == "LMFA07050000"):
+            if component.compound_lm_id and not (component.compound_lm_id == "LMFA01010000" or component.compound_lm_id.startswith("LMFA0705")):
                 ids.add(component.compound_lm_id)
         return sorted(ids)
 

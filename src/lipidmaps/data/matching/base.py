@@ -189,7 +189,7 @@ def create_matcher_context(
                 chain = species.chains[0]
                 fa_dict[chain.notation] = chain
     
-    # Parse FACoA/CAR species (handles multiple formats)
+    # Parse FACoA/CoA species (handles multiple formats)
     facoa_dict: Dict[str, AcylChain] = {}
     if facoa_names:
         for name in facoa_names:
@@ -198,7 +198,7 @@ def create_matcher_context(
             if species and species.headgroup in ("CoA", "FACoA", "FaCoA", "FACOA") and species.chains:
                 chain = species.chains[0]
                 facoa_dict[chain.notation] = chain
-            elif "FACoA" in name or "FaCoA" in name:
+            elif "FaCoA" in name or "FACoA" in name:
                 # Legacy format: FACoA(16:0) -> parse as FA
                 species = parser.parse(name.replace("FACoA", "FA").replace("FaCoA", "FA"))
                 if species and species.chains:

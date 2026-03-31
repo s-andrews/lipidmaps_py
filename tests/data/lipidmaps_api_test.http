@@ -42,6 +42,6 @@ POST https://dev.lipidmaps.org/api/molecules/lmids HTTP/1.1
 content-type: application/json  
 
 {
-    "lmsd_ids": ["LMFA01010001", "LMGP01010001", "LMST02030299"]
+    "lmsd_ids": ["LMFA01010001", "LMFA07050356"]
 }
 

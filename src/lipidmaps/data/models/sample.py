@@ -146,9 +146,9 @@ class QuantifiedLipid(LipidmapsBaseModel):
     
     @property
     def structure(self) -> LipidStructure:
-        if self._structure is None and self.standardized_name is not None and "FA" not in self.input_name:
+        if self._structure is None and self.standardized_name is not None and "FA" not in self.input_name and "-coa" not in self.standardized_name.lower():
             self._structure = parse_lipid(self.standardized_name)
-        elif "FA" in self.input_name:
+        elif "fa" in self.input_name.lower() or "-coa" in self.standardized_name.lower():
             self._structure = parse_lipid(self.input_name)
         return self._structure
     

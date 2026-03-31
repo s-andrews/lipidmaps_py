@@ -42,9 +42,11 @@ class ReactionEvaluator:
         #STEP 1: Build lookup for dataset species by generic_lm_id
         reaction_gids = set(reaction.list_generic_lm_ids())
         reaction_lmids = set(reaction.list_lm_ids())
-        generic_lm_ids_exist = dataset.generic_lm_ids_exist(list(reaction_gids)) if dataset else False
+        #TODO: acyl CoA species currently not included in generic_lm_id list, so we need to also check lm_ids for those. We should update the generic_lm_id assignment logic to include acyl CoA species as well.
+        reaction_gids_except_fa_coa = {gid for gid in reaction_gids if not (gid.startswith("LMFA0705"))}   
+        generic_lm_ids_exist = dataset.generic_lm_ids_exist(list(reaction_gids_except_fa_coa)) if dataset else False
         if not generic_lm_ids_exist:
-            return {"possible": False, "explanation": "Missing generic_lm_id for reactants/products in dataset."}
+            return {"possible": False, "explanation": f"Missing generic_lm_id for reactants/products in dataset.{reaction_gids}{reaction_lmids}"}
         else:
             ...
             print(f"Evaluating reaction {reaction.reaction_id} - {reaction.reaction_name} with generic_lm_ids: ")
@@ -87,6 +89,8 @@ class ReactionEvaluator:
 
                         #CONDITION 1 IF BOTH SAME LINKAGE: Check if acyl chain count matches rule requirement (if specified)
                         if reactant_linkage_type == product_linkage_type:
+                            if reactant_headgroup == "LPC" and product_headgroup == "PC":
+                                print(f"    Same linkage - Evaluating possible conversion: {reactant_input_name} -> {product_input_name} ")
                             if product_rule is None or product_rule.get("acyl_chain_change") == 0:
                                 if reactant_total_carbons == product_total_carbons and reactant_total_double_bonds == product_total_double_bonds:
                                     possible = True
@@ -113,7 +117,38 @@ class ReactionEvaluator:
                                         # print(f"    {reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                 reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
 
+                            elif product_rule.get("acyl_chain_change")==1:
+                                if product_rule.get("reaction_requirements").get("external_compounds")[0] == "acylcoa":
+                                    # print("***********************")
+                                    # print(f"For {reactant_input_name}->{product_input_name}, we need CoA {product_total_carbons - reactant_total_carbons}:{reactant_total_double_bonds-product_total_double_bonds}")
+                                    if dataset.check_structure_exist(headgroup="acyl CoA", total_carbons = {product_total_carbons - reactant_total_carbons}, total_double_bonds = {reactant_total_double_bonds-product_total_double_bonds}):
+                                        possible = True
+                                        reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
+                                        pairs_info.append({
+                                            "reactant_lipid": reactant_lipid.standardized_name,
+                                            "product_lipid": product_lipid.standardized_name,
+                                            "reactant_headgroup": reactant_headgroup,
+                                            "product_headgroup": product_headgroup
+                                        })
+                                        # print(f"    {reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
+                                reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
+
                                 '''
+                                        "LPC": {
+                                            "name": "Lyso-PC",
+                                            "linkage_type": "ester",
+                                            "acyl_chains": 1,
+                                            "mass_shift": None,
+                                            "can_convert_to": ["PC"],
+                                            "conversion_rules": {
+                                                "PC": {
+                                                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                                                    "acyl_chain_change": 1,
+                                                    "require_same_linkage": True,
+                                                    "reaction_type": "acylation"
+                                                }
+                                            }
+                                        },
 
                                 "PC": {
                                     "name": "Phosphatidylcholine",
