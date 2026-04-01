@@ -13,6 +13,8 @@ Main components:
 """
 
 from .data_manager import DataManager
+from .biopan_exporter import BioPANExporter
+from .biopan_pathway_exporter import BioPANPathwayExporter
 from .models.sample import (
     LipidAnnotation,
     LipidDataset,
@@ -72,6 +74,8 @@ from .utils.chain_parser import (
 
 __all__ = [
     "DataManager",
+    "BioPANExporter",
+    "BioPANPathwayExporter",
     "LipidDataset",
     "QuantifiedLipid",
     "SampleMetadata",

@@ -20,13 +20,9 @@ class ReactionEvaluator:
         for r in reactions:
             try:
                 res = self.evaluate_reaction(r, dataset=dataset)
-                if res['possible']:
-                    print(f"    Reaction {r.reaction_id} evaluation: {res['possible']} - {res['explanation']}   ")
                 r.evaluation = res
 
             except Exception as e:
-                # ensure reactions are always annotated even if evaluator errors
-                # print(f"Error evaluating reaction {r.reaction_id}: {str(e)}")
                 r.possible = False
     
     def evaluate_reaction(self, reaction: ReactionData, dataset: Optional[Any] = None) -> Dict[str, Any]:
@@ -47,24 +43,14 @@ class ReactionEvaluator:
         generic_lm_ids_exist = dataset.generic_lm_ids_exist(list(reaction_gids_except_fa_coa)) if dataset else False
         if not generic_lm_ids_exist:
             return {"possible": False, "explanation": f"Missing generic_lm_id for reactants/products in dataset.{reaction_gids}{reaction_lmids}"}
-        else:
-            ...
-            print(f"Evaluating reaction {reaction.reaction_id} - {reaction.reaction_name} with generic_lm_ids: ")
-            print(f"    {lm_id_to_headgroup.get(reaction.list_nonfa_noncoa_reactant_lm_ids()[0], 'Unknown')} -> {lm_id_to_headgroup.get(reaction.list_nonfa_noncoa_product_lm_ids()[0], 'Unknown')}")
-            # print(f"    LMIDS:   {reaction_lmids}")
-            # print(f"    Generic: {reaction_gids}")
 
         #STEP 2: For reactions with 1 reactant lipid and 1 product lipid
         if len(reaction.list_nonfa_noncoa_reactant_lm_ids()) == 1 and len(reaction.list_nonfa_noncoa_product_lm_ids()) == 1:
             main_reactant = next((compound for compound in reaction.reactants if getattr(compound, "compound_type", None) == "lm_main" and compound.compound_lm_id != "LMFA01010000" and compound.compound_lm_id != "LMFA07050000"), None)
             reactant_lipids = dataset.get_lipids_for_component(main_reactant) if dataset and main_reactant else []
-            # if reactant_lipids:
-            #     print(f" Reactant lipids: {', '.join([lipid.standardized_name for lipid in reactant_lipids[:5]])}")
 
             main_product = next((compound for compound in reaction.products if getattr(compound, "compound_type", None) == "lm_main" and compound.compound_lm_id != "LMFA01010000" and compound.compound_lm_id != "LMFA07050000"), None)
             product_lipids = dataset.get_lipids_for_component(main_product) if dataset and main_product else []
-            # if product_lipids:
-            #     print(f" Product lipids: {', '.join([lipid.standardized_name for lipid in product_lipids[:5]])}")
 
 
             for reactant_lipid in reactant_lipids:
@@ -89,8 +75,6 @@ class ReactionEvaluator:
 
                         #CONDITION 1 IF BOTH SAME LINKAGE: Check if acyl chain count matches rule requirement (if specified)
                         if reactant_linkage_type == product_linkage_type:
-                            if reactant_headgroup == "LPC" and product_headgroup == "PC":
-                                print(f"    Same linkage - Evaluating possible conversion: {reactant_input_name} -> {product_input_name} ")
                             if product_rule is None or product_rule.get("acyl_chain_change") == 0:
                                 if reactant_total_carbons == product_total_carbons and reactant_total_double_bonds == product_total_double_bonds:
                                     possible = True
@@ -99,25 +83,20 @@ class ReactionEvaluator:
                                 
                             elif product_rule.get("acyl_chain_change")==-1:
                                 if product_rule.get("reaction_requirements").get("external_compounds") == []:
-                                    # print(f"For {reactant_input_name}->{product_input_name}, we need FA {reactant_total_carbons-product_total_carbons}:{reactant_total_double_bonds-product_total_double_bonds}")
                                     if dataset.check_structure_exist(headgroup="FA", total_carbons = {reactant_total_carbons-product_total_carbons}, total_double_bonds = {reactant_total_double_bonds-product_total_double_bonds}):
                                         possible = True
                                         reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                         pairs_info.append(f"{reactant_lipid.standardized_name} -> {product_lipid.standardized_name}")
                                         
-                                        # print(f"    {reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                 reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
 
                             elif product_rule.get("acyl_chain_change")==1:
                                 if product_rule.get("reaction_requirements").get("external_compounds")[0] == "acylcoa":
-                                    # print("***********************")
-                                    # print(f"For {reactant_input_name}->{product_input_name}, we need CoA {product_total_carbons - reactant_total_carbons}:{reactant_total_double_bonds-product_total_double_bonds}")
                                     if dataset.check_structure_exist(headgroup="acyl CoA", total_carbons = {product_total_carbons - reactant_total_carbons}, total_double_bonds = {reactant_total_double_bonds-product_total_double_bonds}):
                                         possible = True
                                         reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                         pairs_info.append(f"{reactant_lipid.standardized_name} -> {product_lipid.standardized_name}")
 
-                                        # print(f"    {reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                 reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
 
                             elif product_rule.get("required_compound") == "fa" and not any(chain.get("is_fa", False) for chain in product_chains):

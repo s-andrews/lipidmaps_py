@@ -8,6 +8,8 @@ import pandas as pd
 # import networkx as nx
 from pydantic import Field, field_validator
 from .models.base import LipidmapsBaseModel
+from .biopan_exporter import BioPANExporter
+from .biopan_pathway_exporter import BioPANPathwayExporter
 # import the data models we will produce
 from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset, LipidAnnotation
 from .models.refmet import RefMet
@@ -21,8 +23,6 @@ from .validation.data_validator import DataValidator, ValidationReport
 
 
 logger = logging.getLogger(__name__)
-
-
 
 class DataManager(LipidmapsBaseModel):
 
@@ -717,6 +717,73 @@ class DataManager(LipidmapsBaseModel):
         }
 
         return summary
+
+    def get_biopan_exporter(self, dataset: Optional[LipidDataset] = None) -> BioPANExporter:
+        return BioPANExporter(dataset=dataset or self.dataset)
+
+    def get_biopan_pathway_exporter(self, dataset: Optional[LipidDataset] = None) -> BioPANPathwayExporter:
+        return BioPANPathwayExporter(dataset=dataset or self.dataset)
+
+    def build_biopan_summary(
+        self,
+        dataset: Optional[LipidDataset] = None,
+        lipidlynxx: str = "no",
+    ) -> Dict[str, Any]:
+        """Build the subset of BioPAN summary data needed by the PHP frontend."""
+        return self.get_biopan_exporter(dataset).build_summary(lipidlynxx=lipidlynxx)
+
+    def build_biopan_msg1(
+        self,
+        dataset: Optional[LipidDataset] = None,
+        lipidlynxx_error: bool = False,
+    ) -> Dict[str, Any]:
+        """Build BioPAN parse-stage status data used by the summary page."""
+        return self.get_biopan_exporter(dataset).build_msg1(lipidlynxx_error=lipidlynxx_error)
+
+    def build_biopan_msg2(self, dataset: Optional[LipidDataset] = None) -> Dict[str, Any]:
+        """Build BioPAN processing-stage status data used by the pathway page."""
+        return self.get_biopan_exporter(dataset).build_msg2()
+
+    def export_biopan_display_files(
+        self,
+        output_path: Union[str, Path],
+        dataset: Optional[LipidDataset] = None,
+        lipidlynxx: str = "no",
+        lipidlynxx_error: bool = False,
+        include_msg1: bool = True,
+        include_summary: bool = True,
+        include_msg2: bool = True,
+    ) -> Dict[str, str]:
+        """Write BioPAN display JSON files into a session directory or its biopan subdir."""
+        written_files = self.get_biopan_exporter(dataset).export_display_files(
+            output_path=output_path,
+            lipidlynxx=lipidlynxx,
+            lipidlynxx_error=lipidlynxx_error,
+            include_msg1=include_msg1,
+            include_summary=include_summary,
+            include_msg2=include_msg2,
+        )
+        logger.info("Exported BioPAN display files to %s", output_path)
+        return written_files
+
+    def export_biopan_reaction_files(
+        self,
+        output_path: Union[str, Path],
+        disease_group: str,
+        control_group: str,
+        threshold: float = 0.05,
+        paired: bool = False,
+        dataset: Optional[LipidDataset] = None,
+    ) -> Dict[str, str]:
+        written_files = self.get_biopan_pathway_exporter(dataset).export_reaction_files(
+            output_path=output_path,
+            disease_group=disease_group,
+            control_group=control_group,
+            threshold=threshold,
+            paired=paired,
+        )
+        logger.info("Exported BioPAN reaction files to %s", output_path)
+        return written_files
     
     def dataset_dict(self) -> Dict[str, Any]:
         """Serialize the dataset to plain dict for JSON output or downstream analysis."""
