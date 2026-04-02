@@ -3,7 +3,7 @@ import math
 import re
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, ClassVar, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from pydantic import Field, PrivateAttr
 from scipy import stats
@@ -19,6 +19,9 @@ from .utils.headgroups import lipidmaps_headgroups, lm_id_to_headgroup
 
 class BioPANPathwayExporter(LipidmapsBaseModel):
     """Build BioPAN reaction graph, table, and edge-detail assets from a dataset."""
+
+    COMPARISON_BUNDLE_NAME: ClassVar[str] = "comparison_bundle.json"
+    EDGE_DETAILS_BUNDLE_NAME: ClassVar[str] = "edge_details_bundle.json"
 
     dataset: Optional[Any] = Field(default=None)
     class_reactions: Optional[List[Any]] = Field(default=None)
@@ -1192,6 +1195,85 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
 
         return details
 
+    def _build_comparison_payloads(
+        self,
+        disease_group: str,
+        control_group: str,
+        threshold: float,
+        paired: bool,
+        dataset: LipidDataset,
+        result_set: PathwayReactionSet,
+        reaction_lookup: Dict[str, List[ReactionData]],
+    ) -> Dict[str, Any]:
+        paired_suffix = self._paired_suffix(paired)
+        return {
+            f"lp_class_reaction_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_reaction_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_reaction_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_reaction_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_pathway_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_pathway_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_pathway_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_pathway_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
+            f"lp_class_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
+            f"lp_species_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
+            f"lp_species_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
+            f"lp_class_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_class_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
+            f"lp_class_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
+            f"lp_species_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
+            f"lp_species_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
+            f"lp_species_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
+        }
+
+    def _build_edge_detail_payloads(
+        self,
+        dataset: LipidDataset,
+        result_set: PathwayReactionSet,
+    ) -> Dict[str, Any]:
+        payloads: Dict[str, Any] = {}
+        payloads.update({
+            f"{name}.json": payload
+            for name, payload in self.build_edge_details(level="class", dataset=dataset, result_set=result_set).items()
+            if not name.endswith(".json")
+        })
+        payloads.update({
+            f"{name}.json": payload
+            for name, payload in self.build_edge_details(level="species", dataset=dataset, result_set=result_set).items()
+            if not name.endswith(".json")
+        })
+        return payloads
+
+    def _cleanup_generated_json_files(self, output_dir: Path) -> None:
+        preserved = {"summary.json", "msg1.json", "msg2.json"}
+        for file_path in output_dir.glob("*.json"):
+            if file_path.name in preserved:
+                continue
+            file_path.unlink(missing_ok=True)
+
     def export_reaction_files(
         self,
         output_path: Union[str, Path],
@@ -1204,63 +1286,63 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         resolved_dataset = self._get_dataset(dataset)
         output_dir = self._get_output_dir(output_path)
         result_set, reaction_lookup = self.build_reaction_match_set(resolved_dataset)
-        paired_suffix = self._paired_suffix(paired)
         written_files: Dict[str, str] = {}
+
+        self._cleanup_generated_json_files(output_dir)
 
         payloads: Dict[str, Any] = {
             "lp_class_reaction.json": self.build_reaction_tree(level="class", dataset=resolved_dataset, result_set=result_set),
             "lp_species_reaction.json": self.build_reaction_tree(level="species", dataset=resolved_dataset, result_set=result_set),
             "lp_class_pathway.json": self.build_pathway_tree(level="class", dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
             "lp_species_pathway.json": self.build_pathway_tree(level="species", dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="class", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="class", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="species", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="species", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="class", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="class", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="species", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="species", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_class_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_species_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_species_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_class_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_class_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_species_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_species_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=resolved_dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
         }
 
-        payloads.update({f"{name}.json": payload for name, payload in self.build_edge_details(level="class", dataset=resolved_dataset, result_set=result_set).items() if not name.endswith(".json")})
-        payloads.update({f"{name}.json": payload for name, payload in self.build_edge_details(level="species", dataset=resolved_dataset, result_set=result_set).items() if not name.endswith(".json")})
+        edge_detail_payloads = self._build_edge_detail_payloads(
+            dataset=resolved_dataset,
+            result_set=result_set,
+        )
+        comparison_payloads = self._build_comparison_payloads(
+            disease_group=disease_group,
+            control_group=control_group,
+            threshold=threshold,
+            paired=paired,
+            dataset=resolved_dataset,
+            result_set=result_set,
+            reaction_lookup=reaction_lookup,
+        )
 
         for file_name, payload in payloads.items():
             file_path = output_dir / file_name
             with file_path.open("w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2)
             written_files[file_name] = str(file_path)
+
+        bundle_path = output_dir / self.COMPARISON_BUNDLE_NAME
+        with bundle_path.open("w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "metadata": {
+                        "disease_group": disease_group,
+                        "control_group": control_group,
+                        "threshold": threshold,
+                        "paired": paired,
+                    },
+                    "payloads": comparison_payloads,
+                },
+                handle,
+                indent=2,
+            )
+        written_files[self.COMPARISON_BUNDLE_NAME] = str(bundle_path)
+
+        edge_bundle_path = output_dir / self.EDGE_DETAILS_BUNDLE_NAME
+        with edge_bundle_path.open("w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "payloads": edge_detail_payloads,
+                },
+                handle,
+                indent=2,
+            )
+        written_files[self.EDGE_DETAILS_BUNDLE_NAME] = str(edge_bundle_path)
 
         return written_files

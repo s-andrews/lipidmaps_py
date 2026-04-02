@@ -165,7 +165,7 @@ class ChainParser:
         linkage = cls._determine_linkage(headgroup)
         
         # Extract structure portion (inside parentheses)
-        structure = cls._extract_structure(name)
+        structure = cls._extract_structure(name, headgroup)
         
         if not structure:
             # No structure info (e.g., just "PC" or "SPB")
@@ -202,14 +202,20 @@ class ChainParser:
             return "acyl CoA"
         for hg in sorted(cls.HEADGROUPS, key=len, reverse=True):
             if name.startswith(hg):
-                # Make sure it's followed by (, space, or end of string
+                # Accept direct structural notation after prefixed headgroups such as
+                # 'PC P-16:0_18:1' or 'PC O-34:1' in addition to spaced/parenthetical forms.
                 remainder = name[len(hg):]
-                if not remainder or remainder.startswith("(") or remainder.startswith(" "):
+                if (
+                    not remainder
+                    or remainder.startswith("(")
+                    or remainder.startswith(" ")
+                    or remainder[0].isdigit()
+                ):
                     return hg
         return None
     
     @classmethod
-    def _extract_structure(cls, name: str) -> Optional[str]:
+    def _extract_structure(cls, name: str, headgroup: Optional[str] = None) -> Optional[str]:
         """Extract the structure portion from parentheses or space-separated.
         
         Handles both formats:
@@ -221,6 +227,13 @@ class ChainParser:
         match = re.search(r"\(([^)]+)\)", name)
         if match:
             return match.group(1)
+
+        # If we already know the headgroup, strip it directly so prefixed forms like
+        # 'PC P-16:0_16:1' keep the correct headgroup and only expose the chain text.
+        if headgroup and name.startswith(headgroup):
+            remainder = name[len(headgroup):].strip()
+            if remainder:
+                return remainder
         
         # Try space-separated format (e.g., "FA 16:0")
         match = re.search(r"^[A-Za-z-]+\s+(\S+)$", name)
@@ -232,13 +245,17 @@ class ChainParser:
     @classmethod
     def _determine_linkage(cls, headgroup: str) -> str:
         """Determine linkage type from headgroup."""
-        if headgroup.startswith("O-"):
+        normalized = headgroup.strip()
+
+        if normalized.startswith("O-") or normalized.endswith(" O-"):
             return "ether_alkyl"
-        if headgroup.startswith("P-"):
+        if normalized.startswith("P-") or normalized.endswith(" P-"):
             return "ether_vinyl"
         
         # Strip prefix for sphingolipid check
-        base_hg = headgroup.lstrip("O-").lstrip("P-")
+        base_hg = normalized.removeprefix("O-").removeprefix("P-")
+        if base_hg.endswith(" O-") or base_hg.endswith(" P-"):
+            base_hg = base_hg[:-3]
         if base_hg in cls.SPHINGO_HEADGROUPS:
             return "amide"
         

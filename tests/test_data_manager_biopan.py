@@ -1,7 +1,7 @@
 import json
 
 from lipidmaps.data.data_manager import DataManager
-from lipidmaps.data.models.reaction import ReactionData
+from lipidmaps.data.models.reaction import CompoundComponent, ReactionData
 from lipidmaps.data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
 
 
@@ -112,3 +112,16 @@ def test_build_biopan_summary_uses_empty_object_for_empty_undef():
 
     assert summary["lipidlynxx"] == "yes"
     assert summary["undef"] == {}
+
+
+def test_get_lipids_for_component_matches_compound_generic_lm_id():
+    dataset = make_biopan_dataset()
+
+    component = CompoundComponent(
+        compound_type="lm_main",
+        compound_generic_lm_id="LMGP01010000",
+    )
+
+    matched = dataset.get_lipids_for_component(component)
+
+    assert [lipid.input_name for lipid in matched] == ["PC(34:1)"]

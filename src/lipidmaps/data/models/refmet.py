@@ -1,4 +1,6 @@
 import logging
+from threading import Lock
+from time import perf_counter
 from typing import List, Dict, Optional, Union, Any
 import requests
 from .base import LipidmapsBaseModel
@@ -25,6 +27,25 @@ class RefMetResult(LipidmapsBaseModel):
 
 class RefMet:
     MWBaseURL = "https://www.metabolomicsworkbench.org/databases/refmet/name_to_refmet_new_minID.php"
+    _cache: Dict[tuple[str, ...], List[RefMetResult]] = {}
+    _cache_lock = Lock()
+
+    @staticmethod
+    def _cache_key(metabolite_names: List[str]) -> tuple[str, ...]:
+        return tuple(metabolite_names)
+
+    @staticmethod
+    def _get_cached_results(cache_key: tuple[str, ...]) -> Optional[List[RefMetResult]]:
+        with RefMet._cache_lock:
+            cached = RefMet._cache.get(cache_key)
+            if cached is None:
+                return None
+            return [result.model_copy(deep=True) for result in cached]
+
+    @staticmethod
+    def _store_cached_results(cache_key: tuple[str, ...], results: List[RefMetResult]) -> None:
+        with RefMet._cache_lock:
+            RefMet._cache[cache_key] = [result.model_copy(deep=True) for result in results]
 
     @staticmethod
     def validate_metabolite_names(metabolite_names: List[str]) -> Union[List[RefMetResult], Dict[str, Any]]:
@@ -36,17 +57,39 @@ class RefMet:
         Returns:
             List of RefMetResult objects, one per input name
         """
+        cache_key = RefMet._cache_key(metabolite_names)
+        cached_results = RefMet._get_cached_results(cache_key)
+        if cached_results is not None:
+            logger.info("RefMet cache hit for %s metabolites", len(metabolite_names))
+            return cached_results
+
         data = {"metabolite_name": "\n".join(metabolite_names)}
+        started_at = perf_counter()
         try:
-            logger.info("Sending request to RefMet API")
-            response = requests.post(
-                RefMet.MWBaseURL, data=data, verify=True, timeout=15
+            logger.info(
+                "RefMet cache miss for %s metabolites; fetching from API",
+                len(metabolite_names),
             )
+            response = requests.post(RefMet.MWBaseURL, data=data, timeout=15)
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.error(f"RefMet API call failed: {e}")
+            elapsed = perf_counter() - started_at
+            logger.error(
+                "RefMet API call failed after %.3fs: %s",
+                elapsed,
+                e,
+            )
             # Return empty list on failure
             return {"error": str(e)}
+
+        elapsed = perf_counter() - started_at
+        content_length = len(response.content or b"")
+        logger.info(
+            "RefMet API fetched %s bytes in %.3fs for %s metabolites",
+            content_length,
+            elapsed,
+            len(metabolite_names),
+        )
 
         lines = [ln for ln in response.text.splitlines() if ln.strip()]
         if not lines or len(lines) < 2:
@@ -172,6 +215,7 @@ class RefMet:
             #     f"Validated '{name}' -> standardized: '{refmet_results[-1].standardized_name}', lm_id: {refmet_results[-1].lm_id}"
             # )
 
+        RefMet._store_cached_results(cache_key, refmet_results)
         logger.info(f"Annotated {len(refmet_results)} metabolites via RefMet")
         return refmet_results
 

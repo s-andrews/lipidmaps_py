@@ -6,6 +6,18 @@ from lipidmaps.data.models.sample import LipidDataset, QuantifiedLipid, SampleMe
 from lipidmaps.data.models.species_reaction import ClassReaction
 
 
+def load_comparison_payload(output_root, key):
+    with (output_root / "biopan" / "comparison_bundle.json").open(encoding="utf-8") as handle:
+        bundle = json.load(handle)
+    return bundle["payloads"][key]
+
+
+def load_edge_detail_payload(output_root, key):
+    with (output_root / "biopan" / "edge_details_bundle.json").open(encoding="utf-8") as handle:
+        bundle = json.load(handle)
+    return bundle["payloads"][key]
+
+
 def make_reaction_dataset() -> LipidDataset:
     samples = [
         SampleMetadata(sample_name="ctrl_1", group="control"),
@@ -132,17 +144,23 @@ def test_reaction_exporter_builds_initial_reaction_assets(tmp_path):
     )
 
     assert "lp_class_reaction.json" in written
-    assert "lp_species_reaction_case_control_active_notpaired.json" in written
-    assert "pc,pa.json" in written
+    assert "comparison_bundle.json" in written
+    assert "edge_details_bundle.json" in written
 
     with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "lp_class_reaction.json").open(encoding="utf-8") as handle:
         tree = json.load(handle)
-    with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "lp_class_reaction_case_control_active_notpaired.json").open(encoding="utf-8") as handle:
-        graph = json.load(handle)
-    with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "lp_class_reaction_case_control_active_0.05_notpaired_tbl.json").open(encoding="utf-8") as handle:
-        table = json.load(handle)
-    with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "pc,pa.json").open(encoding="utf-8") as handle:
-        edge = json.load(handle)
+    graph = load_comparison_payload(
+        tmp_path / "WSMhyRzAGt5IoYEJ",
+        "lp_class_reaction_case_control_active_notpaired.json",
+    )
+    table = load_comparison_payload(
+        tmp_path / "WSMhyRzAGt5IoYEJ",
+        "lp_class_reaction_case_control_active_0.05_notpaired_tbl.json",
+    )
+    edge = load_edge_detail_payload(
+        tmp_path / "WSMhyRzAGt5IoYEJ",
+        "pc,pa.json",
+    )
 
     assert tree == [{"text": "Matched reactions", "children": [{"text": "PA"}, {"text": "PC"}]}]
     assert {node["data"]["label"] for node in graph["nodes"]} == {"PC", "PA"}
@@ -190,17 +208,22 @@ def test_reaction_exporter_builds_pathway_assets(tmp_path):
     )
 
     assert "lp_class_pathway.json" in written
-    assert "lp_species_pathway_case_control_active_notpaired.json" in written
-    assert "lp_class_pathway_case_control_active_0.05_notpaired_tbl.json" in written
+    assert "comparison_bundle.json" in written
 
     with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "lp_class_pathway.json").open(encoding="utf-8") as handle:
         tree = json.load(handle)
-    with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "lp_class_pathway_case_control_active_notpaired.json").open(encoding="utf-8") as handle:
-        graph = json.load(handle)
-    with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "lp_class_pathway_case_control_active_0.05_notpaired.json").open(encoding="utf-8") as handle:
-        highlight = json.load(handle)
-    with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "lp_class_pathway_case_control_active_0.05_notpaired_tbl.json").open(encoding="utf-8") as handle:
-        table = json.load(handle)
+    graph = load_comparison_payload(
+        tmp_path / "WSMhyRzAGt5IoYEJ",
+        "lp_class_pathway_case_control_active_notpaired.json",
+    )
+    highlight = load_comparison_payload(
+        tmp_path / "WSMhyRzAGt5IoYEJ",
+        "lp_class_pathway_case_control_active_0.05_notpaired.json",
+    )
+    table = load_comparison_payload(
+        tmp_path / "WSMhyRzAGt5IoYEJ",
+        "lp_class_pathway_case_control_active_0.05_notpaired_tbl.json",
+    )
 
     assert tree == [{"text": "Glycerolipids and Glycerophospholipids", "children": [{"text": "PA"}, {"text": "PC"}]}]
     assert {node["data"]["label"] for node in graph["nodes"]} == {"PC", "PA"}
@@ -261,12 +284,16 @@ def test_pathway_exporter_builds_multistep_chain_and_gene_aggregation(tmp_path):
         threshold=0.05,
     )
 
-    assert "lp_species_pathway_case_control_active_0.05_notpaired_tbl.json" in written
+    assert "comparison_bundle.json" in written
 
-    with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "lp_species_pathway_case_control_active_0.05_notpaired_tbl.json").open(encoding="utf-8") as handle:
-        table = json.load(handle)
-    with (tmp_path / "WSMhyRzAGt5IoYEJ" / "biopan" / "lp_species_pathway_case_control_active_0.05_notpaired.json").open(encoding="utf-8") as handle:
-        highlight = json.load(handle)
+    table = load_comparison_payload(
+        tmp_path / "WSMhyRzAGt5IoYEJ",
+        "lp_species_pathway_case_control_active_0.05_notpaired_tbl.json",
+    )
+    highlight = load_comparison_payload(
+        tmp_path / "WSMhyRzAGt5IoYEJ",
+        "lp_species_pathway_case_control_active_0.05_notpaired.json",
+    )
 
     assert table["pathways"][0]["data"]["pathway"] == "DG(36:0)&#8594;PE(36:0)&#8594;PC(36:0)"
     assert table["pathways"][0]["data"]["gene"] == "CEPT1,PEMT,PEMT2"

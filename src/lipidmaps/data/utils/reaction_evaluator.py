@@ -83,21 +83,29 @@ class ReactionEvaluator:
                                 
                             elif product_rule.get("acyl_chain_change")==-1:
                                 if product_rule.get("reaction_requirements").get("external_compounds") == []:
-                                    if dataset.check_structure_exist(headgroup="FA", total_carbons = {reactant_total_carbons-product_total_carbons}, total_double_bonds = {reactant_total_double_bonds-product_total_double_bonds}):
+                                    if dataset.check_structure_exist(
+                                        headgroup="FA",
+                                        total_carbons=reactant_total_carbons - product_total_carbons,
+                                        total_double_bonds=reactant_total_double_bonds - product_total_double_bonds,
+                                    ):
                                         possible = True
                                         reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                         pairs_info.append(f"{reactant_lipid.standardized_name} -> {product_lipid.standardized_name}")
-                                        
-                                reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
+                                    else:
+                                        reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
 
                             elif product_rule.get("acyl_chain_change")==1:
                                 if product_rule.get("reaction_requirements").get("external_compounds")[0] == "acylcoa":
-                                    if dataset.check_structure_exist(headgroup="acyl CoA", total_carbons = (product_total_carbons - reactant_total_carbons), total_double_bonds = (reactant_total_double_bonds - product_total_double_bonds)):
+                                    if dataset.check_structure_exist(
+                                        headgroup="acyl CoA",
+                                        total_carbons=product_total_carbons - reactant_total_carbons,
+                                        total_double_bonds=product_total_double_bonds - reactant_total_double_bonds,
+                                    ):
                                         possible = True
                                         reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                         pairs_info.append(f"{reactant_lipid.standardized_name} -> {product_lipid.standardized_name}")
-
-                                reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
+                                    else:
+                                        reasons.append(f"{product_input_name} does not have enough acyl chains to be a possible product of {reactant_input_name}.")
 
                             elif product_rule.get("required_compound") == "fa" and not any(chain.get("is_fa", False) for chain in product_chains):
                                 reasons.append(f"{product_input_name} does not have the required fatty acid chain to be a possible product of {reactant_input_name}.")

@@ -17,13 +17,7 @@ from .utils.chain_parser import (
     extract_fa_from_reactions,
     extract_facoa_from_reactions,
 )
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("lipidmaps_py.log"), logging.StreamHandler()],
-)
+from ..logging_utils import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -103,11 +97,13 @@ def parse_group_mapping(raw_groups: list[str] | None) -> dict[str, list[str]] | 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    log_dir = configure_logging()
 
     csv_path = Path(args.csv).expanduser()
     if not csv_path.exists():
         parser.error(f"CSV file not found: {csv_path}")
 
+    logger.info(f"CLI logging to: {log_dir}")
     logger.info(f"Processing CSV: {csv_path}")
 
     group_mapping = parse_group_mapping(args.groups)

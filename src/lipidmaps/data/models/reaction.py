@@ -67,6 +67,10 @@ class ReactionData(LipidmapsBaseModel):
     # Allow additional fields from API response
     model_config = {"extra": "allow"}
 
+    @staticmethod
+    def _component_identifier(comp: CompoundComponent) -> Optional[str]:
+        return comp.compound_lm_id or comp.compound_generic_lm_id
+
     def list_generic_lm_ids(self) -> List[str]:
         """List all generic_lm_ids from reactants and products."""
         ids = set()
@@ -87,16 +91,18 @@ class ReactionData(LipidmapsBaseModel):
         """List all lm_ids from reactants."""
         ids = set()
         for component in self.reactants:
-            if component.compound_lm_id and not (component.compound_lm_id == "LMFA01010000" or component.compound_lm_id.startswith("LMFA0705")):
-                ids.add(component.compound_lm_id)
+            component_id = self._component_identifier(component)
+            if component_id and not (component_id == "LMFA01010000" or component_id.startswith("LMFA0705")):
+                ids.add(component_id)
         return sorted(ids)
     
     def list_nonfa_noncoa_product_lm_ids(self) -> List[str]:
         """List all lm_ids from products."""
         ids = set()
         for component in self.products:
-            if component.compound_lm_id and not (component.compound_lm_id == "LMFA01010000" or component.compound_lm_id.startswith("LMFA0705")):
-                ids.add(component.compound_lm_id)
+            component_id = self._component_identifier(component)
+            if component_id and not (component_id == "LMFA01010000" or component_id.startswith("LMFA0705")):
+                ids.add(component_id)
         return sorted(ids)
 
     def has_lm_main_components(self) -> bool:
@@ -200,7 +206,11 @@ class ReactionChecker(LipidmapsBaseModel):
         logger.debug("Reaction check payload: %s", payload)
         try:
             logger.info(f"Sending reaction check request for {len(lm_ids)} LM IDs to {self.api_url}")
-            response = requests.post(self.api_url, json=payload, timeout=self.timeout)
+            response = requests.post(
+                self.api_url,
+                json=payload,
+                timeout=self.timeout,
+            )
             try:
                 response.raise_for_status()
             except requests.HTTPError:

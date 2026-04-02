@@ -199,6 +199,26 @@ print(f"Lipids: {dataset.list_lipid_names()[:5]}")
 
 ```
 
+## Logging
+
+Runtime logs are written into a dedicated `logs/` directory.
+
+- Default location during repo-based runs: `logs/` at the top of the `lipidmaps_py` checkout.
+- Default location outside the repo layout: `logs/` under the current working directory.
+- Override location: set `LIPIDMAPS_LOG_DIR=/your/path` before running the CLI.
+
+The package creates two rotating log files:
+
+- `logs/lipidmaps_py.log` for info, warning, and error messages.
+- `logs/lipidmaps_py.error.log` for error messages only.
+
+Example:
+
+```bash
+LIPIDMAPS_LOG_DIR=/tmp/lipidmaps-logs \
+PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan /lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ
+```
+
 ## Refmet Name Standardization
 - [Refmet](https://www.metabolomicsworkbench.org/databases/refmet/index.php) standardization is used by default and it can be dectivated with ```use_refmet=False``` option. 
 - Lipid names can also be validated separately by importing RefMet class and providing an array of names to validate_metabolite_names() function
@@ -375,6 +395,7 @@ streamlit run scripts/streamlit_demo.py
 
 In this demo, you can either use existing csv and tsv files in demo folder or upload your own.
 You can preview your data, see validation report and associated LIPID MAPS reactions.
+The Streamlit launch path also uses the shared package logging setup, so demo startup and runtime errors are written to `logs/lipidmaps_py.log` and `logs/lipidmaps_py.error.log` by default.
 
 ## New / Updated API Methods
 

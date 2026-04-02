@@ -599,6 +599,8 @@ class LipidDataset(LipidmapsBaseModel):
 
         if hasattr(component, "compound_lm_id") and component.compound_lm_id:
             comp_names.add(component.compound_lm_id.lower())
+        if hasattr(component, "compound_generic_lm_id") and component.compound_generic_lm_id:
+            comp_names.add(component.compound_generic_lm_id.lower())
 
         return [
             l for l in self.lipids

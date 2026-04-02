@@ -400,6 +400,12 @@ class DataManager(LipidmapsBaseModel):
 
             # Call RefMet API to get results
             refmet_results = RefMet.validate_metabolite_names(lipid_names)
+            if isinstance(refmet_results, dict):
+                logger.error(
+                    "RefMet returned an error payload; continuing without standardized names: %s",
+                    refmet_results.get("error", "unknown error"),
+                )
+                return False
             logger.info(f"RefMet returned {len(refmet_results)} results")
 
             # Apply results to quantified lipids

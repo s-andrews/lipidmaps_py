@@ -5,9 +5,25 @@ import logging
 from pathlib import Path
 
 from .data import DataManager
+from .logging_utils import configure_logging
 
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_input_path(session_dir: Path, explicit_path: str | None) -> Path:
+    if explicit_path:
+        return Path(explicit_path).expanduser().resolve()
+
+    supported_paths = [
+        session_dir / "input" / "input.csv",
+        session_dir / "input" / "input.tsv",
+    ]
+    for candidate in supported_paths:
+        if candidate.exists():
+            return candidate
+
+    return supported_paths[0]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,9 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Regenerate BioPAN session assets using lipidmaps_py"
     )
     parser.add_argument("session_dir", help="BioPAN session directory, e.g. /lipidmaps/temp/biopan/<session_id>")
-    parser.add_argument("--csv", dest="csv_path", help="Optional explicit input CSV path. Defaults to <session_dir>/input/input.csv")
+    parser.add_argument("--csv", dest="csv_path", help="Optional explicit input table path. Defaults to <session_dir>/input/input.csv or input.tsv")
     parser.add_argument("--taxonomy-group", default="all", help="Taxonomy group for reaction fetching")
     parser.add_argument("--validate-data", action="store_true", help="Enable CSV validation during import")
+    parser.add_argument("--has-labels", action="store_true", help="Treat the second row of the CSV as sample labels")
     parser.add_argument("--use-refmet", action="store_true", default=True, help="Use RefMet annotation")
     parser.add_argument("--no-use-refmet", dest="use_refmet", action="store_false", help="Disable RefMet annotation")
     parser.add_argument("--use-headgroups", action="store_true", default=True, help="Fill generic LM IDs from headgroups")
@@ -80,33 +97,40 @@ def _resolve_groups(manager: DataManager, disease_group: str | None, control_gro
     if len(groups) < 2:
         raise ValueError("At least two sample groups are required to export BioPAN reaction assets")
 
-    return disease_group or groups[1], control_group or groups[0]
+    return disease_group or groups[0], control_group or groups[1]
 
 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    log_dir = configure_logging()
 
     session_dir = Path(args.session_dir).expanduser().resolve()
-    csv_path = Path(args.csv_path).expanduser().resolve() if args.csv_path else session_dir / "input" / "input.csv"
+    csv_path = _resolve_input_path(session_dir, args.csv_path)
     if not csv_path.exists():
-        parser.error(f"Input CSV not found: {csv_path}")
+        parser.error(f"Input file not found: {csv_path}")
 
-    manager = DataManager(
-        validate_data=args.validate_data,
-        use_refmet=args.use_refmet,
-        use_headgroups=args.use_headgroups,
-        fetch_reactions=args.fetch_reactions,
-        taxonomy_group=args.taxonomy_group,
-    )
-    dataset = manager.process_csv(csv_path)
+    logger.info("BioPAN CLI logging to %s", log_dir)
+    logger.info("Starting BioPAN export for session %s", session_dir)
+
     try:
+        manager = DataManager(
+            validate_data=args.validate_data,
+            has_labels=args.has_labels,
+            use_refmet=args.use_refmet,
+            use_headgroups=args.use_headgroups,
+            fetch_reactions=args.fetch_reactions,
+            taxonomy_group=args.taxonomy_group,
+        )
+        dataset = manager.process_csv(csv_path)
         group_overrides = _parse_sample_group_overrides(args.sample_group)
         _apply_group_overrides(dataset, group_overrides)
     except ValueError as exc:
         parser.error(str(exc))
+    except Exception:
+        logger.exception("BioPAN export failed for session %s", session_dir)
+        raise
 
     written: dict[str, str] = {}
 
@@ -125,6 +149,9 @@ def main() -> None:
                 dataset=dataset,
             )
         )
+
+    logger.info("BioPAN export completed for session %s", session_dir)
+    logger.info("Wrote %s assets", len(written))
 
     print({"written": written})
 
