@@ -66,7 +66,7 @@ class ReactionEvaluator:
                     product_headgroup = getattr(product_lipid.structure, "headgroup", None)
                     if product_headgroup in reactant_rule.get("can_convert_to", []):
                         product_input_name = getattr(product_lipid.structure, "input_name", None)
-                        product_rule = reactant_rule["conversion_rules"].get(product_headgroup, None) 
+                        product_rule = reactant_rule.get("conversion_rules", {}).get(product_headgroup, None) 
 
                         product_chains = getattr(product_lipid.structure, "chains", [])
                         product_total_carbons = getattr(product_lipid.structure, "total_carbons", 0)
@@ -92,7 +92,7 @@ class ReactionEvaluator:
 
                             elif product_rule.get("acyl_chain_change")==1:
                                 if product_rule.get("reaction_requirements").get("external_compounds")[0] == "acylcoa":
-                                    if dataset.check_structure_exist(headgroup="acyl CoA", total_carbons = {product_total_carbons - reactant_total_carbons}, total_double_bonds = {reactant_total_double_bonds-product_total_double_bonds}):
+                                    if dataset.check_structure_exist(headgroup="acyl CoA", total_carbons = (product_total_carbons - reactant_total_carbons), total_double_bonds = (reactant_total_double_bonds - product_total_double_bonds)):
                                         possible = True
                                         reasons.append(f"{reactant_input_name} can convert to {product_input_name} based on headgroup reaction rules.")
                                         pairs_info.append(f"{reactant_lipid.standardized_name} -> {product_lipid.standardized_name}")

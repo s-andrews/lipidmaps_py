@@ -42,6 +42,39 @@ def make_pathway_dataset() -> LipidDataset:
     return dataset
 
 
+def make_suppressed_pathway_dataset() -> LipidDataset:
+    dataset = LipidDataset(
+        samples=[
+            SampleMetadata(sample_name="ctrl_1", group="control"),
+            SampleMetadata(sample_name="ctrl_2", group="control"),
+            SampleMetadata(sample_name="ctrl_3", group="control"),
+            SampleMetadata(sample_name="case_1", group="case"),
+            SampleMetadata(sample_name="case_2", group="case"),
+            SampleMetadata(sample_name="case_3", group="case"),
+        ],
+        lipids=[
+            QuantifiedLipid(input_name="PC(34:1)", values={"ctrl_1": 6.0, "ctrl_2": 6.5, "ctrl_3": 7.0, "case_1": 12.0, "case_2": 11.0, "case_3": 10.0}),
+            QuantifiedLipid(input_name="PA(34:1)", values={"ctrl_1": 12.0, "ctrl_2": 11.0, "ctrl_3": 10.0, "case_1": 3.0, "case_2": 2.5, "case_3": 2.0}),
+            QuantifiedLipid(input_name="PC(36:2)", values={"ctrl_1": 5.5, "ctrl_2": 6.0, "ctrl_3": 6.5, "case_1": 11.0, "case_2": 10.0, "case_3": 9.0}),
+            QuantifiedLipid(input_name="PA(36:2)", values={"ctrl_1": 11.0, "ctrl_2": 10.0, "ctrl_3": 9.0, "case_1": 2.5, "case_2": 2.0, "case_3": 1.5}),
+        ],
+    )
+    dataset.reactions = [
+        ReactionData(
+            reactants=[CompoundComponent(compound_name="PC", compound_headgroup="PC")],
+            products=[CompoundComponent(compound_name="PA", compound_headgroup="PA")],
+            genes=[{"gene_symbol": "PLA2G15"}],
+            pathways=[
+                {
+                    "pathway_name": "Phosphatidylcholine turnover",
+                    "pathway_type": ["Glycerolipids and Glycerophospholipids"],
+                }
+            ],
+        )
+    ]
+    return dataset
+
+
 def make_multistep_pathway_dataset() -> LipidDataset:
     samples = [
         SampleMetadata(sample_name="ctrl_1", group="control"),
@@ -176,6 +209,46 @@ def test_reaction_exporter_builds_pathway_assets(tmp_path):
     assert highlight["edges"] == "#PCPA"
     assert table["pathways"][0]["data"]["pathway"] == "PC&#8594;PA"
     assert table["pathways"][0]["data"]["class"] == "Phosphatidylcholine turnover (Glycerolipids and Glycerophospholipids)"
+
+
+def test_pathway_exporter_uses_legacy_one_sided_scores_for_active_and_suppressed_modes():
+    active_exporter = BioPANPathwayExporter(dataset=make_pathway_dataset())
+    active_reaction_rows = active_exporter.build_reaction_table(
+        disease_group="case",
+        control_group="control",
+        threshold=0.05,
+        level="class",
+        mode="active",
+    )["pathways"]
+    active_pathway_rows = active_exporter.build_pathway_table(
+        disease_group="case",
+        control_group="control",
+        threshold=0.05,
+        level="class",
+        mode="active",
+    )["pathways"]
+
+    assert active_reaction_rows[0]["data"]["score"] > 1.645
+    assert active_pathway_rows[0]["data"]["score"] > 1.645
+
+    suppressed_exporter = BioPANPathwayExporter(dataset=make_suppressed_pathway_dataset())
+    suppressed_reaction_rows = suppressed_exporter.build_reaction_table(
+        disease_group="case",
+        control_group="control",
+        threshold=0.05,
+        level="class",
+        mode="suppressed",
+    )["pathways"]
+    suppressed_pathway_rows = suppressed_exporter.build_pathway_table(
+        disease_group="case",
+        control_group="control",
+        threshold=0.05,
+        level="class",
+        mode="suppressed",
+    )["pathways"]
+
+    assert suppressed_reaction_rows[0]["data"]["score"] > 1.645
+    assert suppressed_pathway_rows[0]["data"]["score"] > 1.645
 
 
 def test_pathway_exporter_builds_multistep_chain_and_gene_aggregation(tmp_path):

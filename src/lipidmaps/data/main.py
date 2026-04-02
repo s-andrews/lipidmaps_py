@@ -190,7 +190,7 @@ def test_species_matching(dataset) -> None:
     logger.info("=" * 60)
     
     # Get all lipid names from dataset
-    lipid_names = [lipid.standardized_name for lipid in dataset.lipids]
+    lipid_names = [lipid.standardized_name or lipid.input_name or None for lipid in dataset.lipids]
     logger.info(f"Dataset has {len(lipid_names)} lipids")
     
     # --- FA extraction strategy (priority order) ---

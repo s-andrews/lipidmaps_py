@@ -19,6 +19,5 @@ __all__ = [
     "PathwayReactionSet",
     "ReactionMatchResult",
     "ReactionType",
-    "SpeciesReactionPair",
-    "Headgroup",
+    "SpeciesReactionPair"
 ]

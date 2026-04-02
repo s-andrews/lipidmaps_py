@@ -25,7 +25,7 @@ def _ordered_unique_strings(values: List[Any]) -> List[str]:
 class BioPANExporter(LipidmapsBaseModel):
     """Build and write the BioPAN JSON files consumed by the PHP frontend."""
 
-    dataset: Optional[LipidDataset] = Field(default=None)
+    dataset: Optional[Any] = Field(default=None)
 
     model_config = {"arbitrary_types_allowed": True}
 

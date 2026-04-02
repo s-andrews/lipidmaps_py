@@ -148,7 +148,7 @@ class QuantifiedLipid(LipidmapsBaseModel):
     def structure(self) -> LipidStructure:
         if self._structure is None and self.standardized_name is not None and "FA" not in self.input_name and "-coa" not in self.standardized_name.lower():
             self._structure = parse_lipid(self.standardized_name)
-        elif "fa" in self.input_name.lower() or "-coa" in self.standardized_name.lower():
+        elif "fa" in self.input_name.lower() or ("-coa" in self.standardized_name.lower() and self.standardized_name is not None):
             self._structure = parse_lipid(self.input_name)
         return self._structure
     
@@ -443,10 +443,10 @@ class LipidDataset(LipidmapsBaseModel):
                 s = None
             if s is None:
                 continue
-            hg = getattr(s, "headgroup", None)
-            total_carbons = getattr(s, "total_carbons", None)
-            total_double_bonds = getattr(s, "total_double_bonds", None)
-            if hg == headgroup and total_carbons == total_carbons and total_double_bonds == total_double_bonds:
+            headgroup_origin = getattr(s, "headgroup", None)
+            total_carbons_origin = getattr(s, "total_carbons", None)
+            total_double_bonds_origin = getattr(s, "total_double_bonds", None)
+            if headgroup_origin == headgroup and total_carbons_origin == total_carbons and total_double_bonds_origin == total_double_bonds:
                 return True
             else:
                 continue
@@ -775,8 +775,13 @@ class LipidDataset(LipidmapsBaseModel):
                         continue
                     # prefer first match with headgroup set
                     for ml in matches:
-                        if getattr(ml, 'headgroup', None):
-                            comp.compound_headgroup = ml.headgroup
+                        try:
+                            structure = getattr(ml, 'structure', None)
+                            headgroup = getattr(structure, 'headgroup', None)
+                        except Exception:
+                            headgroup = None
+                        if headgroup:
+                            comp.compound_headgroup = headgroup
                             updated += 1
                             break
                 except Exception:
@@ -918,20 +923,16 @@ class LipidDataset(LipidmapsBaseModel):
 
     def possible_reactions(self, reactions: Optional[List[Any]] = None) -> List[Any]:
         """Return reactions from `reactions` that are plausible for this dataset."""
-
         try:
             if reactions is None:
                 reactions = getattr(self, 'reactions', []) or []
 
-            # Extract all "possible" reactions from each reaction.evaluation
-            possible_reactions = [
-                r
+            return [
+                reaction
                 for reaction in reactions
-                for r in (reaction.evaluation.get("possible") or [])
+                if getattr(reaction, 'evaluation', None)
+                and reaction.evaluation.get('possible') is True
             ]
-
-            return possible_reactions
-
         except Exception:
             logger.exception("Failed to compute plausible reactions for dataset.")
             return []

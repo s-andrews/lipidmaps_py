@@ -3,7 +3,6 @@ import math
 import re
 from collections import OrderedDict
 from pathlib import Path
-from statistics import mean
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from pydantic import Field, PrivateAttr
@@ -21,8 +20,8 @@ from .utils.headgroups import lipidmaps_headgroups, lm_id_to_headgroup
 class BioPANPathwayExporter(LipidmapsBaseModel):
     """Build BioPAN reaction graph, table, and edge-detail assets from a dataset."""
 
-    dataset: Optional[LipidDataset] = Field(default=None)
-    class_reactions: Optional[List[ClassReaction]] = Field(default=None)
+    dataset: Optional[Any] = Field(default=None)
+    class_reactions: Optional[List[Any]] = Field(default=None)
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -75,12 +74,23 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
 
     @staticmethod
     def _get_lipid_display_name(lipid: QuantifiedLipid) -> str:
-        if lipid.input_name:
-            return lipid.input_name
         if getattr(lipid, "standardized_name", None):
             return lipid.standardized_name
+        if lipid.input_name:
+            return lipid.input_name
         structure = getattr(lipid, "structure", None)
         return BioPANPathwayExporter._structure_label(structure)
+
+    def _display_name_for_structure(
+        self,
+        structure: Any,
+        lipid_lookup: Dict[str, QuantifiedLipid],
+    ) -> str:
+        structure_label = self._structure_label(structure)
+        lipid = lipid_lookup.get(structure_label)
+        if lipid is not None:
+            return self._get_lipid_display_name(lipid)
+        return structure_label
 
     def _build_lipid_lookup(self, dataset: LipidDataset) -> Dict[str, QuantifiedLipid]:
         lookup: Dict[str, QuantifiedLipid] = {}
@@ -252,6 +262,10 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         return float(stats.norm.ppf(1 - p_value))
 
     @staticmethod
+    def _mode_rank_value(score: float, mode: str) -> float:
+        return score
+
+    @staticmethod
     def _log_ratio(product_value: Optional[float], reactant_value: Optional[float]) -> Optional[float]:
         if product_value is None or reactant_value is None:
             return None
@@ -340,33 +354,17 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         if len(disease_values) <= 1 or len(control_values) <= 1:
             return 0.0
 
-        disease_constant = all(abs(value - disease_values[0]) < 1e-12 for value in disease_values)
-        control_constant = all(abs(value - control_values[0]) < 1e-12 for value in control_values)
-        if disease_constant and control_constant:
-            disease_mean = disease_values[0]
-            control_mean = control_values[0]
-            if abs(disease_mean - control_mean) < 1e-12:
-                return 0.0
-            if alt == "greater" and disease_mean > control_mean:
-                return self._round_zscore(float(stats.norm.ppf(1 - 1e-16)))
-            if alt == "less" and disease_mean < control_mean:
-                return self._round_zscore(float(stats.norm.ppf(1 - 1e-16)))
-            return 0.0
-
         try:
             if paired:
                 test_result = stats.ttest_rel(disease_values, control_values, alternative=alt)
             else:
-                test_result = stats.ttest_ind(disease_values, control_values, equal_var=True, alternative=alt)
+                test_result = stats.ttest_ind(disease_values, control_values, equal_var=False, alternative=alt)
         except Exception:
             return 0.0
 
         p_value = getattr(test_result, "pvalue", None)
         if p_value is None or math.isnan(p_value) or math.isinf(p_value):
             return 0.0
-
-        if p_value <= 0:
-            return float("inf")
 
         z_score = float(stats.norm.ppf(1 - p_value))
         if math.isnan(z_score):
@@ -382,8 +380,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         alt: str,
         paired: bool,
     ) -> float:
-        reactant_name = self._structure_label(pair.reactant)
-        product_name = self._structure_label(pair.product)
+        reactant_name = self._display_name_for_structure(pair.reactant, lipid_lookup)
+        product_name = self._display_name_for_structure(pair.product, lipid_lookup)
         disease_products = self._sum_lipid_values([product_name], disease_samples, lipid_lookup)
         disease_reactants = self._sum_lipid_values([reactant_name], disease_samples, lipid_lookup)
         control_products = self._sum_lipid_values([product_name], control_samples, lipid_lookup)
@@ -408,8 +406,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     ) -> float:
         if not result.pairs:
             return 0.0
-        reactant_names = sorted({self._structure_label(pair.reactant) for pair in result.pairs})
-        product_names = sorted({self._structure_label(pair.product) for pair in result.pairs})
+        reactant_names = sorted({self._display_name_for_structure(pair.reactant, lipid_lookup) for pair in result.pairs})
+        product_names = sorted({self._display_name_for_structure(pair.product, lipid_lookup) for pair in result.pairs})
         disease_products = self._sum_lipid_values(product_names, disease_samples, lipid_lookup)
         disease_reactants = self._sum_lipid_values(reactant_names, disease_samples, lipid_lookup)
         control_products = self._sum_lipid_values(product_names, control_samples, lipid_lookup)
@@ -569,8 +567,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 continue
 
             for pair in result.pairs:
-                reactant_label = self._structure_label(pair.reactant)
-                product_label = self._structure_label(pair.product)
+                reactant_label = self._display_name_for_structure(pair.reactant, lipid_lookup)
+                product_label = self._display_name_for_structure(pair.product, lipid_lookup)
                 score = self._score_pair(pair, lipid_lookup, disease_samples, control_samples, alt=alt, paired=paired)
                 edges.append({
                     "source_label": reactant_label,
@@ -626,9 +624,14 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         self,
         edges: Sequence[Dict[str, Any]],
         p_value: float,
+        mode: str,
     ) -> List[Dict[str, Any]]:
         cutoff = self._critical_zscore(p_value)
-        return [edge for edge in edges if edge["score"] > cutoff]
+        return [
+            edge
+            for edge in edges
+            if self._mode_rank_value(edge["score"], mode) > cutoff
+        ]
 
     def _chain_score(self, scores: Sequence[float]) -> float:
         if not scores:
@@ -640,6 +643,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         edges: Sequence[Dict[str, Any]],
         subset: str,
         p_value: float,
+        mode: str,
         max_depth: int = 6,
         max_rows: int = 2000,
         beam_width: int = 24,
@@ -654,7 +658,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             label_lookup[edge["target_id"]] = edge["target_label"]
 
         for edge_list in adjacency.values():
-            edge_list.sort(key=lambda edge: edge["score"], reverse=True)
+            edge_list.sort(key=lambda edge: self._mode_rank_value(edge["score"], mode), reverse=True)
 
         chains: Dict[str, Dict[str, Any]] = {}
 
@@ -680,14 +684,15 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 next_edges = chain_edges + [edge]
                 next_labels = node_labels + [edge["target_label"]]
                 score = self._chain_score([item["score"] for item in next_edges])
-                if score <= cutoff:
+                if self._mode_rank_value(score, mode) <= cutoff:
                     continue
 
                 state_key = (target_id, tuple(sorted(next_shared)))
                 prior_scores = state_scores.setdefault(state_key, [])
-                if len(prior_scores) >= beam_width and score <= min(prior_scores):
+                ranked_score = self._mode_rank_value(score, mode)
+                if len(prior_scores) >= beam_width and ranked_score <= min(prior_scores):
                     continue
-                prior_scores.append(score)
+                prior_scores.append(ranked_score)
                 prior_scores.sort(reverse=True)
                 if len(prior_scores) > beam_width:
                     del prior_scores[beam_width:]
@@ -727,10 +732,10 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             walk(start_id, [label_lookup[start_id]], [], None, {start_id})
 
         rows = list(chains.values())
-        rows.sort(key=lambda row: row["data"]["score"], reverse=True)
+        rows.sort(key=lambda row: self._mode_rank_value(row["data"]["score"], mode), reverse=True)
         return rows
 
-    def _most_significant_rows(self, rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _most_significant_rows(self, rows: Sequence[Dict[str, Any]], mode: str) -> List[Dict[str, Any]]:
         selected: Dict[str, Dict[str, Any]] = {}
         for row in rows:
             node_ids = row.get("node_ids", [])
@@ -751,15 +756,15 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 if node_ids[index] != current_nodes[index]:
                     new_score = new_scores[index - 1] if index - 1 < len(new_scores) else float("-inf")
                     current_score = current_scores[index - 1] if index - 1 < len(current_scores) else float("-inf")
-                    replace = new_score > current_score
+                    replace = self._mode_rank_value(new_score, mode) > self._mode_rank_value(current_score, mode)
                     break
-            if not replace and row["data"]["score"] > current["data"]["score"]:
+            if not replace and self._mode_rank_value(row["data"]["score"], mode) > self._mode_rank_value(current["data"]["score"], mode):
                 replace = True
             if replace:
                 selected[root] = row
 
         result = list(selected.values())
-        result.sort(key=lambda row: row["data"]["score"], reverse=True)
+        result.sort(key=lambda row: self._mode_rank_value(row["data"]["score"], mode), reverse=True)
         return result
 
     def _rows_to_highlight(self, rows: Sequence[Dict[str, Any]]) -> Dict[str, str]:
@@ -809,13 +814,14 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             category["children"].sort(key=lambda item: item["text"])
             return [category]
 
+        lipid_lookup = self._build_lipid_lookup(resolved_dataset)
         grouped_species: Dict[str, List[str]] = {}
         for result in resolved_result_set.results.values():
             if not result.has_pairs:
                 continue
             for pair in result.pairs:
-                grouped_species.setdefault(pair.reactant.headgroup, []).append(self._structure_label(pair.reactant))
-                grouped_species.setdefault(pair.product.headgroup, []).append(self._structure_label(pair.product))
+                grouped_species.setdefault(pair.reactant.headgroup, []).append(self._display_name_for_structure(pair.reactant, lipid_lookup))
+                grouped_species.setdefault(pair.product.headgroup, []).append(self._display_name_for_structure(pair.product, lipid_lookup))
 
         for class_name in sorted(grouped_species):
             unique_species = sorted(set(grouped_species[class_name]))
@@ -836,6 +842,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         if result_set is None or reaction_lookup is None:
             result_set, reaction_lookup = self.build_reaction_match_set(resolved_dataset)
 
+        lipid_lookup = self._build_lipid_lookup(resolved_dataset)
         grouped: "OrderedDict[str, OrderedDict[str, set[str]]]" = OrderedDict()
         for result, pathways in self._iter_pathway_results(result_set, reaction_lookup):
             categories: List[str] = []
@@ -854,8 +861,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                         category_bucket.setdefault(class_name, set())
                 else:
                     for pair in result.pairs:
-                        category_bucket.setdefault(pair.reactant.headgroup, set()).add(self._structure_label(pair.reactant))
-                        category_bucket.setdefault(pair.product.headgroup, set()).add(self._structure_label(pair.product))
+                        category_bucket.setdefault(pair.reactant.headgroup, set()).add(self._display_name_for_structure(pair.reactant, lipid_lookup))
+                        category_bucket.setdefault(pair.product.headgroup, set()).add(self._display_name_for_structure(pair.product, lipid_lookup))
 
         tree: List[Dict[str, Any]] = []
         for category, classes in grouped.items():
@@ -1026,7 +1033,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 paired=paired,
                 mode=mode,
             )
-            selected_edges = self._select_significant_edges(edges, threshold)
+            selected_edges = self._select_significant_edges(edges, threshold, mode)
             rows: List[Dict[str, Any]] = []
             for edge in selected_edges:
                 rows.append({
@@ -1040,9 +1047,9 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                     "edge_scores": [edge["score"]],
                 })
 
-            rows.sort(key=lambda row: row["data"]["score"], reverse=True)
+            rows.sort(key=lambda row: self._mode_rank_value(row["data"]["score"], mode), reverse=True)
             if mode in {"most_active", "most_suppressed"}:
-                rows = self._most_significant_rows(rows)
+                rows = self._most_significant_rows(rows, mode)
             if limit is not None:
                 rows = rows[:limit]
             cached = {"pathways": rows}
@@ -1121,9 +1128,9 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 )
                 if edge["pathway_keys"]
             ]
-            rows = self._pathway_chain_rows(edges, subset="pathway", p_value=threshold)
+            rows = self._pathway_chain_rows(edges, subset="pathway", p_value=threshold, mode=mode)
             if mode in {"most_active", "most_suppressed"}:
-                rows = self._most_significant_rows(rows)
+                rows = self._most_significant_rows(rows, mode)
             cached = {"pathways": rows}
             self._pathway_table_cache[cache_key] = cached
         rows = list(cached["pathways"])
@@ -1141,6 +1148,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         resolved_result_set = result_set
         if resolved_result_set is None:
             resolved_result_set, _ = self.build_reaction_match_set(resolved_dataset)
+        lipid_lookup = self._build_lipid_lookup(resolved_dataset)
         by_headgroup = resolved_dataset.get_structures_by_headgroup()
         details: Dict[str, Dict[str, str]] = {}
 
@@ -1148,11 +1156,16 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             if not result.has_pairs:
                 continue
 
-            selected_reactants = sorted({self._structure_label(pair.reactant) for pair in result.pairs})
-            selected_products = sorted({self._structure_label(pair.product) for pair in result.pairs})
-            reactant_pool = sorted({self._structure_label(structure) for structure in by_headgroup.get(result.class_reaction.reactant_class, [])})
-            product_pool = sorted({self._structure_label(structure) for structure in by_headgroup.get(result.class_reaction.product_class, [])})
-            edge_key = result.reaction_key.lower()
+            selected_reactants = sorted({self._display_name_for_structure(pair.reactant, lipid_lookup) for pair in result.pairs})
+            selected_products = sorted({self._display_name_for_structure(pair.product, lipid_lookup) for pair in result.pairs})
+            reactant_pool = sorted({self._display_name_for_structure(structure, lipid_lookup) for structure in by_headgroup.get(result.class_reaction.reactant_class, [])})
+            product_pool = sorted({self._display_name_for_structure(structure, lipid_lookup) for structure in by_headgroup.get(result.class_reaction.product_class, [])})
+            edge_key = ",".join(
+                [
+                    self._safe_node_id(result.class_reaction.reactant_class),
+                    self._safe_node_id(result.class_reaction.product_class),
+                ]
+            )
             details[edge_key] = {
                 "non_selected_re": ",".join([name for name in reactant_pool if name not in selected_reactants]),
                 "selected_re": ",".join(selected_reactants),
@@ -1162,9 +1175,14 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
 
             if level == "species":
                 for pair in result.pairs:
-                    reactant_label = self._structure_label(pair.reactant)
-                    product_label = self._structure_label(pair.product)
-                    pair_key = f"{reactant_label},{product_label}".lower()
+                    reactant_label = self._display_name_for_structure(pair.reactant, lipid_lookup)
+                    product_label = self._display_name_for_structure(pair.product, lipid_lookup)
+                    pair_key = ",".join(
+                        [
+                            self._safe_node_id(reactant_label),
+                            self._safe_node_id(product_label),
+                        ]
+                    )
                     details[pair_key] = {
                         "non_selected_re": "",
                         "selected_re": reactant_label,
