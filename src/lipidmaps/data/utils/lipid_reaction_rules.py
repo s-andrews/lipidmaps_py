@@ -617,7 +617,7 @@ lipid_reaction_rules: Dict[str, Any] = {
                     "reaction_requirements": {"external_compounds": []},
                     "acyl_chain_change": 0,
                     "require_same_linkage": True,
-                    "reaction_type": "sphingolipid"
+                    "reaction_type": "hydrolysis"
                 }
             }
         },

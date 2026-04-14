@@ -1,4 +1,5 @@
 import logging
+import tempfile
 
 import streamlit as st
 import os
@@ -23,6 +24,69 @@ from scripts.biopan_ui import render_biopan_explorer
 
 
 logger = logging.getLogger(__name__)
+
+
+def _read_tabular_file(file_path: str) -> pd.DataFrame:
+    _, ext = os.path.splitext(file_path)
+    if ext.lower() in [".tsv", ".txt"]:
+        return pd.read_csv(file_path, sep="\t")
+    return pd.read_csv(file_path)
+
+
+def _load_metadata_table(file_path: str) -> pd.DataFrame:
+    metadata_df = _read_tabular_file(file_path).copy()
+    metadata_df.columns = [str(column).strip() for column in metadata_df.columns]
+
+    required_columns = {"sample_name", "group"}
+    missing_columns = sorted(required_columns.difference(metadata_df.columns))
+    if missing_columns:
+        raise ValueError(
+            "Metadata file must contain required columns: sample_name and group"
+        )
+
+    metadata_df["sample_name"] = metadata_df["sample_name"].astype(str).str.strip()
+    metadata_df["group"] = metadata_df["group"].astype(str).str.strip()
+
+    if "label" in metadata_df.columns:
+        metadata_df["label"] = metadata_df["label"].apply(
+            lambda value: value.strip() if isinstance(value, str) else value
+        )
+
+    empty_sample_names = metadata_df["sample_name"].eq("")
+    empty_groups = metadata_df["group"].eq("")
+    if empty_sample_names.any() or empty_groups.any():
+        raise ValueError("Metadata file rows must include non-empty sample_name and group values")
+
+    duplicate_samples = metadata_df[metadata_df["sample_name"].duplicated()]["sample_name"].tolist()
+    if duplicate_samples:
+        duplicate_text = ", ".join(sorted(set(duplicate_samples)))
+        raise ValueError(f"Metadata file contains duplicate sample_name values: {duplicate_text}")
+
+    return metadata_df
+
+
+def _apply_metadata_to_dataset(dataset, metadata_df: pd.DataFrame) -> pd.DataFrame:
+    dataset_samples = [sample.sample_name for sample in getattr(dataset, "samples", []) or []]
+    metadata_samples = metadata_df["sample_name"].tolist()
+
+    metadata_only = sorted(set(metadata_samples).difference(dataset_samples))
+    dataset_only = sorted(set(dataset_samples).difference(metadata_samples))
+    if metadata_only or dataset_only:
+        problems = []
+        if metadata_only:
+            problems.append("metadata-only sample_name values: " + ", ".join(metadata_only))
+        if dataset_only:
+            problems.append("dataset samples missing from metadata: " + ", ".join(dataset_only))
+        raise ValueError("Metadata file does not match dataset samples: " + "; ".join(problems))
+
+    metadata_lookup = metadata_df.set_index("sample_name").to_dict(orient="index")
+    for sample in getattr(dataset, "samples", []) or []:
+        row = metadata_lookup[sample.sample_name]
+        sample.group = row["group"]
+        if "label" in row and pd.notna(row["label"]):
+            sample.label = str(row["label"]).strip() or None
+
+    return metadata_df
 
 def main():
     configure_logging()
@@ -53,6 +117,7 @@ def main():
     # ---------------------- SESSION DEFAULTS ----------------------
     defaults = {
         "file_to_use": None,
+        "metadata_file_to_use": None,
         "dataset": None,
         "processed": False,
         "validation_issues": [],
@@ -66,6 +131,7 @@ def main():
         "reactions": [],              # persistent reactions
         "taxonomy_group": "all",
         "refmet_failed": False,
+        "sample_metadata_table": None,
     }
 
     for k, v in defaults.items():
@@ -91,11 +157,13 @@ def main():
 
             selected_file = st.selectbox("Select test data", ["(none)"] + test_files)
             uploaded_file = st.file_uploader("Or upload CSV", type=["csv", "tsv"])
+            uploaded_metadata_file = st.file_uploader("Optional metadata file", type=["csv", "tsv"], key="metadata_uploader")
 
             file_to_use = None
             file_name = None
+            metadata_file_to_use = None
+            metadata_file_name = None
             if uploaded_file:
-                import tempfile
                 with tempfile.NamedTemporaryFile(delete=False) as tmp:
                     tmp.write(uploaded_file.read())
                     file_to_use = tmp.name
@@ -105,12 +173,21 @@ def main():
                 file_to_use = os.path.join(test_data_dir, selected_file)
                 file_name = selected_file
                 uploaded_file = None
+
+            if uploaded_metadata_file:
+                metadata_suffix = os.path.splitext(uploaded_metadata_file.name)[1] or ".csv"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=metadata_suffix) as tmp:
+                    tmp.write(uploaded_metadata_file.read())
+                    metadata_file_to_use = tmp.name
+                    metadata_file_name = uploaded_metadata_file.name
             
             prev_file_name = st.session_state.get("_last_file_used")
+            prev_metadata_name = st.session_state.get("_last_metadata_file_used")
             st.session_state["file_to_use"] = file_to_use
+            st.session_state["metadata_file_to_use"] = metadata_file_to_use
 
             # If the chosen file changed, reset dependent session state to sensible defaults
-            if file_name != prev_file_name:
+            if file_name != prev_file_name or metadata_file_name != prev_metadata_name:
                 reset_keys = [
                     "dataset",
                     "processed",
@@ -123,6 +200,7 @@ def main():
                     "show_all_issues",
                     "show_validation_section",
                     "reactions",
+                    "sample_metadata_table",
                 ]
 
                 for key in reset_keys:
@@ -137,6 +215,7 @@ def main():
                     st.session_state.pop("selected_lipid_idx", None)
 
                 st.session_state["_last_file_used"] = file_name
+                st.session_state["_last_metadata_file_used"] = metadata_file_name
 
         # ---- OPTIONS ----
         with st.expander("Options", expanded=True):
@@ -266,16 +345,37 @@ def main():
                 st.error(f"Error reading file: {e}")
                 logger.exception("Failed to preview input file %s", fp)
 
+        metadata_fp = st.session_state.get("metadata_file_to_use")
+        if metadata_fp:
+            st.subheader("Preview of Metadata File")
+            try:
+                metadata_df = _load_metadata_table(metadata_fp)
+                st.write(f"Rows: {metadata_df.shape[0]}, Columns: {metadata_df.shape[1]}")
+                st.dataframe(metadata_df, hide_index=True)
+            except Exception as e:
+                st.error(f"Error reading metadata file: {e}")
+                logger.exception("Failed to preview metadata file %s", metadata_fp)
+
     # --------------------------------------------------------------
     # PROCESSING ACTION
     # --------------------------------------------------------------
     if processed and st.session_state["file_to_use"]:
         try:
             fp = st.session_state["file_to_use"]
+            metadata_fp = st.session_state.get("metadata_file_to_use")
             logger.info("Processing dataset from %s", fp)
 
             from lipidmaps import process_csv
             dataset = process_csv(fp, validate_data=validate_data, use_refmet=use_refmet, use_headgroups=use_headgroups, taxonomy_group=taxonomy_group, transpose_file=transpose_file, has_labels=has_labels)
+
+            metadata_df = None
+            if metadata_fp:
+                metadata_df = _load_metadata_table(metadata_fp)
+                metadata_df = _apply_metadata_to_dataset(dataset, metadata_df)
+                st.session_state["sample_metadata_table"] = metadata_df.to_dict(orient="records")
+            else:
+                st.session_state["sample_metadata_table"] = None
+
             st.session_state["dataset"] = dataset
             st.session_state["processed"] = True
             st.session_state["reactions"] = []  # clear old reactions
@@ -317,9 +417,9 @@ def main():
                 # Non-fatal; mapping is only a convenience for the UI
                 pass
 
-            # If labels were supplied in the CSV, prefer them for sample groups
+            # If labels were supplied in the CSV, prefer them for sample groups when no metadata file is provided
             try:
-                if has_labels:
+                if has_labels and metadata_fp is None:
                     for s in getattr(dataset, "samples", []) or []:
                         lbl = getattr(s, "label", None)
                         if lbl:
@@ -504,10 +604,24 @@ def main():
             # If labels were read from CSV, display them alongside sample names
             try:
                 sample_rows = []
+                metadata_records = st.session_state.get("sample_metadata_table") or []
+                metadata_lookup = {
+                    row["sample_name"]: row for row in metadata_records if "sample_name" in row
+                }
                 for s in (dataset.samples or []):
                     if sample_opts and s.sample_name not in sample_opts:
                         continue
-                    sample_rows.append({"sample_name": s.sample_name, "group": getattr(s, 'group', None), "label": getattr(s, 'label', None)})
+                    row = {
+                        "sample_name": s.sample_name,
+                        "group": getattr(s, 'group', None),
+                        "label": getattr(s, 'label', None),
+                    }
+                    extra_metadata = metadata_lookup.get(s.sample_name, {})
+                    for key, value in extra_metadata.items():
+                        if key in {"sample_name", "group", "label"}:
+                            continue
+                        row[key] = value
+                    sample_rows.append(row)
                 if sample_rows:
                     st.write("Sample metadata")
                     st.dataframe(pd.DataFrame(sample_rows), hide_index=True)
