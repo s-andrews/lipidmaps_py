@@ -8,7 +8,10 @@ import plotly.express as px
 
 # ---------------------- BOOTSTRAP ----------------------
 dir_path = os.path.dirname(os.path.realpath(__file__))
+project_root = os.path.abspath(os.path.join(dir_path, '..'))
 src_path = os.path.abspath(os.path.join(dir_path, '../src'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
