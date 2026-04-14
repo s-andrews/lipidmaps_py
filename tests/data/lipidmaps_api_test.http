@@ -57,6 +57,14 @@ user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML
     "metabolite_name":"acyl CoA\nPC(16:0/18:1)\nCholesterol\nTAG(16:0/18:1/18:2)"
 }
 
+### Refmet lookup from lipidmaps dev
+POST https://dev.lipidmaps.org/api/refmet/names HTTP/1.1
+content-type: application/json
+user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+
+{
+    "metabolite_name":"acyl CoA\nPC(16:0/18:1)\nCholesterol\nTAG(16:0/18:1/18:2)"
+}
 
 ### LMSD lookup by lm_ids
 POST https://dev.lipidmaps.org/api/molecules/lmids HTTP/1.1

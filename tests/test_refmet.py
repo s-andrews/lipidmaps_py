@@ -29,11 +29,8 @@ class FakeResponse:
             raise self._raise_exc
 
 
-def test_refmet_cache_hit_and_fetch_logging(monkeypatch, caplog):
+def test_refmet_fetch_logging_and_results(monkeypatch, caplog):
     caplog.set_level(logging.INFO)
-
-    with RefMet._cache_lock:
-        RefMet._cache.clear()
 
     response_text = "\t".join(["Input name", "Standardized name", "LM_ID"]) + "\n"
     response_text += "\t".join(["Alpha", "Alpha standardized", "LMFA00000001"]) + "\n"
@@ -46,14 +43,11 @@ def test_refmet_cache_hit_and_fetch_logging(monkeypatch, caplog):
 
     monkeypatch.setattr(requests, "post", fake_post)
 
-    first_results = RefMet.validate_metabolite_names(["Alpha"])
-    second_results = RefMet.validate_metabolite_names(["Alpha"])
+    results = RefMet.validate_metabolite_names(["Alpha"])
 
     assert len(calls) == 1
-    assert len(first_results) == 1
-    assert len(second_results) == 1
-    assert first_results[0].standardized_name == "Alpha standardized"
-    assert second_results[0].lm_id == "LMFA00000001"
-    assert "RefMet cache miss for 1 metabolites; fetching from API" in caplog.text
+    assert len(results) == 1
+    assert results[0].standardized_name == "Alpha standardized"
+    assert results[0].lm_id == "LMFA00000001"
+    assert "Fetching RefMet annotations for 1 metabolites from API" in caplog.text
     assert "RefMet API fetched" in caplog.text
-    assert "RefMet cache hit for 1 metabolites" in caplog.text

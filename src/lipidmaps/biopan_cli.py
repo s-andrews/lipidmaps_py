@@ -5,10 +5,13 @@ import logging
 from pathlib import Path
 
 from .data import DataManager
+from .data.models.sample import LipidDataset
 from .logging_utils import configure_logging
 
 
 logger = logging.getLogger(__name__)
+
+SESSION_DATASET_CACHE_NAME = "processed_dataset.json"
 
 
 def _resolve_input_path(session_dir: Path, explicit_path: str | None) -> Path:
@@ -24,6 +27,29 @@ def _resolve_input_path(session_dir: Path, explicit_path: str | None) -> Path:
             return candidate
 
     return supported_paths[0]
+
+
+def _get_dataset_cache_path(session_dir: Path) -> Path:
+    return session_dir / "config" / SESSION_DATASET_CACHE_NAME
+
+
+def _load_cached_dataset(session_dir: Path) -> LipidDataset | None:
+    cache_path = _get_dataset_cache_path(session_dir)
+    if not cache_path.exists():
+        return None
+
+    try:
+        return LipidDataset.model_validate_json(cache_path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.warning("Failed to load cached BioPAN dataset from %s", cache_path, exc_info=True)
+        return None
+
+
+def _write_cached_dataset(session_dir: Path, dataset: LipidDataset) -> Path:
+    cache_path = _get_dataset_cache_path(session_dir)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(dataset.model_dump_json(indent=2), encoding="utf-8")
+    return cache_path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -122,7 +148,18 @@ def main() -> None:
             fetch_reactions=args.fetch_reactions,
             taxonomy_group=args.taxonomy_group,
         )
-        dataset = manager.process_csv(csv_path)
+        dataset = None
+        if args.csv_path is None:
+            dataset = _load_cached_dataset(session_dir)
+            if dataset is not None:
+                logger.info("Loaded cached BioPAN dataset from %s", _get_dataset_cache_path(session_dir))
+
+        if dataset is None:
+            dataset = manager.process_csv(csv_path)
+            cache_path = _write_cached_dataset(session_dir, dataset)
+            logger.info("Cached processed BioPAN dataset at %s", cache_path)
+
+        manager.dataset = dataset
         group_overrides = _parse_sample_group_overrides(args.sample_group)
         _apply_group_overrides(dataset, group_overrides)
     except ValueError as exc:
