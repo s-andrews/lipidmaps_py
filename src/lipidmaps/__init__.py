@@ -23,6 +23,7 @@ Main classes:
 from .data.data_manager import DataManager
 from .data.biopan_exporter import BioPANExporter
 from .data.biopan_pathway_exporter import BioPANPathwayExporter
+from .data.models.sample import SampleConditions
 
 
 def process_csv(csv_path, **kwargs):
@@ -57,6 +58,7 @@ __all__ = [
     "DataManager",
     "BioPANExporter",
     "BioPANPathwayExporter",
+    "SampleConditions",
     "QuantitationAnalyzer",
     "QuantitationConfig",
     "NormalizationMethod",

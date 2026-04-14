@@ -18,6 +18,17 @@ content-type: application/json
 }
 
 ### Reaction lookup by LMSD IDs localhost
+POST https://dev.lipidmaps.org/api/reactions HTTP/1.1
+content-type: application/json
+
+{
+    "search_mode": "default",
+    "search_type": "all",
+    "generic_reactions": true,
+    "lmsd_ids": ["LMGP04050000"]
+}
+
+### Reaction lookup by LMSD IDs localhost
 POST http://localhost/api/reactions HTTP/1.1
 content-type: application/json
 
@@ -31,11 +42,21 @@ content-type: application/json
 ### Refmet lookup by names
 POST https://www.metabolomicsworkbench.org/databases/refmet/name_to_refmet_new_minID.php HTTP/1.1
 content-type: application/json
-user-agent: "LipidMaps Api Test Agent/1.0"
+user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 
 {
     "metabolite_name":"acyl CoA\nPC(16:0/18:1)\nCholesterol\nTAG(16:0/18:1/18:2)"
 }
+
+### Refmet lookup from lipidmaps
+POST http://localhost/api/refmet/names HTTP/1.1
+content-type: application/json
+user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+
+{
+    "metabolite_name":"acyl CoA\nPC(16:0/18:1)\nCholesterol\nTAG(16:0/18:1/18:2)"
+}
+
 
 ### LMSD lookup by lm_ids
 POST https://dev.lipidmaps.org/api/molecules/lmids HTTP/1.1

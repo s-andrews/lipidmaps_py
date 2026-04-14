@@ -8,7 +8,7 @@ from ..utils.lipid_reaction_rules import lipid_reaction_rules
 from ..utils.chain_parser import LipidStructure, StructureLevel, parse_lipid
 from .query import Query, from_callable, attr_eq, attr_in, attr_contains, attr_gt, has_attr
 from .base import LipidmapsBaseModel
-from pydantic import Field, PrivateAttr, field_validator, computed_field
+from pydantic import Field, PrivateAttr, RootModel, field_validator, computed_field
 from enum import Enum
 from datetime import datetime
 from .reaction import ReactionData, CompoundComponent, ReactionChecker
@@ -18,6 +18,31 @@ from ..validation.data_validator import DataValidator, ValidationReport
 
 
 logger = logging.getLogger(__name__)
+
+
+class SampleConditions(RootModel[Dict[str, str]]):
+    """Mapping of sample_name to condition/group name."""
+
+    root: Dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("root")
+    @classmethod
+    def validate_root(cls, value: Dict[str, str]) -> Dict[str, str]:
+        normalized: Dict[str, str] = {}
+        for sample_name, condition_name in value.items():
+            sample_text = str(sample_name).strip() if sample_name is not None else ""
+            condition_text = str(condition_name).strip() if condition_name is not None else ""
+            if not sample_text:
+                raise ValueError("Condition mapping keys must be non-empty sample names")
+            if not condition_text:
+                raise ValueError(
+                    f"Condition name for sample '{sample_text}' must be a non-empty string"
+                )
+            normalized[sample_text] = condition_text
+        return normalized
+
+    def as_dict(self) -> Dict[str, str]:
+        return dict(self.root)
 
 
 class SampleMetadata(LipidmapsBaseModel):
@@ -293,6 +318,45 @@ class LipidDataset(LipidmapsBaseModel):
 
     def list_sample_names(self) -> List[str]:
         return [s.sample_name for s in self.samples]
+
+    def get_sample_conditions(self) -> SampleConditions:
+        """Return the current sample_name -> condition mapping."""
+        return SampleConditions.model_validate(
+            {
+                sample.sample_name: sample.group
+                for sample in self.samples
+                if sample.sample_name and sample.group
+            }
+        )
+
+    def set_sample_conditions(
+        self,
+        conditions: Union[SampleConditions, Dict[str, str]],
+        *,
+        strict: bool = True,
+    ) -> SampleConditions:
+        """Update sample conditions from a partial or full sample_name -> condition mapping."""
+        condition_map = (
+            conditions
+            if isinstance(conditions, SampleConditions)
+            else SampleConditions.model_validate(conditions)
+        )
+        sample_lookup = {
+            sample.sample_name: sample
+            for sample in self.samples
+            if sample.sample_name
+        }
+        unknown_samples = sorted(set(condition_map.root) - set(sample_lookup))
+        if strict and unknown_samples:
+            missing_text = ", ".join(unknown_samples)
+            raise ValueError(f"Unknown sample names in condition mapping: {missing_text}")
+
+        for sample_name, condition_name in condition_map.root.items():
+            sample = sample_lookup.get(sample_name)
+            if sample is not None:
+                sample.group = condition_name
+
+        return self.get_sample_conditions()
 
     def list_lipid_names(self) -> List[str]:
         return [l.input_name for l in self.lipids]

@@ -2,7 +2,7 @@ import json
 
 from lipidmaps.data.data_manager import DataManager
 from lipidmaps.data.models.reaction import CompoundComponent, ReactionData
-from lipidmaps.data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
+from lipidmaps.data.models.sample import LipidDataset, QuantifiedLipid, SampleConditions, SampleMetadata
 
 
 def make_biopan_dataset() -> LipidDataset:
@@ -63,6 +63,47 @@ def test_build_biopan_summary_classifies_species():
         "FA(18:1)": " FA 18:1",
     }
     assert summary["unprocessed_dataset"] == {"CE(18:1)": " CE 18:1"}
+
+
+def test_get_sample_conditions_returns_pydantic_mapping_for_auto_detected_groups():
+    manager = DataManager()
+    dataset = LipidDataset(
+        samples=manager.extract_sample_metadata(["ctrl_1", "ctrl_2", "case_1"]),
+        lipids=[],
+    )
+
+    conditions = manager.get_sample_conditions(dataset)
+
+    assert isinstance(conditions, SampleConditions)
+    assert conditions.model_dump() == {
+        "ctrl_1": "ctrl",
+        "ctrl_2": "ctrl",
+        "case_1": "case",
+    }
+
+
+def test_set_sample_conditions_updates_user_selected_conditions():
+    manager = DataManager(dataset=make_biopan_dataset())
+
+    updated = manager.set_sample_conditions({"ctrl_1": "baseline", "case_1": "treated"})
+
+    assert updated.model_dump() == {
+        "ctrl_1": "baseline",
+        "ctrl_2": "control",
+        "case_1": "treated",
+    }
+    assert [sample.group for sample in manager.dataset.samples] == ["baseline", "control", "treated"]
+
+
+def test_set_sample_conditions_rejects_unknown_samples():
+    dataset = make_biopan_dataset()
+
+    try:
+        dataset.set_sample_conditions({"missing_sample": "treated"})
+    except ValueError as exc:
+        assert str(exc) == "Unknown sample names in condition mapping: missing_sample"
+    else:
+        raise AssertionError("Expected ValueError for unknown sample names")
 
 
 def test_build_biopan_msg1_and_msg2_capture_display_state():

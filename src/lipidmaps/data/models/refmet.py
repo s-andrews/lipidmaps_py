@@ -26,7 +26,7 @@ class RefMetResult(LipidmapsBaseModel):
 
 
 class RefMet:
-    MWBaseURL = "https://www.metabolomicsworkbench.org/databases/refmet/name_to_refmet_new_minID.php"
+    MWBaseURL = "http://localhost/api/refmet/names"  # Updated to local proxy endpoint
     _cache: Dict[tuple[str, ...], List[RefMetResult]] = {}
     _cache_lock = Lock()
 

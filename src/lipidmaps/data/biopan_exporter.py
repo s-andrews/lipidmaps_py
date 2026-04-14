@@ -115,11 +115,7 @@ class BioPANExporter(LipidmapsBaseModel):
     ) -> Dict[str, Any]:
         resolved_dataset = self._get_dataset(dataset)
         classified = self._classify_species(resolved_dataset)
-        groups = {
-            sample.sample_name: sample.group
-            for sample in resolved_dataset.samples
-            if sample.sample_name
-        }
+        groups = resolved_dataset.get_sample_conditions().model_dump()
         undef = classified["undef"]
         processed = classified["processed"]
         unprocessed = classified["unprocessed"]

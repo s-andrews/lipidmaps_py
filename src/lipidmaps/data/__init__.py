@@ -19,6 +19,7 @@ from .models.sample import (
     LipidAnnotation,
     LipidDataset,
     QuantifiedLipid,
+    SampleConditions,
     SampleMetadata,
     Quantitation,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "BioPANPathwayExporter",
     "LipidDataset",
     "QuantifiedLipid",
+    "SampleConditions",
     "SampleMetadata",
     "Quantitation",
     "RefMet",

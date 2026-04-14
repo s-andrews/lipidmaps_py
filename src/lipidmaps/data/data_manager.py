@@ -11,7 +11,7 @@ from .models.base import LipidmapsBaseModel
 from .biopan_exporter import BioPANExporter
 from .biopan_pathway_exporter import BioPANPathwayExporter
 # import the data models we will produce
-from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset, LipidAnnotation
+from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset, LipidAnnotation, SampleConditions
 from .models.refmet import RefMet
 from .models.lmsd import LMSD, LMSDResult
 # from .reaction_checker import ReactionChecker, ReactionData
@@ -726,6 +726,27 @@ class DataManager(LipidmapsBaseModel):
 
     def get_biopan_exporter(self, dataset: Optional[LipidDataset] = None) -> BioPANExporter:
         return BioPANExporter(dataset=dataset or self.dataset)
+
+    def get_sample_conditions(
+        self,
+        dataset: Optional[LipidDataset] = None,
+    ) -> SampleConditions:
+        resolved_dataset = dataset or self.dataset
+        if resolved_dataset is None:
+            raise ValueError("Sample conditions require a populated dataset")
+        return resolved_dataset.get_sample_conditions()
+
+    def set_sample_conditions(
+        self,
+        conditions: Union[SampleConditions, Dict[str, str]],
+        dataset: Optional[LipidDataset] = None,
+        *,
+        strict: bool = True,
+    ) -> SampleConditions:
+        resolved_dataset = dataset or self.dataset
+        if resolved_dataset is None:
+            raise ValueError("Sample conditions require a populated dataset")
+        return resolved_dataset.set_sample_conditions(conditions, strict=strict)
 
     def get_biopan_pathway_exporter(self, dataset: Optional[LipidDataset] = None) -> BioPANPathwayExporter:
         return BioPANPathwayExporter(dataset=dataset or self.dataset)

@@ -74,15 +74,14 @@ def _parse_sample_group_overrides(entries: list[str]) -> dict[str, str]:
 def _apply_group_overrides(dataset, overrides: dict[str, str]) -> None:
     if not overrides:
         return
-
-    sample_lookup = {sample.sample_name: sample for sample in dataset.samples}
-    missing_samples = sorted(set(overrides) - set(sample_lookup))
-    if missing_samples:
-        missing_text = ", ".join(missing_samples)
-        raise ValueError(f"Unknown sample names in --sample-group: {missing_text}")
-
-    for sample_name, group_name in overrides.items():
-        sample_lookup[sample_name].group = group_name
+    try:
+        dataset.set_sample_conditions(overrides, strict=True)
+    except ValueError as exc:
+        message = str(exc)
+        if message.startswith("Unknown sample names in condition mapping:"):
+            missing_text = message.split(":", 1)[1].strip()
+            raise ValueError(f"Unknown sample names in --sample-group: {missing_text}") from exc
+        raise
 
 
 def _resolve_groups(manager: DataManager, disease_group: str | None, control_group: str | None) -> tuple[str, str]:
