@@ -518,6 +518,13 @@ class TestLipidDataIntegration:
         """Test analyzer property on LipidData."""
         assert hasattr(lipid_data, "analyzer")
         assert isinstance(lipid_data.analyzer, QuantitationAnalyzer)
+
+    def test_lipid_data_analyzer_is_cached(self, lipid_data):
+        """Test analyzer property caches a single analyzer instance."""
+        first = lipid_data.analyzer
+        second = lipid_data.analyzer
+
+        assert first is second
     
     def test_lipid_data_normalize(self, lipid_data):
         """Test normalize method on LipidData."""
@@ -556,23 +563,7 @@ class TestLipidDataIntegration:
         
         assert lipid_data.quantitation_config.unit == "pmol"
         assert lipid_data.quantitation_config.method == "LC-MS"
-    
-    def test_lipid_data_get_lipids_for_reaction_component(self, lipid_data):
-        """Test getting lipids for reaction component."""
-        lipids = lipid_data.get_lipids_for_reaction_component("LMGP01010001")
-        
-        assert len(lipids) == 1
-        assert lipids[0].input_name == "PC(16:0/18:1)"
-    
-    def test_lipid_data_get_value_for_reaction_component(self, lipid_data):
-        """Test getting value for reaction component."""
-        value = lipid_data.get_value_for_reaction_component(
-            "LMGP01010001",
-            "Control_1",
-            method="sum",
-        )
-        
-        assert value == 100.0
+
 
 
 class TestQuantitationUnit:

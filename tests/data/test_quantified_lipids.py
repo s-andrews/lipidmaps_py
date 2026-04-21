@@ -48,7 +48,7 @@ class TestPopulateManager(unittest.TestCase):
             lipid_data.append(QuantifiedLipid(input_name=lipid_species, values=values))
 
         # Use DataManager to process the CSV and get the dataset
-        manager = DataManager()
+        manager = DataManager(use_refmet=False, use_headgroups=False, fetch_reactions=False)
         dataset = manager.process_csv(csv_path)
 
         # basic assertions

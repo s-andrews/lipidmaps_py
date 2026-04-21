@@ -245,15 +245,15 @@ class ChainParser:
     @classmethod
     def _determine_linkage(cls, headgroup: str) -> str:
         """Determine linkage type from headgroup."""
-        normalized = headgroup.strip()
+        stripped_headgroup = headgroup.strip()
 
-        if normalized.startswith("O-") or normalized.endswith(" O-"):
+        if stripped_headgroup.startswith("O-") or stripped_headgroup.endswith(" O-"):
             return "ether_alkyl"
-        if normalized.startswith("P-") or normalized.endswith(" P-"):
+        if stripped_headgroup.startswith("P-") or stripped_headgroup.endswith(" P-"):
             return "ether_vinyl"
         
         # Strip prefix for sphingolipid check
-        base_hg = normalized.removeprefix("O-").removeprefix("P-")
+        base_hg = stripped_headgroup.removeprefix("O-").removeprefix("P-")
         if base_hg.endswith(" O-") or base_hg.endswith(" P-"):
             base_hg = base_hg[:-3]
         if base_hg in cls.SPHINGO_HEADGROUPS:
@@ -563,7 +563,7 @@ def extract_fa_from_reactions(reactions: List["ReactionData"]) -> List[str]:
     """Extract unique FA species names from LIPID MAPS reactions.
     
     Uses compound LM IDs to identify fatty acids (LMFA0101xxxx).
-    Returns normalized shorthand names (e.g., 'FA 16:0').
+    Returns shorthand names (e.g., 'FA 16:0').
     
     Args:
         reactions: List of ReactionData objects from LIPID MAPS
@@ -592,13 +592,13 @@ def extract_fa_from_reactions(reactions: List["ReactionData"]) -> List[str]:
             if not name:
                 continue
                 
-            # Parse to normalize the name
+            # Parse to standardize the name
             species = parser.parse(name)
             if species and species.headgroup == "FA" and species.chains:
-                normalized = f"FA {species.chains[0].notation}"
-                if normalized not in seen:
-                    seen.add(normalized)
-                    fa_names.append(normalized)
+                standardized = f"FA {species.chains[0].notation}"
+                if standardized not in seen:
+                    seen.add(standardized)
+                    fa_names.append(standardized)
     
     return fa_names
 
@@ -611,7 +611,7 @@ def extract_facoa_from_reactions(reactions: List["ReactionData"]) -> List[str]:
     
     TODO: Fatty acyl carnitines (LMFA0707xxxx) ?
     
-    Returns normalized shorthand names (e.g., 'CoA 16:0').
+    Returns standardized shorthand names (e.g., 'CoA 16:0').
     
     Args:
         reactions: List of ReactionData objects from LIPID MAPS
@@ -641,13 +641,13 @@ def extract_facoa_from_reactions(reactions: List["ReactionData"]) -> List[str]:
             if not name:
                 continue
                 
-            # Parse to normalize the name
+            # Parse to standardize the name
             species = parser.parse(name)
             if species and species.headgroup in ("CoA", "FACoA", "FaCoA", "FACOA") and species.chains:
-                normalized = f"CoA {species.chains[0].notation}"
-                if normalized not in seen:
-                    seen.add(normalized)
-                    facoa_names.append(normalized)
+                standardized = f"CoA {species.chains[0].notation}"
+                if standardized not in seen:
+                    seen.add(standardized)
+                    facoa_names.append(standardized)
     
     return facoa_names
 

@@ -5,7 +5,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any, ClassVar, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
-from pydantic import Field, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr
 from scipy import stats
 
 from .matching import match_pathway_reactions
@@ -26,7 +26,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     dataset: Optional[Any] = Field(default=None)
     class_reactions: Optional[List[Any]] = Field(default=None)
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     _edge_cache: Dict[Tuple[Any, ...], List[Dict[str, Any]]] = PrivateAttr(default_factory=dict)
     _reaction_table_cache: Dict[Tuple[Any, ...], Dict[str, Any]] = PrivateAttr(default_factory=dict)
@@ -437,7 +437,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         return ",".join(ordered) if ordered else "NA"
 
     @staticmethod
-    def _normalize_pathway_type(value: Any) -> List[str]:
+    def _unique_pathway_type(value: Any) -> List[str]:
         if value is None:
             return []
         if isinstance(value, (list, tuple, set)):
@@ -465,7 +465,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 if not isinstance(entry, dict):
                     continue
                 pathway_name = str(entry.get("pathway_name") or entry.get("name") or "").strip()
-                pathway_types = self._normalize_pathway_type(entry.get("pathway_type") or entry.get("type") or entry.get("classification"))
+                pathway_types = self._unique_pathway_type(entry.get("pathway_type") or entry.get("type") or entry.get("classification"))
                 if not pathway_name and not pathway_types:
                     continue
                 key = (pathway_name, tuple(pathway_types))

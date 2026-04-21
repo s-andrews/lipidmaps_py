@@ -731,7 +731,6 @@ def main():
             # ---------------------- NORMALIZATION ----------------------
             st.subheader("Normalization")
             try:
-                from lipidmaps.data.quantitation import NormalizationMethod, QuantitationAnalyzer
                 norm_methods = [m for m in NormalizationMethod]
                 method_labels = {m: m.value for m in norm_methods}
 
@@ -1247,7 +1246,6 @@ def main():
             try:
                 if dataset and getattr(dataset, 'reactions', None):
                     st.subheader("Reaction-level comparison (z-scores)")
-                    from lipidmaps.data.quantitation import QuantitationAnalyzer
                     analyzer = QuantitationAnalyzer(dataset=dataset)
                     groups = sorted({analyzer._sample_group_name(s) for s in dataset.samples})
                     if len(groups) >= 2:

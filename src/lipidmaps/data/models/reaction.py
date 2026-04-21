@@ -3,7 +3,7 @@ import logging
 import requests
 from typing import List, Optional, Union, Dict, Any
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 from .base import LipidmapsBaseModel
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class ReactionData(LipidmapsBaseModel):
         return sorted(list(organisms_set))
     
     # Allow additional fields from API response
-    model_config = {"extra": "allow"}
+    model_config = ConfigDict(extra="allow")
 
     @staticmethod
     def _component_identifier(comp: CompoundComponent) -> Optional[str]:

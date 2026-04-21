@@ -8,7 +8,7 @@ for a specific reaction type (same structure, FA release, etc.).
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Set, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.species_reaction import (
     ClassReaction,
@@ -37,8 +37,7 @@ class MatcherContext(BaseModel):
     # All lipid names for quick lookup
     all_lipid_names: Set[str] = Field(default_factory=set)
     
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     
     def get_species(self, lipid_class: str) -> List[LipidStructure]:
         """Get all species for a given lipid class."""

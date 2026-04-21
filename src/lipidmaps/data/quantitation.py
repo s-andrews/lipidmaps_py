@@ -14,7 +14,7 @@ import numpy as np
 from scipy import stats
 
 from .models.base import LipidmapsBaseModel
-from pydantic import PrivateAttr
+from pydantic import ConfigDict, PrivateAttr
 
 if TYPE_CHECKING:
     from .models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
@@ -70,7 +70,7 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
     """
 
     dataset: Any
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     _config: QuantitationConfig = PrivateAttr(default_factory=QuantitationConfig)
 
     def __init__(self, dataset: Any = None, **data):

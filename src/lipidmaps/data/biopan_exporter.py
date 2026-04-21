@@ -3,7 +3,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from .models.base import LipidmapsBaseModel
 from .models.sample import LipidDataset, QuantifiedLipid
@@ -27,7 +27,7 @@ class BioPANExporter(LipidmapsBaseModel):
 
     dataset: Optional[Any] = Field(default=None)
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def _get_dataset(self, dataset: Optional[LipidDataset] = None) -> LipidDataset:
         resolved_dataset = dataset or self.dataset
@@ -45,8 +45,8 @@ class BioPANExporter(LipidmapsBaseModel):
 
     @staticmethod
     def _is_fa_like(name: str) -> bool:
-        normalized_name = name.replace(" ", "").upper()
-        return normalized_name.startswith("FA(") or normalized_name.startswith("FACOA(")
+        fa_name = name.replace(" ", "").upper()
+        return fa_name.startswith("FA(") or fa_name.startswith("FACOA(")
 
     def _get_has_fa_status(self, dataset: LipidDataset) -> str:
         names = [lipid.input_name for lipid in dataset.lipids if lipid.input_name]

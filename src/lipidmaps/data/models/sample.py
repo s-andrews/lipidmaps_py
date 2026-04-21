@@ -8,7 +8,7 @@ from ..utils.lipid_reaction_rules import lipid_reaction_rules
 from ..utils.chain_parser import LipidStructure, StructureLevel, parse_lipid
 from .query import Query, from_callable, attr_eq, attr_in, attr_contains, attr_gt, has_attr
 from .base import LipidmapsBaseModel
-from pydantic import Field, PrivateAttr, RootModel, field_validator, computed_field
+from pydantic import ConfigDict, Field, PrivateAttr, RootModel, field_validator, computed_field
 from enum import Enum
 from datetime import datetime
 from .reaction import ReactionData, CompoundComponent, ReactionChecker
@@ -96,7 +96,7 @@ class MissingInfo(LipidmapsBaseModel):
     note: Optional[str] = None
     imputed: bool = False
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
 
 
 class NormalizedResult(LipidmapsBaseModel):

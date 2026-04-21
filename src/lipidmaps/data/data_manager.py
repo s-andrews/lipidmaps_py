@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Union, Optional
 from pathlib import Path
 import pandas as pd
 # import networkx as nx
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 from .models.base import LipidmapsBaseModel
 from .biopan_exporter import BioPANExporter
 from .biopan_pathway_exporter import BioPANPathwayExporter
@@ -97,7 +97,7 @@ class DataManager(LipidmapsBaseModel):
         description="Label to use for groups - Usually derived from group_mapping or second row in CSV.",
     )
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @field_validator("sample_columns", mode="before")
     @classmethod
