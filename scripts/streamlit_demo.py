@@ -114,6 +114,8 @@ def main():
         Process the file to see standardized lipid annotations.
         """)
 
+    processing_status_placeholder = st.empty()
+
     # ---------------------- SESSION DEFAULTS ----------------------
     defaults = {
         "file_to_use": None,
@@ -360,21 +362,51 @@ def main():
     # PROCESSING ACTION
     # --------------------------------------------------------------
     if processed and st.session_state["file_to_use"]:
+        status = processing_status_placeholder.status(
+            "Starting data processing...",
+            expanded=True,
+        )
         try:
             fp = st.session_state["file_to_use"]
             metadata_fp = st.session_state.get("metadata_file_to_use")
             logger.info("Processing dataset from %s", fp)
 
-            from lipidmaps import process_csv
-            dataset = process_csv(fp, validate_data=validate_data, use_refmet=use_refmet, use_headgroups=use_headgroups, taxonomy_group=taxonomy_group, transpose_file=transpose_file, has_labels=has_labels)
+            status.write(f"Input file: {os.path.basename(fp)}")
+            if metadata_fp:
+                status.write(f"Metadata file: {os.path.basename(metadata_fp)}")
+            status.write(
+                "Options: "
+                f"validate={validate_data}, refmet={use_refmet}, "
+                f"headgroups={use_headgroups}, reactions={fetch_reactions}, "
+                f"transpose={transpose_file}, labels={has_labels}, taxonomy={taxonomy_group}"
+            )
+            status.update(
+                label="Processing lipid table, annotations, and optional reaction data...",
+                state="running",
+            )
 
+            from lipidmaps import process_csv
+            dataset = process_csv(
+                fp,
+                validate_data=validate_data,
+                use_refmet=use_refmet,
+                use_headgroups=use_headgroups,
+                fetch_reactions=fetch_reactions,
+                taxonomy_group=taxonomy_group,
+                transpose_file=transpose_file,
+                has_labels=has_labels,
+            )
+            status.update(label="Dataset is generated ...", state="running")
             metadata_df = None
             if metadata_fp:
+                status.update(label="Applying sample metadata...", state="running")
                 metadata_df = _load_metadata_table(metadata_fp)
                 metadata_df = _apply_metadata_to_dataset(dataset, metadata_df)
                 st.session_state["sample_metadata_table"] = metadata_df.to_dict(orient="records")
             else:
                 st.session_state["sample_metadata_table"] = None
+
+            status.update(label="Saving processed dataset to the session...", state="running")
 
             st.session_state["dataset"] = dataset
             st.session_state["processed"] = True
@@ -388,6 +420,7 @@ def main():
             st.write(f"validate_data: {validate_data}")
             # Validation report handling
             if validate_data and getattr(dataset, "validation_report", None):
+                status.update(label="Collecting validation results...", state="running")
                 vr = dataset.validation_report
                 st.session_state["validation_passed"] = vr.passed
                 st.session_state["validation_issues"] = vr.issues or []
@@ -402,6 +435,7 @@ def main():
 
             # Auto-refresh headgroup -> lipid-index mapping for UI convenience
             try:
+                status.update(label="Preparing derived views for the UI...", state="running")
                 hg_map_idx = {}
                 for i, lipid in enumerate(dataset.lipids):
                     try:
@@ -428,9 +462,23 @@ def main():
                 # non-fatal UI convenience
                 pass
 
+            status.update(
+                label=(
+                    f"Processing complete: {len(getattr(dataset, 'lipids', []) or [])} lipids, "
+                    f"{len(getattr(dataset, 'samples', []) or [])} samples"
+                ),
+                state="complete",
+                expanded=False,
+            )
+
             st.rerun()   # important
 
         except Exception as e:
+            status.update(
+                label=f"Processing failed: {e}",
+                state="error",
+                expanded=True,
+            )
             st.error(f"Error processing file: {e}")
             logger.exception("Error processing file in Streamlit demo")
 
