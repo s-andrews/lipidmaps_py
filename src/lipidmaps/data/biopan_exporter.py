@@ -129,7 +129,7 @@ class BioPANExporter(LipidmapsBaseModel):
             "processed_dataset": self._build_dataset_name_map(resolved_dataset, processed),
             "unprocessed_dataset": self._build_dataset_name_map(resolved_dataset, unprocessed),
             "pathway": {
-                "name": "Pathway anlysis",
+                "name": "Pathway analysis",
                 "processed": processed,
                 "unprocessed": unprocessed,
             },
