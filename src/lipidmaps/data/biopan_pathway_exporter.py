@@ -31,6 +31,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     _edge_cache: Dict[Tuple[Any, ...], List[Dict[str, Any]]] = PrivateAttr(default_factory=dict)
     _reaction_table_cache: Dict[Tuple[Any, ...], Dict[str, Any]] = PrivateAttr(default_factory=dict)
     _pathway_table_cache: Dict[Tuple[Any, ...], Dict[str, Any]] = PrivateAttr(default_factory=dict)
+    _reaction_gene_lookup: Optional[Dict[str, List[str]]] = PrivateAttr(default=None)
 
     def _get_dataset(self, dataset: Optional[LipidDataset] = None) -> LipidDataset:
         resolved_dataset = dataset or self.dataset
@@ -107,11 +108,58 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 lookup.setdefault(structure_label, lipid)
         return lookup
 
+    def _load_reaction_gene_lookup(self) -> Dict[str, List[str]]:
+        if self._reaction_gene_lookup is not None:
+            return self._reaction_gene_lookup
+
+        lookup: Dict[str, List[str]] = {}
+        sql_path = Path(__file__).resolve().parents[3] / "reactions_genes.sql"
+        if not sql_path.exists():
+            self._reaction_gene_lookup = lookup
+            return lookup
+
+        in_copy_block = False
+        with sql_path.open(encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.rstrip("\n")
+                if not in_copy_block:
+                    if line.startswith("COPY public.reactions_genes "):
+                        in_copy_block = True
+                    continue
+
+                if line == "\\.":
+                    break
+
+                parts = line.split("\t")
+                if len(parts) < 5:
+                    continue
+
+                reaction_id = parts[1].strip()
+                gene_name = parts[4].strip()
+                if not reaction_id or not gene_name:
+                    continue
+
+                lookup.setdefault(reaction_id, [])
+                if gene_name not in lookup[reaction_id]:
+                    lookup[reaction_id].append(gene_name)
+
+        self._reaction_gene_lookup = lookup
+        return lookup
+
+    @staticmethod
+    def _reaction_identifier(reaction: ReactionData) -> Optional[str]:
+        for key in ("reaction_id", "id"):
+            value = getattr(reaction, key, None)
+            if value is not None:
+                return str(value).strip()
+        return None
+
     def _get_reaction_gene_symbols(self, reaction: ReactionData) -> List[str]:
         names: List[str] = []
         for entry in getattr(reaction, "genes", []) or []:
             for key in (
                 "gene_symbol",
+                "gene_name",
                 "gene",
                 "symbol",
                 "name",
@@ -126,8 +174,10 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         for entry in getattr(reaction, "proteins", []) or []:
             for key in (
                 "gene_symbol",
+                "gene_name",
                 "gene",
                 "symbol",
+                "protein_gene_name",
                 "protein_gene_symbol",
                 "predicted_gene_symbol",
                 "predicted_gene",
@@ -137,6 +187,11 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 if value:
                     names.append(str(value).strip())
                     break
+
+        reaction_id = self._reaction_identifier(reaction)
+        if reaction_id:
+            names.extend(self._load_reaction_gene_lookup().get(reaction_id, []))
+
         ordered: List[str] = []
         seen = set()
         for name in names:

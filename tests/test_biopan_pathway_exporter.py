@@ -300,3 +300,25 @@ def test_pathway_exporter_builds_multistep_chain_and_gene_aggregation(tmp_path):
     assert table["pathways"][0]["data"]["class"] == "Biosynthesis of PC (Glycerolipids and Glycerophospholipids)"
     assert table["pathways"][0]["data"]["score"] > 1.645
     assert highlight["edges"] == "#DG360PE360,#PE360PC360"
+
+
+def test_pathway_exporter_reads_gene_name_fields_and_reaction_gene_fallback():
+    exporter = BioPANPathwayExporter()
+    exporter._reaction_gene_lookup = {"411": ["HSD3B2", "HSD3B1"]}
+
+    reaction = ReactionData(
+        reaction_id=411,
+        genes=[{"gene_name": "HSD3B2"}],
+        proteins=[{"protein_gene_name": "HSD3B1"}],
+    )
+
+    assert exporter._get_reaction_gene_symbols(reaction) == ["HSD3B2", "HSD3B1"]
+
+
+def test_pathway_exporter_uses_reaction_gene_lookup_when_payload_omits_gene_names():
+    exporter = BioPANPathwayExporter()
+    exporter._reaction_gene_lookup = {"411": ["HSD3B2", "HSD3B1"]}
+
+    reaction = ReactionData(reaction_id=411)
+
+    assert exporter._get_reaction_gene_symbols(reaction) == ["HSD3B2", "HSD3B1"]
