@@ -1087,6 +1087,7 @@ def main():
                     "products": products_str,
                     # "pathways": pathways_str,
                     "ec_number": ec_str,
+                    "genes": genes_str or "N/A",
                     "organisms": organisms,
                     "possible": evaluation.get("possible"),
                     "possible_explanation": evaluation.get("pairs_info")
