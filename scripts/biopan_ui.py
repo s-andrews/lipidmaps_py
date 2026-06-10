@@ -150,6 +150,7 @@ def render_biopan_explorer(dataset, tab_key_prefix="biopan"):
     hero = st.container(border=True)
     hero.subheader("Reaction Explorer")
     hero.caption("Compare sample groups, inspect ranked reaction/pathway tables, and view Cytoscape reaction graphs generated from the lipidmaps_py BioPAN exporter.")
+    hero.caption("Gene names in BioPAN outputs are resolved from UniProt when a reaction curation includes `rhea_id`; otherwise the exporter falls back to the reaction payload.")
 
     if len(groups) < 2:
         hero.info("This view needs at least two sample groups in the processed dataset before it can render BioPAN comparisons.")

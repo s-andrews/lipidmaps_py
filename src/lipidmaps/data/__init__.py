@@ -36,6 +36,10 @@ from .models.reaction import (
     ReactionChecker,
     ReactionResponse,
 )
+from .models.uniprot import (
+    UniProtGeneRecord,
+    UniProtRheaClient,
+)
 from .quantitation import (
     QuantitationAnalyzer,
     QuantitationConfig,
@@ -87,6 +91,8 @@ __all__ = [
     "CompoundComponent",
     "ReactionChecker",
     "ReactionResponse",
+    "UniProtGeneRecord",
+    "UniProtRheaClient",
     "QuantitationAnalyzer",
     "QuantitationConfig",
     "NormalizationMethod",
@@ -115,4 +121,3 @@ __all__ = [
     "infer_fa_from_lipids",
     "infer_facoa_from_lipids",
 ]
-

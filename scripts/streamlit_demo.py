@@ -17,6 +17,7 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from lipidmaps.logging_utils import configure_logging  # type: ignore[reportMissingImports]
+from lipidmaps.data.biopan_pathway_exporter import BioPANPathwayExporter
 from lipidmaps.data.data_manager import DataManager
 from lipidmaps.data.models import reaction
 from lipidmaps.data.quantitation import QuantitationAnalyzer, NormalizationMethod
@@ -87,6 +88,24 @@ def _apply_metadata_to_dataset(dataset, metadata_df: pd.DataFrame) -> pd.DataFra
             sample.label = str(row["label"]).strip() or None
 
     return metadata_df
+
+
+def _reaction_gene_exporter(dataset) -> BioPANPathwayExporter:
+    """Create an exporter used to resolve reaction gene symbols consistently."""
+
+    return BioPANPathwayExporter(dataset=dataset)
+
+
+def _resolved_reaction_genes(exporter: BioPANPathwayExporter, reaction_obj) -> str:
+    genes = exporter._get_reaction_gene_symbols(reaction_obj)
+    return ", ".join(genes) if genes else "N/A"
+
+
+def _reaction_gene_source(reaction_obj) -> str:
+    rhea_ids = reaction_obj.list_rhea_ids() if hasattr(reaction_obj, "list_rhea_ids") else []
+    if rhea_ids:
+        return "UniProt via Rhea"
+    return "LIPID MAPS payload"
 
 def main():
     configure_logging()
@@ -1044,6 +1063,7 @@ def main():
             st.info("No reactions fetched yet. Use Tools → Fetch reactions by LM ID.")
         else:
             st.info("The BioPAN graph and ranked-table explorer now lives in the dedicated `BioPAN` tab. Raw LM reaction details remain here.")
+            gene_exporter = _reaction_gene_exporter(dataset)
 
             st.markdown("### Raw LM reaction details")
             # Build reactions table, handling pathway dicts or objects
@@ -1075,9 +1095,8 @@ def main():
                     if ec:
                         ec_links.append(f'<a href="https://www.brenda-enzymes.org/enzyme.php?ecno={ec}" target="_blank">{ec}</a>')
                 ec_str = ", ".join(ec_links) if ec_links else "N/A"
-                genes_str = ", ".join([
-                    s for s in ((p.get("gene_name") if isinstance(p, dict) else getattr(p, "gene_name", None)) for p in getattr(r, "genes", [])) if s
-                ])
+                genes_str = _resolved_reaction_genes(gene_exporter, r)
+                rhea_ids = ", ".join(r.list_rhea_ids()) if hasattr(r, "list_rhea_ids") and r.list_rhea_ids() else "N/A"
                 organisms = ", ".join(r.organisms) if r.organisms else "N/A"
                 evaluation = getattr(r, "evaluation", {}) or {}
                 rxn_rows.append({
@@ -1088,6 +1107,8 @@ def main():
                     # "pathways": pathways_str,
                     "ec_number": ec_str,
                     "genes": genes_str or "N/A",
+                    "gene_source": _reaction_gene_source(r),
+                    "rhea_ids": rhea_ids,
                     "organisms": organisms,
                     "possible": evaluation.get("possible"),
                     "possible_explanation": evaluation.get("pairs_info")
@@ -1172,6 +1193,10 @@ def main():
                                 pathways_list.append(p.get("name") or p.get("pathway_name"))
                             else:
                                 pathways_list.append(getattr(p, "pathway_name", None) or getattr(p, "name", None))
+                        st.write("**Resolved genes:**", _resolved_reaction_genes(gene_exporter, r))
+                        st.write("**Gene source:**", _reaction_gene_source(r))
+                        rhea_ids = r.list_rhea_ids() if hasattr(r, "list_rhea_ids") else []
+                        st.write("**Rhea IDs:**", ", ".join(rhea_ids) if rhea_ids else "N/A")
                         st.write("**Pathways:**", ", ".join([p for p in pathways_list if p]))
                         # Show rule evaluation result with detailed diagnostics
                         possible = getattr(r, "possible", None)

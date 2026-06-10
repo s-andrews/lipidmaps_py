@@ -41,6 +41,7 @@ class ReactionData(LipidmapsBaseModel):
     proteins: List[Dict[str, Any]] = Field(default_factory=list)
     curations: List[Dict[str, Any]] = Field(default_factory=list)
     pathways: List[Dict[str, Any]] = Field(default_factory=list)
+    rhea_id: Optional[Union[str, List[str]]] = None
     reaction_name: Optional[str] = None
     reaction_id: Optional[int] = None
     reaction_type: Optional[str] = None
@@ -48,6 +49,84 @@ class ReactionData(LipidmapsBaseModel):
     # Contains keys like `possible` (bool), `explanation` (str), and any
     # additional diagnostic `details` the evaluator may include.
     evaluation: Optional[Dict[str, Any]] = None
+
+    @staticmethod
+    def _coerce_rhea_id(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.lower().startswith("rhea:"):
+            text = text.split(":", 1)[1].strip()
+        return text or None
+
+    @classmethod
+    def _extract_rhea_ids_from_curations(cls, curations: List[Dict[str, Any]]) -> List[str]:
+        ordered: List[str] = []
+        seen = set()
+
+        for curation in curations or []:
+            database_name = str(curation.get("database_name", "") or "").strip().lower()
+            if database_name != "rhea":
+                continue
+
+            rhea_id = cls._coerce_rhea_id(curation.get("database_id"))
+            if rhea_id and rhea_id not in seen:
+                ordered.append(rhea_id)
+                seen.add(rhea_id)
+
+        return ordered
+
+    @field_validator("rhea_id", mode="before")
+    @classmethod
+    def _normalize_rhea_id_field(cls, value: Any) -> Optional[Union[str, List[str]]]:
+        if value is None:
+            return None
+
+        values = value if isinstance(value, list) else [value]
+        ordered: List[str] = []
+        seen = set()
+        for item in values:
+            rhea_id = cls._coerce_rhea_id(item)
+            if rhea_id and rhea_id not in seen:
+                ordered.append(rhea_id)
+                seen.add(rhea_id)
+
+        if not ordered:
+            return None
+        if len(ordered) == 1:
+            return ordered[0]
+        return ordered
+
+    def list_rhea_ids(self) -> List[str]:
+        """Return normalized Rhea identifiers found on this reaction."""
+
+        ordered: List[str] = []
+        seen = set()
+
+        values = self.rhea_id if isinstance(self.rhea_id, list) else [self.rhea_id]
+        for value in values:
+            rhea_id = self._coerce_rhea_id(value)
+            if rhea_id and rhea_id not in seen:
+                ordered.append(rhea_id)
+                seen.add(rhea_id)
+        return ordered
+
+    def model_post_init(self, __context: Any) -> None:
+        """Populate normalized Rhea identifiers from curations when present."""
+
+        if self.list_rhea_ids():
+            return
+
+        curated_rhea_ids = self._extract_rhea_ids_from_curations(self.curations)
+        if not curated_rhea_ids:
+            return
+
+        if len(curated_rhea_ids) == 1:
+            self.rhea_id = curated_rhea_ids[0]
+        else:
+            self.rhea_id = curated_rhea_ids
 
     @property
     def organisms(self) -> List[str]:
@@ -135,6 +214,7 @@ class ReactionData(LipidmapsBaseModel):
             genes=self.genes,
             proteins=self.proteins,
             curations=self.curations,
+            rhea_id=self.rhea_id,
             pathways=self.pathways,
             reaction_type=self.reaction_type
         )
@@ -278,4 +358,3 @@ class ReactionChecker(LipidmapsBaseModel):
                     body = "<unavailable>"
             logger.error("Reaction API call failed: %s", e)
             return ReactionResponse(reactions=[], error=str(e))
-

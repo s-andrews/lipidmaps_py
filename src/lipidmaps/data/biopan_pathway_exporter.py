@@ -13,6 +13,7 @@ from .models.base import LipidmapsBaseModel
 from .models.reaction import ReactionData
 from .models.sample import LipidDataset, QuantifiedLipid
 from .models.species_reaction import ClassReaction, CompoundRequirement, PathwayReactionSet, ReactionMatchResult, SpeciesReactionPair
+from .models.uniprot import UniProtRheaClient
 from .utils.chain_parser import extract_facoa_from_reactions, extract_fa_from_reactions, infer_facoa_from_lipids, infer_fa_from_lipids
 from .utils.headgroups import lipidmaps_headgroups, lm_id_to_headgroup
 
@@ -32,6 +33,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     _reaction_table_cache: Dict[Tuple[Any, ...], Dict[str, Any]] = PrivateAttr(default_factory=dict)
     _pathway_table_cache: Dict[Tuple[Any, ...], Dict[str, Any]] = PrivateAttr(default_factory=dict)
     _reaction_gene_lookup: Optional[Dict[str, List[str]]] = PrivateAttr(default=None)
+    _uniprot_gene_lookup: Dict[str, List[str]] = PrivateAttr(default_factory=dict)
+    _uniprot_client: UniProtRheaClient = PrivateAttr(default_factory=UniProtRheaClient)
 
     def _get_dataset(self, dataset: Optional[LipidDataset] = None) -> LipidDataset:
         resolved_dataset = dataset or self.dataset
@@ -161,6 +164,21 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         return getattr(entry, key, None)
 
     def _get_reaction_gene_symbols(self, reaction: ReactionData) -> List[str]:
+        rhea_ids = reaction.list_rhea_ids()
+        if rhea_ids:
+            names: List[str] = []
+            seen = set()
+            for rhea_id in rhea_ids:
+                genes = self._uniprot_gene_lookup.get(rhea_id)
+                if genes is None:
+                    genes = self._uniprot_client.fetch_gene_symbols(rhea_id)
+                    self._uniprot_gene_lookup[rhea_id] = genes
+                for gene in genes:
+                    if gene and gene not in seen:
+                        names.append(gene)
+                        seen.add(gene)
+            return names
+
         names: List[str] = []
         for entry in getattr(reaction, "genes", []) or []:
             for key in (

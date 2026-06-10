@@ -334,3 +334,37 @@ def test_pathway_exporter_uses_reaction_gene_lookup_when_payload_omits_gene_name
     reaction = ReactionData(reaction_id=411)
 
     assert exporter._get_reaction_gene_symbols(reaction) == ["HSD3B2", "HSD3B1"]
+
+
+def test_pathway_exporter_prefers_uniprot_gene_lookup_from_rhea_curations():
+    exporter = BioPANPathwayExporter()
+    exporter._uniprot_gene_lookup = {"10273": ["LCAT", "PLA2G15"]}
+
+    reaction = ReactionData(
+        genes=[{"gene_symbol": "SHOULD_NOT_BE_USED"}],
+        curations=[{"database_name": "rhea", "database_id": "10273"}],
+    )
+
+    assert exporter._get_reaction_gene_symbols(reaction) == ["LCAT", "PLA2G15"]
+
+
+def test_reaction_data_lists_normalized_rhea_ids():
+    reaction = ReactionData(
+        curations=[
+            {"database_name": "rhea", "database_id": "RHEA:10273"},
+            {"database_name": "kegg", "database_id": "C00001"},
+            {"database_name": "rhea", "database_id": 15421},
+            {"database_name": "rhea", "database_id": " RHEA:20311 "},
+        ]
+    )
+
+    assert reaction.list_rhea_ids() == ["10273", "15421", "20311"]
+
+
+def test_reaction_data_preserves_explicit_rhea_id():
+    reaction = ReactionData(
+        rhea_id="RHEA:18766",
+        curations=[{"database_name": "rhea", "database_id": "10273"}],
+    )
+
+    assert reaction.list_rhea_ids() == ["18766"]

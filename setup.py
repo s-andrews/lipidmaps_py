@@ -7,6 +7,9 @@ setup(
     description="LIPID MAPS Python API suite for data input, normalization, data processing and LIPID MAPS reactions",
     packages=find_packages(where="src"),  # This will find ALL packages under src/
     package_dir={"": "src"},
+    package_data={
+        "lipidmaps.data.config": ["*.json"],
+    },
     install_requires=[
         "pydantic",
         "pandas",
