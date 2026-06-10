@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 from lipidmaps.data import BioPANPathwayExporter
 from lipidmaps.data.models.reaction import CompoundComponent, ReactionData
@@ -38,6 +39,17 @@ def make_reaction_dataset() -> LipidDataset:
 
 def make_pathway_dataset() -> LipidDataset:
     dataset = make_reaction_dataset()
+    def test_pathway_exporter_reads_object_gene_entries_and_fallback():
+        exporter = BioPANPathwayExporter()
+        exporter._reaction_gene_lookup = {"411": ["HSD3B2", "HSD3B1", "CYP11A1"]}
+
+        reaction = ReactionData(
+            reaction_id=411,
+            genes=[SimpleNamespace(gene_name="HSD3B2")],
+            proteins=[SimpleNamespace(protein_gene_name="HSD3B1")],
+        )
+
+        assert exporter._get_reaction_gene_symbols(reaction) == ["HSD3B2", "HSD3B1", "CYP11A1"]
     dataset.reactions = [
         ReactionData(
             reactants=[CompoundComponent(compound_name="PC", compound_headgroup="PC")],

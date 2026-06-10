@@ -18,14 +18,14 @@ content-type: application/json
 }
 
 ### Reaction lookup by LMSD IDs localhost
-POST https://dev.lipidmaps.org/api/reactions HTTP/1.1
+POST http://localhost/api/reactions HTTP/1.1
 content-type: application/json
 
 {
     "search_mode": "default",
     "search_type": "all",
     "generic_reactions": true,
-    "lmsd_ids": ["LMGP04050000"]
+    "lmsd_ids": ["LMSP03010000"]
 }
 
 ### Reaction lookup by LMSD IDs localhost

@@ -154,6 +154,12 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 return str(value).strip()
         return None
 
+    @staticmethod
+    def _entry_value(entry: Any, key: str) -> Any:
+        if isinstance(entry, dict):
+            return entry.get(key)
+        return getattr(entry, key, None)
+
     def _get_reaction_gene_symbols(self, reaction: ReactionData) -> List[str]:
         names: List[str] = []
         for entry in getattr(reaction, "genes", []) or []:
@@ -167,7 +173,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 "predicted_gene",
                 "predicted_symbol",
             ):
-                value = entry.get(key) if isinstance(entry, dict) else None
+                value = self._entry_value(entry, key)
                 if value:
                     names.append(str(value).strip())
                     break
@@ -183,7 +189,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 "predicted_gene",
                 "predicted_symbol",
             ):
-                value = entry.get(key) if isinstance(entry, dict) else None
+                value = self._entry_value(entry, key)
                 if value:
                     names.append(str(value).strip())
                     break
