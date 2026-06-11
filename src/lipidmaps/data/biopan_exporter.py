@@ -50,8 +50,17 @@ class BioPANExporter(LipidmapsBaseModel):
 
     def _get_has_fa_status(self, dataset: LipidDataset) -> str:
         names = [lipid.input_name for lipid in dataset.lipids if lipid.input_name]
-        has_fa = any(name.replace(" ", "").upper().startswith("FA(") for name in names)
-        has_facoa = any(name.replace(" ", "").upper().startswith("FACOA(") for name in names)
+        normalized_names = [name.strip().upper() for name in names]
+        collapsed_names = [name.replace(" ", "") for name in normalized_names]
+
+        has_fa = any(
+            collapsed.startswith("FA(") or normalized.startswith("FA ")
+            for normalized, collapsed in zip(normalized_names, collapsed_names)
+        )
+        has_facoa = any(
+            collapsed.startswith("FACOA(") or normalized.startswith("COA ")
+            for normalized, collapsed in zip(normalized_names, collapsed_names)
+        )
 
         if has_fa and not has_facoa:
             return "facoa"

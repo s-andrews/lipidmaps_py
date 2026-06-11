@@ -464,14 +464,14 @@ def get_common_fa_names() -> List[str]:
 def get_common_facoa_names() -> List[str]:
     """Get common fatty acyl-CoA names in LIPID MAPS shorthand format.
     
-    Example: ['CAR 12:0', 'CAR 14:0', 'CAR 16:0', ...]
+    Example: ['CoA 12:0', 'CoA 14:0', 'CoA 16:0', ...]
     
-    Note: Uses CAR (acylcarnitine) as the LIPID MAPS shorthand for acyl-CoA.
+    Note: Uses CoA as the LIPID MAPS shorthand for acyl-CoA.
     """
     seen = set()
     names = []
     for carbons, double_bonds, _ in COMMON_FATTY_ACIDS:
-        name = f"CAR {carbons}:{double_bonds}"
+        name = f"CoA {carbons}:{double_bonds}"
         if name not in seen:
             seen.add(name)
             names.append(name)

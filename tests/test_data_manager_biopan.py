@@ -124,6 +124,30 @@ def test_build_biopan_msg1_and_msg2_capture_display_state():
     assert msg2["subset"]["pathway"] == [True]
 
 
+def test_build_biopan_msg1_recognizes_spaced_fa_and_coa_names():
+    dataset = LipidDataset(
+        samples=[
+            SampleMetadata(sample_name="ctrl_1", group="control"),
+            SampleMetadata(sample_name="ctrl_2", group="control"),
+        ],
+        lipids=[
+            QuantifiedLipid(
+                input_name="FA 18:1",
+                values={"ctrl_1": 2.0, "ctrl_2": 3.0},
+            ),
+            QuantifiedLipid(
+                input_name="CoA 18:1",
+                values={"ctrl_1": 1.0, "ctrl_2": 1.5},
+            ),
+        ],
+    )
+    manager = DataManager(dataset=dataset)
+
+    msg1 = manager.build_biopan_msg1()
+
+    assert msg1["has_fa"] == [""]
+
+
 def test_export_biopan_display_files_writes_session_biopan_folder(tmp_path):
     manager = DataManager(dataset=make_biopan_dataset())
 
