@@ -45,7 +45,9 @@ def test_apply_group_overrides_updates_exported_groups():
     assert msg2["notvalid"] == {"groups": ["alpha"], "freqs": [1]}
 
 
-def test_resolve_groups_uses_first_seen_group_order_by_default():
+def test_resolve_groups_defaults_match_legacy_order():
+    # Legacy BioPAN / frontend default: control = first group, condition of
+    # interest (disease) = second group.
     manager = DataManager()
     manager.dataset = LipidDataset(
         samples=[
@@ -59,8 +61,8 @@ def test_resolve_groups_uses_first_seen_group_order_by_default():
 
     disease_group, control_group = _resolve_groups(manager, None, None)
 
-    assert disease_group == "dr_young"
-    assert control_group == "al_young"
+    assert disease_group == "al_young"
+    assert control_group == "dr_young"
 
 
 def test_build_parser_supports_has_labels_flag():
@@ -161,5 +163,6 @@ def test_main_uses_cached_dataset_without_reprocessing_csv(tmp_path, monkeypatch
     biopan_cli.main()
 
     assert [sample.group for sample in exported["display"].samples] == ["control", "control", "treated", "treated"]
-    assert exported["reaction"]["disease_group"] == "control"
-    assert exported["reaction"]["control_group"] == "treated"
+    # Legacy default order: control = first group, disease = second group.
+    assert exported["reaction"]["disease_group"] == "treated"
+    assert exported["reaction"]["control_group"] == "control"

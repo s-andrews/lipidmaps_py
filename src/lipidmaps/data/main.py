@@ -189,56 +189,48 @@ def test_species_matching(dataset) -> None:
     lipid_names = [lipid.standardized_name or lipid.input_name or None for lipid in dataset.lipids]
     logger.info(f"Dataset has {len(lipid_names)} lipids")
     
-    # --- FA extraction strategy (priority order) ---
-    # 1. Extract from LIPID MAPS reactions (if available)
-    # 2. Check if present in dataset lipid names
-    # 3. Infer from full-structure lipid chains
-    # 4. Fall back to common defaults
-    
-    fa_names = []
-    if dataset.reactions:
-        fa_names = extract_fa_from_reactions(dataset.reactions)
-        if fa_names:
-            logger.info(f"Extracted {len(fa_names)} FA species from LIPID MAPS reactions (LM IDs)")
-    
-    if not fa_names:
-        # Check dataset lipids (both shorthand "FA 16:0" and legacy "FA(16:0)" formats)
-        fa_names = [name for name in lipid_names 
-                    if name.startswith("FA ") or name.startswith("FA(")]
-        if fa_names:
-            logger.info(f"Found {len(fa_names)} FA species in dataset")
-    
-    if not fa_names:
-        # Try to infer from full-structure lipids in dataset
-        fa_names = infer_fa_from_lipids(lipid_names)
-        if fa_names:
-            logger.info(f"Inferred {len(fa_names)} FA species from lipid chains")
-    
-    if not fa_names:
-        # Fall back to common FA
+    # --- FA / FACoA pool construction ---
+    # Union the available sources rather than taking the first non-empty one:
+    # reaction extraction often yields only a sparse, non-representative set
+    # (e.g. just FA 16:0 + 2:0 from LM IDs), which would otherwise mask the
+    # richer set of acyl chains inferable from the dataset's own lipids and
+    # starve FA-release / FACoA-addition matching. Only fall back to common
+    # defaults when nothing at all can be sourced.
+
+    def _ordered_union(*groups: List[str]) -> List[str]:
+        seen = set()
+        ordered: List[str] = []
+        for group in groups:
+            for name in group:
+                if name and name not in seen:
+                    seen.add(name)
+                    ordered.append(name)
+        return ordered
+
+    fa_from_reactions = extract_fa_from_reactions(dataset.reactions) if dataset.reactions else []
+    fa_from_names = [name for name in lipid_names if name.startswith("FA ") or name.startswith("FA(")]
+    fa_inferred = infer_fa_from_lipids(lipid_names)
+    fa_names = _ordered_union(fa_from_reactions, fa_from_names, fa_inferred)
+    if fa_names:
+        logger.info(
+            f"FA pool: {len(fa_names)} species "
+            f"(reactions={len(fa_from_reactions)}, dataset={len(fa_from_names)}, inferred={len(fa_inferred)})"
+        )
+    else:
         fa_names = get_common_fa_names()
         logger.info(f"Using {len(fa_names)} common FA species (no FA in dataset)")
-    
-    # --- FACoA/CAR extraction strategy (same priority order) ---
-    facoa_names = []
-    if dataset.reactions:
-        facoa_names = extract_facoa_from_reactions(dataset.reactions)
-        if facoa_names:
-            logger.info(f"Extracted {len(facoa_names)} CAR species from LIPID MAPS reactions (LM IDs)")
-    
-    if not facoa_names:
-        # Check dataset lipids
-        facoa_names = [name for name in lipid_names 
-                       if name.startswith("CoA ") or name.startswith("FACoA") or name.startswith("FaCoA")]
-        if facoa_names:
-            logger.info(f"Found {len(facoa_names)} CoA species in dataset")
-    
-    if not facoa_names:
-        facoa_names = infer_facoa_from_lipids(lipid_names)
-        if facoa_names:
-            logger.info(f"Inferred {len(facoa_names)} CoA species from lipid chains")
-    
-    if not facoa_names:
+
+    facoa_from_reactions = extract_facoa_from_reactions(dataset.reactions) if dataset.reactions else []
+    facoa_from_names = [name for name in lipid_names
+                        if name.startswith("CoA ") or name.startswith("FACoA") or name.startswith("FaCoA")]
+    facoa_inferred = infer_facoa_from_lipids(lipid_names)
+    facoa_names = _ordered_union(facoa_from_reactions, facoa_from_names, facoa_inferred)
+    if facoa_names:
+        logger.info(
+            f"CoA pool: {len(facoa_names)} species "
+            f"(reactions={len(facoa_from_reactions)}, dataset={len(facoa_from_names)}, inferred={len(facoa_inferred)})"
+        )
+    else:
         facoa_names = get_common_facoa_names()
         logger.info(f"Using {len(facoa_names)} common CoA species (no CoA in dataset)")
     

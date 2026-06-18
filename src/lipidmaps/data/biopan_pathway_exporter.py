@@ -14,7 +14,14 @@ from .models.reaction import ReactionData
 from .models.sample import LipidDataset, QuantifiedLipid
 from .models.species_reaction import ClassReaction, CompoundRequirement, PathwayReactionSet, ReactionMatchResult, SpeciesReactionPair
 from .models.uniprot import UniProtRheaClient
-from .utils.chain_parser import extract_facoa_from_reactions, extract_fa_from_reactions, infer_facoa_from_lipids, infer_fa_from_lipids
+from .utils.chain_parser import (
+    extract_facoa_from_reactions,
+    extract_fa_from_reactions,
+    get_common_facoa_names,
+    get_common_fa_names,
+    infer_facoa_from_lipids,
+    infer_fa_from_lipids,
+)
 from .utils.headgroups import lipidmaps_headgroups, lm_id_to_headgroup
 
 
@@ -23,6 +30,11 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
 
     COMPARISON_BUNDLE_NAME: ClassVar[str] = "comparison_bundle.json"
     EDGE_DETAILS_BUNDLE_NAME: ClassVar[str] = "edge_details_bundle.json"
+
+    # Sphingolipid backbone classes whose base + N-acyl chain pass through
+    # multi-substrate reactions (e.g. SM synthase) unchanged, so a same-structure
+    # backbone edge (Cer->SM, dhCer->dhSM) can be derived from them.
+    SPHINGO_BACKBONE_CLASSES: ClassVar[frozenset] = frozenset({"Cer", "dhCer", "SM", "dhSM"})
 
     dataset: Optional[Any] = Field(default=None)
     class_reactions: Optional[List[Any]] = Field(default=None)
@@ -263,25 +275,14 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
 
         reaction_lookup: Dict[str, List[ReactionData]] = {}
         reaction_map: Dict[str, ClassReaction] = {}
-        for reaction in getattr(dataset, "reactions", []) or []:
-            reactants = [component for component in reaction.reactants if self._component_headgroup(component) not in {None, "FA", "acyl CoA"}]
-            products = [component for component in reaction.products if self._component_headgroup(component) not in {None, "FA", "acyl CoA"}]
-            if len(reactants) != 1 or len(products) != 1:
-                continue
 
-            reactant_class = self._component_headgroup(reactants[0])
-            product_class = self._component_headgroup(products[0])
-            if not reactant_class or not product_class:
-                continue
-
-            compound_require, acyl_add = self._infer_compound_requirement(reaction)
+        def register(reaction, reactant_class, product_class, compound_require, acyl_add):
             key = f"{reactant_class},{product_class}".lower()
             if key not in reaction_map:
-                reaction_class = "Matched reactions"
                 reaction_map[key] = ClassReaction(
                     reactant_class=reactant_class,
                     product_class=product_class,
-                    reaction_class=reaction_class,
+                    reaction_class="Matched reactions",
                     compound_require=compound_require,
                     acyl_add=acyl_add,
                     genes=self._get_reaction_gene_symbols(reaction),
@@ -291,6 +292,32 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 seen = set()
                 reaction_map[key].genes = [gene for gene in merged if gene and not (gene in seen or seen.add(gene))]
             reaction_lookup.setdefault(key, []).append(reaction)
+
+        for reaction in getattr(dataset, "reactions", []) or []:
+            reactants = [component for component in reaction.reactants if self._component_headgroup(component) not in {None, "FA", "acyl CoA"}]
+            products = [component for component in reaction.products if self._component_headgroup(component) not in {None, "FA", "acyl CoA"}]
+
+            if len(reactants) == 1 and len(products) == 1:
+                reactant_class = self._component_headgroup(reactants[0])
+                product_class = self._component_headgroup(products[0])
+                if not reactant_class or not product_class:
+                    continue
+                compound_require, acyl_add = self._infer_compound_requirement(reaction)
+                register(reaction, reactant_class, product_class, compound_require, acyl_add)
+                continue
+
+            # Multi-substrate reactions such as sphingomyelin synthase
+            # ('PC; Ceramide -> 1,2-DG; Sphingomyelin') are skipped by the 1:1
+            # rule above, so the sphingolipid backbone edge BioPAN tracks
+            # (Cer->SM, dhCer->dhSM) is otherwise lost. The sphingoid base and
+            # N-acyl chain pass through unchanged, so derive that same-structure
+            # backbone edge. Fire only with exactly one sphingolipid on each side
+            # to avoid mis-pairing.
+            sphingo_reactants = [hg for hg in (self._component_headgroup(c) for c in reactants) if hg in self.SPHINGO_BACKBONE_CLASSES]
+            sphingo_products = [hg for hg in (self._component_headgroup(c) for c in products) if hg in self.SPHINGO_BACKBONE_CLASSES]
+            if len(sphingo_reactants) == 1 and len(sphingo_products) == 1 and sphingo_reactants[0] != sphingo_products[0]:
+                register(reaction, sphingo_reactants[0], sphingo_products[0], CompoundRequirement.NONE, False)
+
         return list(reaction_map.values()), reaction_lookup
 
     def _get_matching_inputs(
@@ -299,19 +326,37 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     ) -> Tuple[List[str], List[str], List[str]]:
         lipid_names = [self._get_lipid_display_name(lipid) for lipid in dataset.lipids if self._get_lipid_display_name(lipid)]
 
-        fa_names = extract_fa_from_reactions(dataset.reactions) if dataset.reactions else []
-        if not fa_names:
-            fa_names = [name for name in lipid_names if name.startswith("FA(") or name.startswith("FA ")]
-        if not fa_names:
-            fa_names = infer_fa_from_lipids(lipid_names)
+        # Union all available sources rather than taking the first non-empty
+        # one. Reaction extraction often returns only a sparse set of LM-ID'd
+        # fatty acids (e.g. FA 16:0 + 2:0), which would otherwise short-circuit
+        # the richer pool inferable from the dataset's own acyl chains and limit
+        # FA-release / FACoA-addition matching to that sparse subset. Common
+        # defaults are used only when nothing can be sourced from the dataset.
+        fa_names = self._ordered_union(
+            extract_fa_from_reactions(dataset.reactions) if dataset.reactions else [],
+            [name for name in lipid_names if name.startswith("FA(") or name.startswith("FA ")],
+            infer_fa_from_lipids(lipid_names),
+        ) or get_common_fa_names()
 
-        facoa_names = extract_facoa_from_reactions(dataset.reactions) if dataset.reactions else []
-        if not facoa_names:
-            facoa_names = [name for name in lipid_names if name.startswith("CoA ") or name.startswith("FACoA") or name.startswith("FaCoA")]
-        if not facoa_names:
-            facoa_names = infer_facoa_from_lipids(lipid_names)
+        facoa_names = self._ordered_union(
+            extract_facoa_from_reactions(dataset.reactions) if dataset.reactions else [],
+            [name for name in lipid_names if name.startswith("CoA ") or name.startswith("FACoA") or name.startswith("FaCoA")],
+            infer_facoa_from_lipids(lipid_names),
+        ) or get_common_facoa_names()
 
         return lipid_names, fa_names, facoa_names
+
+    @staticmethod
+    def _ordered_union(*groups: Sequence[str]) -> List[str]:
+        """Concatenate name groups, preserving first-seen order and dropping dups."""
+        seen = set()
+        ordered: List[str] = []
+        for group in groups:
+            for name in group:
+                if name and name not in seen:
+                    seen.add(name)
+                    ordered.append(name)
+        return ordered
 
     def build_reaction_match_set(
         self,
@@ -390,6 +435,83 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             series.append(total if found else None)
         return series
 
+    @staticmethod
+    def _is_missing(value: Optional[float]) -> bool:
+        """True for None / NaN / Inf aggregates."""
+        if value is None:
+            return True
+        return isinstance(value, float) and (math.isnan(value) or math.isinf(value))
+
+    def _select_ratio_vectors(
+        self,
+        disease_products: Sequence[Optional[float]],
+        disease_reactants: Sequence[Optional[float]],
+        control_products: Sequence[Optional[float]],
+        control_reactants: Sequence[Optional[float]],
+        paired: bool,
+    ) -> Optional[Tuple[List[float], List[float]]]:
+        """Build the disease/control ratio vectors fed to the t-test.
+
+        Mirrors the legacy R BioPAN rules (lib_pathway_analysis.r,
+        ``get_lipid_pathway_zscore`` / ``extract_zscore``):
+
+        1. If *any* per-sample product or reactant sum is missing (None / NaN /
+           Inf), the reaction is unscorable and ``None`` is returned (R's
+           ``na_values == 0`` guard -> z-score 0).
+        2. Samples whose reactant sum is 0 are dropped. For a balanced, unpaired
+           design R removes the *union* of zero-reactant positions from both
+           groups; this is reproduced when the two groups have equal length.
+           For unequal groups (where R's cross-indexing is undefined) each group
+           is filtered independently.
+        3. If the number of dropped positions is >= n - 1 the reaction is
+           unscorable (R's ``l < length(...) - 1`` guard).
+
+        Returns ``(disease_ratios, control_ratios)`` or ``None`` to signal a
+        zero z-score.
+        """
+        vectors = (disease_products, disease_reactants, control_products, control_reactants)
+        if any(self._is_missing(value) for vector in vectors for value in vector):
+            return None
+
+        if not paired and len(disease_reactants) == len(control_reactants):
+            size = len(disease_reactants)
+            dropped = {
+                index
+                for index in range(size)
+                if disease_reactants[index] == 0 or control_reactants[index] == 0
+            }
+            if dropped and len(dropped) >= size - 1:
+                return None
+            disease_ratios = [
+                float(disease_products[i]) / float(disease_reactants[i])
+                for i in range(size) if i not in dropped
+            ]
+            control_ratios = [
+                float(control_products[i]) / float(control_reactants[i])
+                for i in range(size) if i not in dropped
+            ]
+            return disease_ratios, control_ratios
+
+        if paired:
+            size = min(len(disease_reactants), len(control_reactants))
+            indices = [
+                index for index in range(size)
+                if disease_reactants[index] != 0 and control_reactants[index] != 0
+            ]
+            disease_ratios = [float(disease_products[i]) / float(disease_reactants[i]) for i in indices]
+            control_ratios = [float(control_products[i]) / float(control_reactants[i]) for i in indices]
+            return disease_ratios, control_ratios
+
+        disease_ratios = [
+            float(product) / float(reactant)
+            for product, reactant in zip(disease_products, disease_reactants) if reactant != 0
+        ]
+        control_ratios = [
+            float(product) / float(reactant)
+            for product, reactant in zip(control_products, control_reactants) if reactant != 0
+        ]
+        return disease_ratios, control_ratios
+
     def _compute_ratio_zscore(
         self,
         disease_products: Sequence[Optional[float]],
@@ -399,39 +521,12 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         alt: str,
         paired: bool,
     ) -> float:
-        disease_ratios: List[Optional[float]] = []
-        control_ratios: List[Optional[float]] = []
-
-        for product, reactant in zip(disease_products, disease_reactants):
-            if product is None or reactant is None or reactant == 0:
-                disease_ratios.append(None)
-            else:
-                disease_ratios.append(float(product) / float(reactant))
-
-        for product, reactant in zip(control_products, control_reactants):
-            if product is None or reactant is None or reactant == 0:
-                control_ratios.append(None)
-            else:
-                control_ratios.append(float(product) / float(reactant))
-
-        if paired:
-            size = min(len(disease_ratios), len(control_ratios))
-            paired_disease: List[float] = []
-            paired_control: List[float] = []
-            for index in range(size):
-                disease_value = disease_ratios[index]
-                control_value = control_ratios[index]
-                if disease_value is None or control_value is None:
-                    continue
-                if math.isnan(disease_value) or math.isnan(control_value):
-                    continue
-                paired_disease.append(disease_value)
-                paired_control.append(control_value)
-            disease_values = paired_disease
-            control_values = paired_control
-        else:
-            disease_values = self._clean_series(disease_ratios)
-            control_values = self._clean_series(control_ratios)
+        selected = self._select_ratio_vectors(
+            disease_products, disease_reactants, control_products, control_reactants, paired
+        )
+        if selected is None:
+            return 0.0
+        disease_values, control_values = selected
 
         if len(disease_values) <= 1 or len(control_values) <= 1:
             return 0.0
@@ -502,6 +597,170 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             alt=alt,
             paired=paired,
         )
+
+    def _diagnose_ratio(
+        self,
+        reactant_names: Sequence[str],
+        product_names: Sequence[str],
+        lipid_lookup: Dict[str, QuantifiedLipid],
+        disease_samples: Sequence[str],
+        control_samples: Sequence[str],
+        alt: str,
+        paired: bool,
+    ) -> Dict[str, Any]:
+        """Expose every intermediate behind a single ratio z-score.
+
+        Mirrors `_compute_ratio_zscore` step for step so the per-sample product
+        and reactant sums, the per-sample ratios, the cleaned vectors actually
+        fed to the t-test, and the resulting t-statistic / p-value / z-score can
+        all be diffed against the legacy R BioPAN output for the same reaction.
+        """
+        reactant_names = sorted(set(reactant_names))
+        product_names = sorted(set(product_names))
+
+        disease_products = self._sum_lipid_values(product_names, disease_samples, lipid_lookup)
+        disease_reactants = self._sum_lipid_values(reactant_names, disease_samples, lipid_lookup)
+        control_products = self._sum_lipid_values(product_names, control_samples, lipid_lookup)
+        control_reactants = self._sum_lipid_values(reactant_names, control_samples, lipid_lookup)
+
+        def _ratios(products: Sequence[Optional[float]], reactants: Sequence[Optional[float]]) -> List[Optional[float]]:
+            ratios: List[Optional[float]] = []
+            for product, reactant in zip(products, reactants):
+                if product is None or reactant is None or reactant == 0:
+                    ratios.append(None)
+                else:
+                    ratios.append(float(product) / float(reactant))
+            return ratios
+
+        disease_ratios = _ratios(disease_products, disease_reactants)
+        control_ratios = _ratios(control_products, control_reactants)
+
+        # Use the exact selection routine that scoring uses, so the reported
+        # t-test inputs match the z-score below. None signals an unscorable
+        # reaction (missing aggregate or too many zero-reactant samples).
+        selected = self._select_ratio_vectors(
+            disease_products, disease_reactants, control_products, control_reactants, paired
+        )
+        disease_used, control_used = selected if selected is not None else ([], [])
+
+        diagnostic: Dict[str, Any] = {
+            "reactant_species": reactant_names,
+            "product_species": product_names,
+            "per_sample": {
+                "disease": [
+                    {"sample": sample, "product_sum": product, "reactant_sum": reactant, "ratio": ratio}
+                    for sample, product, reactant, ratio in zip(disease_samples, disease_products, disease_reactants, disease_ratios)
+                ],
+                "control": [
+                    {"sample": sample, "product_sum": product, "reactant_sum": reactant, "ratio": ratio}
+                    for sample, product, reactant, ratio in zip(control_samples, control_products, control_reactants, control_ratios)
+                ],
+            },
+            "disease_ratios_used": disease_used,
+            "control_ratios_used": control_used,
+            "n_disease_used": len(disease_used),
+            "n_control_used": len(control_used),
+            "t_statistic": None,
+            "p_value": None,
+        }
+
+        if len(disease_used) > 1 and len(control_used) > 1:
+            try:
+                if paired:
+                    test_result = stats.ttest_rel(disease_used, control_used, alternative=alt)
+                else:
+                    test_result = stats.ttest_ind(disease_used, control_used, equal_var=False, alternative=alt)
+                diagnostic["t_statistic"] = float(getattr(test_result, "statistic", float("nan")))
+                diagnostic["p_value"] = float(getattr(test_result, "pvalue", float("nan")))
+            except Exception as exc:  # pragma: no cover - defensive
+                diagnostic["t_error"] = str(exc)
+
+        diagnostic["z_score"] = self._compute_ratio_zscore(
+            disease_products,
+            disease_reactants,
+            control_products,
+            control_reactants,
+            alt=alt,
+            paired=paired,
+        )
+        return diagnostic
+
+    def diagnose_reaction(
+        self,
+        reaction_key: str,
+        disease_group: str,
+        control_group: str,
+        *,
+        level: str = "class",
+        mode: str = "active",
+        paired: bool = False,
+        dataset: Optional[LipidDataset] = None,
+        result_set: Optional[PathwayReactionSet] = None,
+    ) -> Dict[str, Any]:
+        """Dump the inputs and intermediate values behind one reaction z-score.
+
+        Use this to diff dev against the legacy R BioPAN tool for a single
+        reaction (e.g. ``diagnose_reaction("PS,LPS", disease, control)``).
+
+        At ``level='class'`` the diagnostic mirrors `_score_result` (sums every
+        matched reactant/product species). At ``level='species'`` it returns one
+        block per matched pair, mirroring `_score_pair`.
+        """
+        resolved_dataset = self._get_dataset(dataset)
+        if result_set is None:
+            result_set, _ = self.build_reaction_match_set(resolved_dataset)
+
+        key = reaction_key.lower()
+        result = result_set.results.get(key)
+        if result is None:
+            return {
+                "reaction_key": reaction_key,
+                "error": "reaction not found in match set",
+                "available_keys": sorted(result_set.results),
+            }
+
+        lipid_lookup = self._build_lipid_lookup(resolved_dataset)
+        disease_samples = self._group_samples(resolved_dataset, disease_group)
+        control_samples = self._group_samples(resolved_dataset, control_group)
+        alt = "greater" if mode in {"active", "most_active"} else "less"
+
+        summary: Dict[str, Any] = {
+            "reaction_key": reaction_key,
+            "level": level,
+            "mode": mode,
+            "alt": alt,
+            "paired": paired,
+            "disease_group": disease_group,
+            "control_group": control_group,
+            "disease_samples": list(disease_samples),
+            "control_samples": list(control_samples),
+            "pairs_matched": len(result.pairs),
+            "fa_pool": sorted(result_set.fa_species),
+            "facoa_pool": sorted(result_set.facoa_species),
+        }
+
+        if level == "species":
+            pair_diags: List[Dict[str, Any]] = []
+            for pair in result.pairs:
+                reactant_name = self._display_name_for_structure(pair.reactant, lipid_lookup)
+                product_name = self._display_name_for_structure(pair.product, lipid_lookup)
+                diag = self._diagnose_ratio(
+                    [reactant_name], [product_name], lipid_lookup,
+                    disease_samples, control_samples, alt, paired,
+                )
+                pair_diags.append(diag)
+            summary["pairs"] = pair_diags
+            return summary
+
+        reactant_names = sorted({self._display_name_for_structure(pair.reactant, lipid_lookup) for pair in result.pairs})
+        product_names = sorted({self._display_name_for_structure(pair.product, lipid_lookup) for pair in result.pairs})
+        summary.update(
+            self._diagnose_ratio(
+                reactant_names, product_names, lipid_lookup,
+                disease_samples, control_samples, alt, paired,
+            )
+        )
+        return summary
 
     def _gene_text(self, result: ReactionMatchResult, reaction_lookup: Dict[str, List[ReactionData]]) -> str:
         genes = list(result.class_reaction.genes)

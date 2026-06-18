@@ -194,7 +194,9 @@ def create_matcher_context(
         for name in facoa_names:
             # Try parsing directly (handles "CAR 16:0" format)
             species = parser.parse(name)
-            if species and species.headgroup in ("CoA", "FACoA", "FaCoA", "FACOA") and species.chains:
+            # ChainParser normalizes all acyl-CoA notations to the "acyl CoA"
+            # headgroup, so accept that alongside the literal CoA spellings.
+            if species and species.headgroup in ("acyl CoA", "CoA", "FACoA", "FaCoA", "FACOA") and species.chains:
                 chain = species.chains[0]
                 facoa_dict[chain.notation] = chain
             elif "FaCoA" in name or "FACoA" in name:

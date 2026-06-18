@@ -122,7 +122,10 @@ def _resolve_groups(manager: DataManager, disease_group: str | None, control_gro
     if len(groups) < 2:
         raise ValueError("At least two sample groups are required to export BioPAN reaction assets")
 
-    return disease_group or groups[0], control_group or groups[1]
+    # Default order matches the legacy BioPAN tool and the frontend dropdown
+    # defaults (graph.js): control = first group, condition of interest
+    # (disease) = second group.
+    return disease_group or groups[1], control_group or groups[0]
 
 
 def main() -> None:

@@ -502,39 +502,74 @@ def get_extended_facoa_names() -> List[str]:
     return names
 
 
+# Lipid classes whose sum-composition residue is itself a single fatty acyl
+# chain. Datasets reported at sum level (e.g. 'LPI 18:0', 'CE 18:1') still carry
+# a usable acyl chain for these classes, so they can seed the FA / acyl-CoA
+# pools. This mirrors the legacy BioPAN R behaviour (parse_data.r), which
+# derived FA/FaCoA acyl chains from lyso, CE and sphingolipid species.
+SINGLE_ACYL_HEADGROUPS = {
+    "LPA", "LPC", "LPE", "LPG", "LPI", "LPS",  # lyso-glycerophospholipids
+    "MG",                                        # monoacylglycerol
+    "CE",                                        # cholesteryl ester
+}
+
+
+def _strip_linkage_suffix(headgroup: str) -> str:
+    """Strip a trailing ether linkage marker (' O-' / ' P-') from a headgroup."""
+    base = headgroup.strip()
+    for suffix in (" O-", " P-"):
+        if base.endswith(suffix):
+            return base[: -len(suffix)]
+    return base
+
+
 def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
     """Infer possible FA species from the acyl chains in a lipid dataset.
-    
-    Extracts all unique acyl chains from full-structure lipid names
-    (those with individual chains like PC 16:0_18:1) and returns them as FA names
-    in LIPID MAPS shorthand format.
-    
-    Sum composition species like PC 34:1 are NOT used for inference.
-    
+
+    Two sources are used:
+    1. Every individual chain of full-structure species (e.g. PC 16:0_18:1).
+       For sphingolipids the backbone is excluded by the parser, so only the
+       N-acyl chain contributes (e.g. Cer d18:1/16:0 -> FA 16:0).
+    2. The single residual chain of sum-level species whose class is itself
+       mono-acyl (lyso-glycerophospholipids, MG, CE; see SINGLE_ACYL_HEADGROUPS).
+
+    Sum-composition species of multi-acyl classes (e.g. PC 34:1) are NOT used,
+    since their sum is not a fatty acid.
+
     Args:
         lipid_names: List of lipid species names
-        
+
     Returns:
         List of FA names inferred from the dataset
-        
+
     Example:
-        >>> infer_fa_from_lipids(['PC 16:0_18:1', 'PE 18:0_20:4'])
-        ['FA 16:0', 'FA 18:1', 'FA 18:0', 'FA 20:4']
+        >>> infer_fa_from_lipids(['PC 16:0_18:1', 'PE 18:0_20:4', 'LPI 18:0'])
+        ['FA 16:0', 'FA 18:1', 'FA 18:0', 'FA 20:4', 'FA 18:0']
     """
     parser = ChainParser()
     seen = set()
     fa_names = []
-    
+
+    def _add(chain: AcylChain) -> None:
+        fa_name = f"FA {chain.notation}"
+        if fa_name not in seen:
+            seen.add(fa_name)
+            fa_names.append(fa_name)
+
     for name in lipid_names:
         species = parser.parse(name)
-        # Only use chains from FULL structure level species
-        if species and species.level == StructureLevel.FULL and species.chains:
+        if not species or not species.chains:
+            continue
+        # Full structure: every individual chain is a candidate FA.
+        if species.level == StructureLevel.FULL:
             for chain in species.chains:
-                fa_name = f"FA {chain.notation}"
-                if fa_name not in seen:
-                    seen.add(fa_name)
-                    fa_names.append(fa_name)
-    
+                _add(chain)
+            continue
+        # Sum level: only mono-acyl classes expose a usable fatty acyl chain.
+        base_hg = _strip_linkage_suffix(species.headgroup)
+        if base_hg in SINGLE_ACYL_HEADGROUPS:
+            _add(species.chains[0])
+
     return fa_names
 
 
