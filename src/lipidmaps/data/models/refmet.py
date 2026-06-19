@@ -44,7 +44,7 @@ class RefMet:
                 "Fetching RefMet annotations for %s metabolites from API",
                 len(metabolite_names),
             )
-            response = requests.post(RefMet.MWBaseURL, data=data, timeout=15)
+            response = requests.post(RefMet.MWBaseURL, data=data, timeout=30)
             response.raise_for_status()
         except requests.RequestException as e:
             elapsed = perf_counter() - started_at

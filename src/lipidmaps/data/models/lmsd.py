@@ -41,7 +41,7 @@ class LMSD:
             response = requests.post(
                 LMSD.LMSDNameUrl,
                 json=data,
-                timeout=20,
+                timeout=40,
             )
             response.raise_for_status()
         except requests.RequestException as e:
@@ -165,7 +165,7 @@ class LMSD:
             response = requests.post(
                 LMSD.LMSDLmidUrl,
                 json=data,
-                timeout=20,
+                timeout=40,
             )
             response.raise_for_status()
         except requests.RequestException as e:

@@ -233,7 +233,7 @@ class ReactionChecker(LipidmapsBaseModel):
     base_url: str = Field(..., description="Base URL for the reaction API")
     endpoint: str = Field(default="/api/reactions", description="API endpoint path")
     timeout: int = Field(
-        default=60, description="Request timeout in seconds", ge=1, le=300
+        default=120, description="Request timeout in seconds", ge=1, le=600
     )
 
     # Computed field for full API URL
