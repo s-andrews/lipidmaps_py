@@ -4,7 +4,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from .data import DataManager
+from .data import BioPANPathwayExporter, DataManager
 from .data.models.sample import LipidDataset
 from .logging_utils import configure_logging
 
@@ -52,6 +52,14 @@ def _write_cached_dataset(session_dir: Path, dataset: LipidDataset) -> Path:
     return cache_path
 
 
+def _invalidate_match_set_cache(session_dir: Path) -> None:
+    cache_path = session_dir / "config" / BioPANPathwayExporter.MATCH_SET_CACHE_NAME
+    try:
+        cache_path.unlink(missing_ok=True)
+    except Exception:
+        logger.warning("Failed to invalidate reaction match set cache at %s", cache_path, exc_info=True)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Regenerate BioPAN session assets using lipidmaps_py"
@@ -80,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--summary-only", action="store_true", help="Only write summary/msg assets")
     parser.add_argument("--reaction-only", action="store_true", help="Only write reaction assets")
+    parser.add_argument("--lazy-bundle", action="store_true", help="Write the comparison bundle as a skeleton (metadata + empty payloads); build per-view payloads on demand with --build-view")
+    parser.add_argument("--build-view", action="store_true", help="Lazily build only one view's comparison payloads and merge them into the existing bundle")
+    parser.add_argument("--scope", choices=["graph", "tables"], default="graph", help="With --build-view: which payloads to build")
+    parser.add_argument("--family", choices=["reaction", "pathway"], default="reaction", help="With --build-view: reaction or pathway family")
+    parser.add_argument("--level", choices=["class", "species"], default="class", help="With --build-view: class or species level")
     return parser
 
 
@@ -161,6 +174,9 @@ def main() -> None:
             dataset = manager.process_csv(csv_path)
             cache_path = _write_cached_dataset(session_dir, dataset)
             logger.info("Cached processed BioPAN dataset at %s", cache_path)
+            # The reaction match set is derived from the dataset, so a freshly
+            # processed dataset invalidates any cached match set.
+            _invalidate_match_set_cache(session_dir)
 
         manager.dataset = dataset
         group_overrides = _parse_sample_group_overrides(args.sample_group)
@@ -172,6 +188,29 @@ def main() -> None:
         raise
 
     written: dict[str, str] = {}
+
+    # Lazy per-view build: only build the requested view's comparison payloads
+    # and merge them into the existing bundle. Reuses the cached match set.
+    if args.build_view:
+        try:
+            disease_group, control_group = _resolve_groups(manager, args.disease_group, args.control_group)
+            exporter = manager.get_biopan_pathway_exporter(dataset)
+            built = exporter.build_and_merge_view(
+                session_dir,
+                disease_group,
+                control_group,
+                args.threshold,
+                args.paired,
+                scope=args.scope,
+                family=args.family,
+                level=args.level,
+                dataset=dataset,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        logger.info("BioPAN built %s lazy view payloads for session %s", len(built), session_dir)
+        print({"built_view": sorted(built.keys())})
+        return
 
     if not args.reaction_only:
         written.update(manager.export_biopan_display_files(session_dir, dataset=dataset))
@@ -186,6 +225,7 @@ def main() -> None:
                 threshold=args.threshold,
                 paired=args.paired,
                 dataset=dataset,
+                lazy=args.lazy_bundle,
             )
         )
 

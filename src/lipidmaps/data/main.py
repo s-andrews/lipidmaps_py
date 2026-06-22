@@ -209,7 +209,14 @@ def test_species_matching(dataset) -> None:
 
     fa_from_reactions = extract_fa_from_reactions(dataset.reactions) if dataset.reactions else []
     fa_from_names = [name for name in lipid_names if name.startswith("FA ") or name.startswith("FA(")]
-    fa_inferred = infer_fa_from_lipids(lipid_names)
+    facoa_from_names = [name for name in lipid_names
+                        if name.startswith("CoA ") or name.startswith("FACoA") or name.startswith("FaCoA")]
+    # Gate mono-acyl (lyso) self-inference on the dataset having no measured
+    # FA/FaCoA, mirroring legacy BioPAN (parse_data.r): lyso/CE/sphingo chains
+    # only seed the pool when the input carries no fatty acids of its own, so a
+    # lyso product (e.g. LPS in PS->LPS) does not validate its own release.
+    infer_mono_acyl = not (fa_from_names or facoa_from_names)
+    fa_inferred = infer_fa_from_lipids(lipid_names, include_mono_acyl=infer_mono_acyl)
     fa_names = _ordered_union(fa_from_reactions, fa_from_names, fa_inferred)
     if fa_names:
         logger.info(
@@ -221,9 +228,7 @@ def test_species_matching(dataset) -> None:
         logger.info(f"Using {len(fa_names)} common FA species (no FA in dataset)")
 
     facoa_from_reactions = extract_facoa_from_reactions(dataset.reactions) if dataset.reactions else []
-    facoa_from_names = [name for name in lipid_names
-                        if name.startswith("CoA ") or name.startswith("FACoA") or name.startswith("FaCoA")]
-    facoa_inferred = infer_facoa_from_lipids(lipid_names)
+    facoa_inferred = infer_facoa_from_lipids(lipid_names, include_mono_acyl=infer_mono_acyl)
     facoa_names = _ordered_union(facoa_from_reactions, facoa_from_names, facoa_inferred)
     if facoa_names:
         logger.info(

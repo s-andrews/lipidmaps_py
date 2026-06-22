@@ -801,6 +801,7 @@ class DataManager(LipidmapsBaseModel):
         threshold: float = 0.05,
         paired: bool = False,
         dataset: Optional[LipidDataset] = None,
+        lazy: bool = False,
     ) -> Dict[str, str]:
         written_files = self.get_biopan_pathway_exporter(dataset).export_reaction_files(
             output_path=output_path,
@@ -808,6 +809,7 @@ class DataManager(LipidmapsBaseModel):
             control_group=control_group,
             threshold=threshold,
             paired=paired,
+            lazy=lazy,
         )
         logger.info("Exported BioPAN reaction files to %s", output_path)
         return written_files

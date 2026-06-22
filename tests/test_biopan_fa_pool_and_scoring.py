@@ -1,12 +1,16 @@
 """Regression tests for BioPAN FA/CoA pool construction and ratio scoring.
 
-These lock in two fixes:
+These lock in two behaviours:
 
 1. The FA / acyl-CoA pools are the *union* of reaction-extracted, dataset-named
    and dataset-inferred species, so a sparse reaction-derived set (e.g. only
-   FA 16:0) can no longer short-circuit the richer inferred set and starve
-   FA-release / FACoA-addition matching. This previously inflated subclass
-   z-scores (e.g. PS->LPS) by scoring from only a "lose-a-palmitate" subset.
+   FA 16:0) can no longer short-circuit the richer set inferred from the
+   dataset's full-structure acyl chains. Mono-acyl (lyso) self-inference is
+   gated on the dataset having no measured FA/FaCoA, mirroring legacy BioPAN
+   (parse_data.r): lyso/CE/sphingo chains seed the pool only when no fatty
+   acids are measured. When FAs *are* measured, an LPS species must not seed
+   the FA that then validates its own PS->LPS release (which would over-match
+   release pairs and inflate the subclass z-score).
 
 2. `_compute_ratio_zscore` follows the legacy R rules for missing/zero values:
    any missing per-sample aggregate makes the reaction unscorable (z = 0), and
@@ -57,17 +61,52 @@ def _ps_lps_dataset() -> LipidDataset:
     return dataset
 
 
-def test_fa_pool_is_union_not_short_circuited():
+def test_lyso_seeds_fa_pool_when_no_measured_fa():
+    """Legacy BioPAN synthesises an FA pool from lyso/CE/sphingo chains when the
+    dataset has no measured FA. _ps_lps_dataset carries no FA species, so the
+    LPS chains DO seed the pool."""
     dataset = _ps_lps_dataset()
     exporter = BioPANPathwayExporter(dataset=dataset)
 
     _, fa_names, _ = exporter._get_matching_inputs(dataset)
 
-    # Sparse reaction FA is present, but did NOT prevent the richer inferred set.
-    assert "FA 16:0" in fa_names
-    for inferred in ("FA 18:0", "FA 18:1", "FA 20:4", "FA 22:6"):
-        assert inferred in fa_names, f"{inferred} missing from unioned FA pool"
-    assert len(fa_names) > 1
+    for seeded in ("FA 18:0", "FA 18:1", "FA 20:4", "FA 22:6"):
+        assert seeded in fa_names, f"{seeded} should be seeded from LPS when no FA is measured"
+
+
+def test_lyso_excluded_from_fa_pool_when_fa_measured():
+    """Once any FA is measured, legacy BioPAN stops synthesising from lyso
+    chains, so an LPS product no longer seeds the FA that validates its own
+    release. The measured FA stays; the lyso-only chains drop out."""
+    dataset = _ps_lps_dataset()
+    # Add a measured FA species (present across all samples).
+    values = {s.sample_name: 1.0 for s in dataset.samples}
+    dataset.lipids.append(QuantifiedLipid(input_name="FA(16:0)", values=values))
+    exporter = BioPANPathwayExporter(dataset=dataset)
+
+    _, fa_names, _ = exporter._get_matching_inputs(dataset)
+
+    assert "FA 16:0" in fa_names  # measured FA retained
+    for excluded in ("FA 18:1", "FA 20:4", "FA 22:6"):
+        assert excluded not in fa_names, f"{excluded} should not be lyso-seeded once FA is measured"
+
+
+def test_union_still_includes_full_structure_inferred_fa():
+    """The union must still surface FAs inferred from full-structure species,
+    independent of the mono-acyl gate. With a measured FA present (so mono-acyl
+    inference is off), FA 18:1 from a full-structure PC is still pooled."""
+    samples = [SampleMetadata(sample_name="s1", group="g")]
+    lipids = [
+        QuantifiedLipid(input_name="PC 16:0_18:1", values={"s1": 1.0}),
+        QuantifiedLipid(input_name="FA(16:0)", values={"s1": 1.0}),  # measured FA -> gate off
+    ]
+    dataset = LipidDataset(samples=samples, lipids=lipids)
+    exporter = BioPANPathwayExporter(dataset=dataset)
+
+    _, fa_names, _ = exporter._get_matching_inputs(dataset)
+
+    assert "FA 16:0" in fa_names  # measured
+    assert "FA 18:1" in fa_names  # inferred from the full-structure PC despite gate off
 
 
 def test_release_reaction_scores_full_matched_species_set():

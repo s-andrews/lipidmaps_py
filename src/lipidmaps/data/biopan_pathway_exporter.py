@@ -1,4 +1,6 @@
+import fcntl
 import json
+import logging
 import math
 import re
 from collections import OrderedDict
@@ -25,11 +27,18 @@ from .utils.chain_parser import (
 from .utils.headgroups import lipidmaps_headgroups, lm_id_to_headgroup
 
 
+logger = logging.getLogger(__name__)
+
+
 class BioPANPathwayExporter(LipidmapsBaseModel):
     """Build BioPAN reaction graph, table, and edge-detail assets from a dataset."""
 
     COMPARISON_BUNDLE_NAME: ClassVar[str] = "comparison_bundle.json"
     EDGE_DETAILS_BUNDLE_NAME: ClassVar[str] = "edge_details_bundle.json"
+    # Reaction match set is comparison-independent (it depends only on the
+    # dataset), so it is cached under the session config dir and reused across
+    # interest/control changes instead of being recomputed each time.
+    MATCH_SET_CACHE_NAME: ClassVar[str] = "reaction_match_set.json"
 
     # Sphingolipid backbone classes whose base + N-acyl chain pass through
     # multi-substrate reactions (e.g. SM synthase) unchanged, so a same-structure
@@ -332,16 +341,29 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         # the richer pool inferable from the dataset's own acyl chains and limit
         # FA-release / FACoA-addition matching to that sparse subset. Common
         # defaults are used only when nothing can be sourced from the dataset.
+        measured_fa = [name for name in lipid_names if name.startswith("FA(") or name.startswith("FA ")]
+        measured_facoa = [name for name in lipid_names
+                          if name.startswith("CoA ") or name.startswith("FACoA") or name.startswith("FaCoA")]
+
+        # Mono-acyl (lyso) self-inference is gated on the dataset having no
+        # measured FA/FaCoA species, mirroring legacy BioPAN (parse_data.r):
+        # it only synthesises an FA/FaCoA pool from lyso/CE/sphingo acyl chains
+        # when the input carries no fatty acids of its own. When FAs *are*
+        # measured, a lyso product (e.g. LPS in PS->LPS) must not seed the FA
+        # pool that then validates its own release reaction, which would
+        # over-match release pairs and inflate the subclass z-score.
+        infer_mono_acyl = not (measured_fa or measured_facoa)
+
         fa_names = self._ordered_union(
             extract_fa_from_reactions(dataset.reactions) if dataset.reactions else [],
-            [name for name in lipid_names if name.startswith("FA(") or name.startswith("FA ")],
-            infer_fa_from_lipids(lipid_names),
+            measured_fa,
+            infer_fa_from_lipids(lipid_names, include_mono_acyl=infer_mono_acyl),
         ) or get_common_fa_names()
 
         facoa_names = self._ordered_union(
             extract_facoa_from_reactions(dataset.reactions) if dataset.reactions else [],
-            [name for name in lipid_names if name.startswith("CoA ") or name.startswith("FACoA") or name.startswith("FaCoA")],
-            infer_facoa_from_lipids(lipid_names),
+            measured_facoa,
+            infer_facoa_from_lipids(lipid_names, include_mono_acyl=infer_mono_acyl),
         ) or get_common_facoa_names()
 
         return lipid_names, fa_names, facoa_names
@@ -373,6 +395,58 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             use_full_structure=True,
         )
         result_set.dataset_lipid_count = len(resolved_dataset.lipids)
+        return result_set, reaction_lookup
+
+    def _match_set_cache_path(self, output_dir: Path) -> Path:
+        # output_dir is the session's "biopan" dir; the match-set cache lives
+        # alongside the dataset cache in the sibling "config" dir, so it is not
+        # touched by _cleanup_generated_json_files (which only globs biopan/*.json).
+        return output_dir.parent / "config" / self.MATCH_SET_CACHE_NAME
+
+    def _load_or_build_match_set(
+        self,
+        output_dir: Path,
+        dataset: LipidDataset,
+    ) -> Tuple[PathwayReactionSet, Dict[str, List[ReactionData]]]:
+        cache_path = self._match_set_cache_path(output_dir)
+        if cache_path.exists():
+            try:
+                data = json.loads(cache_path.read_text(encoding="utf-8"))
+                result_set = PathwayReactionSet.model_validate(data["result_set"])
+                reaction_lookup = {
+                    key: [ReactionData.model_validate(item) for item in items]
+                    for key, items in data["reaction_lookup"].items()
+                }
+                # Restore the UniProt gene lookup so per-graph/table builds do not
+                # refetch gene symbols over the network (rhea_id -> [genes] is
+                # comparison-independent and otherwise warmed during the build).
+                cached_genes = data.get("uniprot_gene_lookup")
+                if isinstance(cached_genes, dict):
+                    self._uniprot_gene_lookup = {
+                        str(rhea_id): list(genes or [])
+                        for rhea_id, genes in cached_genes.items()
+                    }
+                return result_set, reaction_lookup
+            except Exception:
+                logger.warning("Failed to load reaction match set cache from %s; rebuilding", cache_path, exc_info=True)
+
+        result_set, reaction_lookup = self.build_reaction_match_set(dataset)
+
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "result_set": result_set.model_dump(mode="json"),
+                "reaction_lookup": {
+                    key: [item.model_dump(mode="json") for item in items]
+                    for key, items in reaction_lookup.items()
+                },
+                # Persist the network-derived gene lookup warmed during the build.
+                "uniprot_gene_lookup": dict(self._uniprot_gene_lookup),
+            }
+            cache_path.write_text(json.dumps(payload), encoding="utf-8")
+        except Exception:
+            logger.warning("Failed to write reaction match set cache to %s", cache_path, exc_info=True)
+
         return result_set, reaction_lookup
 
     def _group_samples(self, dataset: LipidDataset, group: str) -> List[str]:
@@ -1533,6 +1607,172 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
 
         return details
 
+    # Modes used for each payload kind (kept in one place so the lazy/scoped
+    # builder and the full build stay in sync).
+    GRAPH_MODES: ClassVar[Tuple[str, ...]] = ("active", "suppressed")
+    HIGHLIGHT_MODES: ClassVar[Tuple[str, ...]] = ("active", "suppressed", "most_active", "most_suppressed")
+    TABLE_MODES: ClassVar[Tuple[str, ...]] = ("active", "suppressed", "most_active", "most_suppressed")
+    FAMILIES: ClassVar[Tuple[str, ...]] = ("reaction", "pathway")
+    LEVELS: ClassVar[Tuple[str, ...]] = ("class", "species")
+
+    def _comparison_payload_items(
+        self,
+        disease_group: str,
+        control_group: str,
+        threshold: float,
+        paired: bool,
+        dataset: LipidDataset,
+        result_set: PathwayReactionSet,
+        reaction_lookup: Dict[str, List[ReactionData]],
+        *,
+        families: Sequence[str],
+        levels: Sequence[str],
+        graph_modes: Sequence[str],
+        highlight_modes: Sequence[str],
+        table_modes: Sequence[str],
+    ) -> Dict[str, Any]:
+        """Build a (possibly scoped) subset of comparison payloads.
+
+        Key strings are identical to the full bundle so the frontend and the
+        bundle readers can look them up unchanged. Passing the full families /
+        levels / modes reproduces the legacy 40-payload bundle exactly.
+        """
+        paired_suffix = self._paired_suffix(paired)
+        graph_fn = {"reaction": self.build_reaction_graph, "pathway": self.build_pathway_graph}
+        highlight_fn = {"reaction": self.build_reaction_highlight, "pathway": self.build_pathway_highlight}
+        table_fn = {"reaction": self.build_reaction_table, "pathway": self.build_pathway_table}
+
+        items: Dict[str, Any] = {}
+        for family in families:
+            for level in levels:
+                for mode in graph_modes:
+                    key = f"lp_{level}_{family}_{disease_group}_{control_group}_{mode}_{paired_suffix}.json"
+                    items[key] = graph_fn[family](
+                        disease_group, control_group, level=level, mode=mode, paired=paired,
+                        dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup,
+                    )
+                for mode in highlight_modes:
+                    key = f"lp_{level}_{family}_{disease_group}_{control_group}_{mode}_{threshold}_{paired_suffix}.json"
+                    items[key] = highlight_fn[family](
+                        disease_group, control_group, threshold, level=level, mode=mode, paired=paired,
+                        dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup,
+                    )
+                for mode in table_modes:
+                    key = f"lp_{level}_{family}_{disease_group}_{control_group}_{mode}_{threshold}_{paired_suffix}_tbl.json"
+                    items[key] = table_fn[family](
+                        disease_group, control_group, threshold, level=level, mode=mode, paired=paired,
+                        dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup,
+                        limit=(10 if mode.startswith("most_") else None),
+                    )
+        return items
+
+    def build_view_payloads(
+        self,
+        disease_group: str,
+        control_group: str,
+        threshold: float,
+        paired: bool,
+        dataset: LipidDataset,
+        result_set: PathwayReactionSet,
+        reaction_lookup: Dict[str, List[ReactionData]],
+        *,
+        scope: str,
+        family: str,
+        level: str,
+    ) -> Dict[str, Any]:
+        """Build only the payloads a single view needs.
+
+        - scope="graph": graphs + highlights for the given (family, level) and
+          every mode, so toggling Active/Suppressed/Most* and filtering (which
+          reuses the graph key) all hit the bundle without rebuilding.
+        - scope="tables": the ranked tables for the given family across both
+          levels and every mode (the table panel pulls all of these).
+        """
+        if scope == "tables":
+            return self._comparison_payload_items(
+                disease_group, control_group, threshold, paired, dataset, result_set, reaction_lookup,
+                families=[family], levels=list(self.LEVELS),
+                graph_modes=[], highlight_modes=[], table_modes=list(self.TABLE_MODES),
+            )
+        return self._comparison_payload_items(
+            disease_group, control_group, threshold, paired, dataset, result_set, reaction_lookup,
+            families=[family], levels=[level],
+            graph_modes=list(self.GRAPH_MODES), highlight_modes=list(self.HIGHLIGHT_MODES), table_modes=[],
+        )
+
+    def merge_comparison_bundle(
+        self,
+        output_path: Union[str, Path],
+        disease_group: str,
+        control_group: str,
+        threshold: float,
+        paired: bool,
+        new_payloads: Dict[str, Any],
+    ) -> Path:
+        """Merge freshly built payloads into the session's comparison bundle.
+
+        If the on-disk bundle belongs to a different comparison, its payloads
+        are discarded so a bundle never mixes pairs/thresholds.
+        """
+        output_dir = self._get_output_dir(output_path)
+        bundle_path = output_dir / self.COMPARISON_BUNDLE_NAME
+        metadata = {
+            "disease_group": disease_group,
+            "control_group": control_group,
+            "threshold": threshold,
+            "paired": paired,
+        }
+
+        # The frontend fires graph and table reads concurrently, so multiple
+        # build-view processes may merge into the same bundle at once. Serialize
+        # the read-modify-write with an exclusive file lock so no merge is lost.
+        lock_path = bundle_path.parent / (bundle_path.name + ".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, "w", encoding="utf-8") as lock_handle:
+            try:
+                fcntl.flock(lock_handle, fcntl.LOCK_EX)
+            except OSError:
+                logger.warning("Could not acquire bundle lock %s; proceeding without it", lock_path, exc_info=True)
+
+            payloads: Dict[str, Any] = {}
+            if bundle_path.exists():
+                try:
+                    existing = json.loads(bundle_path.read_text(encoding="utf-8"))
+                except Exception:
+                    existing = None
+                if isinstance(existing, dict) and existing.get("metadata") == metadata and isinstance(existing.get("payloads"), dict):
+                    payloads = existing["payloads"]
+
+            payloads.update(new_payloads)
+            bundle_path.write_text(json.dumps({"metadata": metadata, "payloads": payloads}, indent=2), encoding="utf-8")
+        return bundle_path
+
+    def build_and_merge_view(
+        self,
+        output_path: Union[str, Path],
+        disease_group: str,
+        control_group: str,
+        threshold: float,
+        paired: bool,
+        *,
+        scope: str,
+        family: str,
+        level: str,
+        dataset: Optional[LipidDataset] = None,
+    ) -> Dict[str, Any]:
+        """Lazily build one view's payloads (reusing the cached match set) and
+        merge them into the comparison bundle."""
+        resolved_dataset = self._get_dataset(dataset)
+        output_dir = self._get_output_dir(output_path)
+        result_set, reaction_lookup = self._load_or_build_match_set(output_dir, resolved_dataset)
+        items = self.build_view_payloads(
+            disease_group, control_group, threshold, paired,
+            resolved_dataset, result_set, reaction_lookup,
+            scope=scope, family=family, level=level,
+        )
+        self.merge_comparison_bundle(output_path, disease_group, control_group, threshold, paired, items)
+        return items
+
     def _build_comparison_payloads(
         self,
         disease_group: str,
@@ -1543,49 +1783,11 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         result_set: PathwayReactionSet,
         reaction_lookup: Dict[str, List[ReactionData]],
     ) -> Dict[str, Any]:
-        paired_suffix = self._paired_suffix(paired)
-        return {
-            f"lp_class_reaction_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_reaction_graph(disease_group, control_group, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_active_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_suppressed_{paired_suffix}.json": self.build_pathway_graph(disease_group, control_group, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_reaction_highlight(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}.json": self.build_pathway_highlight(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_class_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_species_reaction_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_reaction_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_species_reaction_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_reaction_table(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_class_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_class_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_class_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="class", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_species_pathway_{disease_group}_{control_group}_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup),
-            f"lp_species_pathway_{disease_group}_{control_group}_most_active_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="most_active", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-            f"lp_species_pathway_{disease_group}_{control_group}_most_suppressed_{threshold}_{paired_suffix}_tbl.json": self.build_pathway_table(disease_group, control_group, threshold, level="species", mode="most_suppressed", paired=paired, dataset=dataset, result_set=result_set, reaction_lookup=reaction_lookup, limit=10),
-        }
+        return self._comparison_payload_items(
+            disease_group, control_group, threshold, paired, dataset, result_set, reaction_lookup,
+            families=list(self.FAMILIES), levels=list(self.LEVELS),
+            graph_modes=list(self.GRAPH_MODES), highlight_modes=list(self.HIGHLIGHT_MODES), table_modes=list(self.TABLE_MODES),
+        )
 
     def _build_edge_detail_payloads(
         self,
@@ -1620,10 +1822,20 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         threshold: float = 0.05,
         paired: bool = False,
         dataset: Optional[LipidDataset] = None,
+        lazy: bool = False,
     ) -> Dict[str, str]:
+        """Write the comparison-independent assets (reaction/pathway trees and
+        edge details) plus the comparison bundle.
+
+        When ``lazy`` is True the comparison bundle is written as a skeleton
+        (metadata + empty ``payloads``); the per-view payloads are then built on
+        demand via :meth:`build_and_merge_view`. This keeps the initial export
+        fast and is what the web flow uses. Direct callers (and tests) get the
+        full 40-payload bundle by default.
+        """
         resolved_dataset = self._get_dataset(dataset)
         output_dir = self._get_output_dir(output_path)
-        result_set, reaction_lookup = self.build_reaction_match_set(resolved_dataset)
+        result_set, reaction_lookup = self._load_or_build_match_set(output_dir, resolved_dataset)
         written_files: Dict[str, str] = {}
 
         self._cleanup_generated_json_files(output_dir)
@@ -1639,7 +1851,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             dataset=resolved_dataset,
             result_set=result_set,
         )
-        comparison_payloads = self._build_comparison_payloads(
+        comparison_payloads = {} if lazy else self._build_comparison_payloads(
             disease_group=disease_group,
             control_group=control_group,
             threshold=threshold,

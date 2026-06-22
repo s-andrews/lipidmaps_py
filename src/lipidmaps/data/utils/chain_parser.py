@@ -523,7 +523,7 @@ def _strip_linkage_suffix(headgroup: str) -> str:
     return base
 
 
-def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
+def infer_fa_from_lipids(lipid_names: List[str], include_mono_acyl: bool = True) -> List[str]:
     """Infer possible FA species from the acyl chains in a lipid dataset.
 
     Two sources are used:
@@ -532,12 +532,19 @@ def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
        N-acyl chain contributes (e.g. Cer d18:1/16:0 -> FA 16:0).
     2. The single residual chain of sum-level species whose class is itself
        mono-acyl (lyso-glycerophospholipids, MG, CE; see SINGLE_ACYL_HEADGROUPS).
+       Disable this source with ``include_mono_acyl=False``.
 
     Sum-composition species of multi-acyl classes (e.g. PC 34:1) are NOT used,
     since their sum is not a fatty acid.
 
     Args:
         lipid_names: List of lipid species names
+        include_mono_acyl: When True (default) the single chain of sum-level
+            mono-acyl species (source 2) is treated as a candidate FA. Set to
+            False to match legacy BioPAN, which does not let a lyso product seed
+            the FA pool that in turn validates its own release reaction (e.g. the
+            LPS species in PS->LPS); this prevented over-matching of release
+            pairs. See ``BioPANPathwayExporter._get_matching_inputs``.
 
     Returns:
         List of FA names inferred from the dataset
@@ -545,6 +552,8 @@ def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
     Example:
         >>> infer_fa_from_lipids(['PC 16:0_18:1', 'PE 18:0_20:4', 'LPI 18:0'])
         ['FA 16:0', 'FA 18:1', 'FA 18:0', 'FA 20:4', 'FA 18:0']
+        >>> infer_fa_from_lipids(['PC 16:0_18:1', 'LPI 18:0'], include_mono_acyl=False)
+        ['FA 16:0', 'FA 18:1']
     """
     parser = ChainParser()
     seen = set()
@@ -566,6 +575,8 @@ def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
                 _add(chain)
             continue
         # Sum level: only mono-acyl classes expose a usable fatty acyl chain.
+        if not include_mono_acyl:
+            continue
         base_hg = _strip_linkage_suffix(species.headgroup)
         if base_hg in SINGLE_ACYL_HEADGROUPS:
             _add(species.chains[0])
@@ -573,13 +584,14 @@ def infer_fa_from_lipids(lipid_names: List[str]) -> List[str]:
     return fa_names
 
 
-def infer_facoa_from_lipids(lipid_names: List[str]) -> List[str]:
+def infer_facoa_from_lipids(lipid_names: List[str], include_mono_acyl: bool = True) -> List[str]:
     """Infer possible FACoA species from the acyl chains in a lipid dataset.
-    
+
     Same as infer_fa_from_lipids but returns CoA (acyl-CoA) names
-    in LIPID MAPS shorthand format.
+    in LIPID MAPS shorthand format. See ``infer_fa_from_lipids`` for the
+    meaning of ``include_mono_acyl``.
     """
-    fa_names = infer_fa_from_lipids(lipid_names)
+    fa_names = infer_fa_from_lipids(lipid_names, include_mono_acyl=include_mono_acyl)
     return [name.replace("FA ", "CoA ") for name in fa_names]
 
 
