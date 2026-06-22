@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Optional
 
 from .data import BioPANPathwayExporter, DataManager
 from .data.models.sample import LipidDataset
@@ -141,98 +143,188 @@ def _resolve_groups(manager: DataManager, disease_group: str | None, control_gro
     return disease_group or groups[1], control_group or groups[0]
 
 
-def main() -> None:
-    parser = build_parser()
-    args = parser.parse_args()
+@dataclass
+class RunParams:
+    """A single BioPAN export request. Mirrors the CLI arguments so that the CLI
+    and the warm service (`biopan_service`) drive the exact same code path."""
 
-    log_dir = configure_logging()
+    session_dir: Path
+    csv_path: Optional[str] = None
+    taxonomy_group: str = "all"
+    validate_data: bool = False
+    has_labels: bool = False
+    use_refmet: bool = True
+    use_headgroups: bool = True
+    fetch_reactions: bool = True
+    paired: bool = False
+    threshold: float = 0.05
+    disease_group: Optional[str] = None
+    control_group: Optional[str] = None
+    sample_group: list[str] = field(default_factory=list)
+    summary_only: bool = False
+    reaction_only: bool = False
+    lazy_bundle: bool = False
+    build_view: bool = False
+    scope: str = "graph"
+    family: str = "reaction"
+    level: str = "class"
 
-    session_dir = Path(args.session_dir).expanduser().resolve()
-    csv_path = _resolve_input_path(session_dir, args.csv_path)
-    if not csv_path.exists():
-        parser.error(f"Input file not found: {csv_path}")
-
-    logger.info("BioPAN CLI logging to %s", log_dir)
-    logger.info("Starting BioPAN export for session %s", session_dir)
-
-    try:
-        manager = DataManager(
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "RunParams":
+        return cls(
+            session_dir=Path(args.session_dir).expanduser().resolve(),
+            csv_path=args.csv_path,
+            taxonomy_group=args.taxonomy_group,
             validate_data=args.validate_data,
             has_labels=args.has_labels,
             use_refmet=args.use_refmet,
             use_headgroups=args.use_headgroups,
             fetch_reactions=args.fetch_reactions,
-            taxonomy_group=args.taxonomy_group,
+            paired=args.paired,
+            threshold=args.threshold,
+            disease_group=args.disease_group,
+            control_group=args.control_group,
+            sample_group=list(args.sample_group or []),
+            summary_only=args.summary_only,
+            reaction_only=args.reaction_only,
+            lazy_bundle=args.lazy_bundle,
+            build_view=args.build_view,
+            scope=args.scope,
+            family=args.family,
+            level=args.level,
         )
-        dataset = None
-        if args.csv_path is None:
-            dataset = _load_cached_dataset(session_dir)
-            if dataset is not None:
-                logger.info("Loaded cached BioPAN dataset from %s", _get_dataset_cache_path(session_dir))
 
-        if dataset is None:
-            dataset = manager.process_csv(csv_path)
-            cache_path = _write_cached_dataset(session_dir, dataset)
-            logger.info("Cached processed BioPAN dataset at %s", cache_path)
-            # The reaction match set is derived from the dataset, so a freshly
-            # processed dataset invalidates any cached match set.
-            _invalidate_match_set_cache(session_dir)
 
-        manager.dataset = dataset
-        group_overrides = _parse_sample_group_overrides(args.sample_group)
-        _apply_group_overrides(dataset, group_overrides)
-    except ValueError as exc:
-        parser.error(str(exc))
-    except Exception:
-        logger.exception("BioPAN export failed for session %s", session_dir)
-        raise
+@dataclass
+class RunResult:
+    """Outcome of `run_session`. `exporter` and `dataset` are returned so a warm
+    caller (the service registry) can keep them between requests; `reprocessed`
+    signals that the dataset was rebuilt from CSV and any warm cache is stale."""
 
-    written: dict[str, str] = {}
+    dataset: LipidDataset
+    exporter: Optional[BioPANPathwayExporter]
+    reprocessed: bool
+    output: dict[str, Any]
+
+
+def run_session(
+    params: RunParams,
+    *,
+    dataset: Optional[LipidDataset] = None,
+    exporter: Optional[BioPANPathwayExporter] = None,
+) -> RunResult:
+    """Run one BioPAN export request.
+
+    This is the shared core for both the CLI (`main`) and the warm service. A
+    warm caller may inject an already-loaded ``dataset`` and ``exporter`` (whose
+    in-memory match set / table caches survive between requests); when omitted
+    the dataset is loaded from the on-disk cache or reprocessed from CSV exactly
+    as the standalone CLI does. ``ValueError`` is raised for user-facing input
+    errors (missing file, bad groups) so callers can map it to an exit / 400.
+    """
+    session_dir = params.session_dir
+    csv_path = _resolve_input_path(session_dir, params.csv_path)
+    if not csv_path.exists():
+        raise ValueError(f"Input file not found: {csv_path}")
+
+    logger.info("Starting BioPAN export for session %s", session_dir)
+
+    manager = DataManager(
+        validate_data=params.validate_data,
+        has_labels=params.has_labels,
+        use_refmet=params.use_refmet,
+        use_headgroups=params.use_headgroups,
+        fetch_reactions=params.fetch_reactions,
+        taxonomy_group=params.taxonomy_group,
+    )
+
+    reprocessed = False
+    if dataset is None and params.csv_path is None:
+        dataset = _load_cached_dataset(session_dir)
+        if dataset is not None:
+            logger.info("Loaded cached BioPAN dataset from %s", _get_dataset_cache_path(session_dir))
+
+    if dataset is None:
+        dataset = manager.process_csv(csv_path)
+        cache_path = _write_cached_dataset(session_dir, dataset)
+        logger.info("Cached processed BioPAN dataset at %s", cache_path)
+        # The reaction match set is derived from the dataset, so a freshly
+        # processed dataset invalidates any cached match set.
+        _invalidate_match_set_cache(session_dir)
+        reprocessed = True
+        # A reprocess produces a different dataset object, so any warm exporter
+        # bound to the previous dataset must not be reused.
+        exporter = None
+
+    manager.dataset = dataset
+    _apply_group_overrides(dataset, _parse_sample_group_overrides(params.sample_group))
 
     # Lazy per-view build: only build the requested view's comparison payloads
     # and merge them into the existing bundle. Reuses the cached match set.
-    if args.build_view:
-        try:
-            disease_group, control_group = _resolve_groups(manager, args.disease_group, args.control_group)
+    if params.build_view:
+        disease_group, control_group = _resolve_groups(manager, params.disease_group, params.control_group)
+        if exporter is None:
             exporter = manager.get_biopan_pathway_exporter(dataset)
-            built = exporter.build_and_merge_view(
-                session_dir,
-                disease_group,
-                control_group,
-                args.threshold,
-                args.paired,
-                scope=args.scope,
-                family=args.family,
-                level=args.level,
-                dataset=dataset,
-            )
-        except ValueError as exc:
-            parser.error(str(exc))
+        built = exporter.build_and_merge_view(
+            session_dir,
+            disease_group,
+            control_group,
+            params.threshold,
+            params.paired,
+            scope=params.scope,
+            family=params.family,
+            level=params.level,
+            dataset=dataset,
+        )
         logger.info("BioPAN built %s lazy view payloads for session %s", len(built), session_dir)
-        print({"built_view": sorted(built.keys())})
-        return
+        return RunResult(dataset=dataset, exporter=exporter, reprocessed=reprocessed, output={"built_view": built})
 
-    if not args.reaction_only:
+    written: dict[str, str] = {}
+
+    if not params.reaction_only:
         written.update(manager.export_biopan_display_files(session_dir, dataset=dataset))
 
-    if not args.summary_only:
-        disease_group, control_group = _resolve_groups(manager, args.disease_group, args.control_group)
+    if not params.summary_only:
+        disease_group, control_group = _resolve_groups(manager, params.disease_group, params.control_group)
         written.update(
             manager.export_biopan_reaction_files(
                 session_dir,
                 disease_group=disease_group,
                 control_group=control_group,
-                threshold=args.threshold,
-                paired=args.paired,
+                threshold=params.threshold,
+                paired=params.paired,
                 dataset=dataset,
-                lazy=args.lazy_bundle,
+                lazy=params.lazy_bundle,
             )
         )
 
     logger.info("BioPAN export completed for session %s", session_dir)
     logger.info("Wrote %s assets", len(written))
 
-    print({"written": written})
+    return RunResult(dataset=dataset, exporter=exporter, reprocessed=reprocessed, output={"written": written})
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    log_dir = configure_logging()
+    logger.info("BioPAN CLI logging to %s", log_dir)
+
+    params = RunParams.from_args(args)
+
+    try:
+        result = run_session(params)
+    except ValueError as exc:
+        parser.error(str(exc))
+    except Exception:
+        logger.exception("BioPAN export failed for session %s", params.session_dir)
+        raise
+
+    if params.build_view:
+        print({"built_view": sorted(result.output.get("built_view", {}).keys())})
+    else:
+        print({"written": result.output.get("written", {})})
 
 
 if __name__ == "__main__":
