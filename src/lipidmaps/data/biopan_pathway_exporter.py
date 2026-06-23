@@ -26,6 +26,7 @@ from .utils.chain_parser import (
     infer_facoa_from_lipids,
     infer_fa_from_lipids,
 )
+from .utils.fa_reactions import get_fa_reactions
 from .utils.headgroups import lipidmaps_headgroups, lm_id_to_headgroup
 
 
@@ -57,6 +58,10 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     _pathway_table_cache: Dict[Tuple[Any, ...], Dict[str, Any]] = PrivateAttr(default_factory=dict)
     _reaction_gene_lookup: Optional[Dict[str, List[str]]] = PrivateAttr(default=None)
     _uniprot_gene_lookup: Dict[str, List[str]] = PrivateAttr(default_factory=dict)
+    # gene symbol -> UniProt accession, used by the frontend to link each gene to
+    # its UniProt entry page. Populated from the API-provided genes and (on the
+    # fallback path) from the live UniProt lookup.
+    _gene_uniprot_lookup: Dict[str, str] = PrivateAttr(default_factory=dict)
     _uniprot_client: UniProtRheaClient = PrivateAttr(default_factory=UniProtRheaClient)
 
     def _get_dataset(self, dataset: Optional[LipidDataset] = None) -> LipidDataset:
@@ -84,6 +89,36 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     @staticmethod
     def _safe_edge_id(source: str, target: str) -> str:
         return re.sub(r"[^A-Za-z0-9]+", "", f"{source}{target}").upper()
+
+    @staticmethod
+    def _node_shape(label: Any, lm_id: Any) -> str:
+        """Cytoscape node shape for a lipid node, matching the graph legend.
+
+        Fatty acids render as triangles and sphingolipids as squares
+        (``rectangle``); everything else (glycerolipids and
+        glycerophospholipids) keeps the default ellipse. The lipid category is
+        taken from the LM ID category code (e.g. ``LMSP...`` -> ``SP``) when a
+        node has one (class level), otherwise from the headgroup parsed off the
+        node label (species level).
+        """
+
+        lm = str(lm_id or "").strip().upper()
+        category = ""
+        if lm.startswith("LM") and len(lm) >= 4:
+            category = lm[2:4]
+        else:
+            text = str(label or "").strip()
+            match = re.match(r"^([A-Za-z0-9\- ]+?)(?:\(|\s|$)", text)
+            headgroup = match.group(1).strip() if match else text
+            lm_ids = lipidmaps_headgroups.get(headgroup)
+            if lm_ids and lm_ids[0]:
+                category = lm_ids[0][2:4].upper()
+
+        if category == "FA":
+            return "triangle"
+        if category == "SP":
+            return "rectangle"
+        return "ellipse"
 
     @staticmethod
     def _structure_label(value: Any) -> str:
@@ -187,23 +222,31 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         return getattr(entry, key, None)
 
     def _get_reaction_gene_symbols(self, reaction: ReactionData) -> List[str]:
-        rhea_ids = reaction.list_rhea_ids()
-        if rhea_ids:
-            names: List[str] = []
-            seen = set()
-            for rhea_id in rhea_ids:
-                genes = self._uniprot_gene_lookup.get(rhea_id)
-                if genes is None:
-                    genes = self._uniprot_client.fetch_gene_symbols(rhea_id)
-                    self._uniprot_gene_lookup[rhea_id] = genes
-                for gene in genes:
-                    if gene and gene not in seen:
-                        names.append(gene)
-                        seen.add(gene)
-            return names
+        """Return the ordered, de-duplicated gene symbols for a reaction.
 
-        names: List[str] = []
+        The reactions API now serves genes (with their UniProt accession) from a
+        ready table, so those are used first and no network call is made. The
+        live UniProt lookup (keyed by rhea_id) is kept only as a fallback for
+        reactions the API has no genes for yet. As a side effect, the gene
+        symbol -> UniProt accession map is populated for the frontend links.
+        """
+
+        ordered: List[str] = []
+        seen = set()
+
+        def add(symbol: Any, accession: Any = None) -> None:
+            text = str(symbol).strip() if symbol is not None else ""
+            if not text or text in seen:
+                return
+            ordered.append(text)
+            seen.add(text)
+            acc = str(accession).strip() if accession else ""
+            if acc:
+                self._gene_uniprot_lookup.setdefault(text, acc)
+
+        # 1. Prefer the genes provided by the reactions API (no network call).
         for entry in getattr(reaction, "genes", []) or []:
+            symbol = None
             for key in (
                 "gene_symbol",
                 "gene_name",
@@ -216,8 +259,17 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             ):
                 value = self._entry_value(entry, key)
                 if value:
-                    names.append(str(value).strip())
+                    symbol = value
                     break
+            accession = None
+            for key in ("uniprot_id", "accession", "uniprot", "uniprot_accession"):
+                value = self._entry_value(entry, key)
+                if value:
+                    accession = value
+                    break
+            if symbol:
+                add(symbol, accession)
+
         for entry in getattr(reaction, "proteins", []) or []:
             for key in (
                 "gene_symbol",
@@ -232,19 +284,35 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             ):
                 value = self._entry_value(entry, key)
                 if value:
-                    names.append(str(value).strip())
+                    add(value)
                     break
 
         reaction_id = self._reaction_identifier(reaction)
         if reaction_id:
-            names.extend(self._load_reaction_gene_lookup().get(reaction_id, []))
+            for symbol in self._load_reaction_gene_lookup().get(reaction_id, []):
+                add(symbol)
 
-        ordered: List[str] = []
-        seen = set()
-        for name in names:
-            if name and name not in seen:
-                ordered.append(name)
-                seen.add(name)
+        if ordered:
+            return ordered
+
+        # 2. Fallback: the API has no genes for this reaction yet, so fetch them
+        # live from UniProt via the rhea_id (and record their accessions).
+        for rhea_id in reaction.list_rhea_ids():
+            genes = self._uniprot_gene_lookup.get(rhea_id)
+            if genes is None:
+                genes = []
+                for record in self._uniprot_client.fetch_gene_records(rhea_id):
+                    symbol = record.gene_primary.strip()
+                    if not symbol:
+                        continue
+                    if symbol not in genes:
+                        genes.append(symbol)
+                    if record.accession.strip():
+                        self._gene_uniprot_lookup.setdefault(symbol, record.accession.strip())
+                self._uniprot_gene_lookup[rhea_id] = genes
+            for symbol in genes:
+                add(symbol, self._gene_uniprot_lookup.get(symbol))
+
         return ordered
 
     def _component_headgroup(self, component: Any) -> Optional[str]:
@@ -428,6 +496,13 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                         str(rhea_id): list(genes or [])
                         for rhea_id, genes in cached_genes.items()
                     }
+                cached_accessions = data.get("gene_uniprot_lookup")
+                if isinstance(cached_accessions, dict):
+                    self._gene_uniprot_lookup = {
+                        str(symbol): str(accession)
+                        for symbol, accession in cached_accessions.items()
+                        if accession
+                    }
                 return result_set, reaction_lookup
             except Exception:
                 logger.warning("Failed to load reaction match set cache from %s; rebuilding", cache_path, exc_info=True)
@@ -444,6 +519,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 },
                 # Persist the network-derived gene lookup warmed during the build.
                 "uniprot_gene_lookup": dict(self._uniprot_gene_lookup),
+                # Persist the gene -> UniProt accession map used for frontend links.
+                "gene_uniprot_lookup": dict(self._gene_uniprot_lookup),
             }
             cache_path.write_text(json.dumps(payload), encoding="utf-8")
         except Exception:
@@ -1389,8 +1466,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         for row in edge_rows:
             source_name = row["source_label"] if level == "class" else ""
             target_name = row["target_label"] if level == "class" else ""
-            node_map.setdefault(row["source_id"], {"data": {"id": row["source_id"], "lm_id": row["source_lm_id"], "label": row["source_label"], "name": source_name, "shape": "ellipse"}})
-            node_map.setdefault(row["target_id"], {"data": {"id": row["target_id"], "lm_id": row["target_lm_id"], "label": row["target_label"], "name": target_name, "shape": "ellipse"}})
+            node_map.setdefault(row["source_id"], {"data": {"id": row["source_id"], "lm_id": row["source_lm_id"], "label": row["source_label"], "name": source_name, "shape": self._node_shape(row["source_label"], row["source_lm_id"])}})
+            node_map.setdefault(row["target_id"], {"data": {"id": row["target_id"], "lm_id": row["target_lm_id"], "label": row["target_label"], "name": target_name, "shape": self._node_shape(row["target_label"], row["target_lm_id"])}})
             edges.append({
                 "data": {
                     "id": row["edge_id"],
@@ -1435,8 +1512,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         for row in edge_rows:
             source_name = row["source_label"] if level == "class" else {}
             target_name = row["target_label"] if level == "class" else {}
-            node_map.setdefault(row["source_id"], {"data": {"id": row["source_id"], "lm_id": row["source_lm_id"], "label": row["source_label"], "name": source_name, "shape": "ellipse"}})
-            node_map.setdefault(row["target_id"], {"data": {"id": row["target_id"], "lm_id": row["target_lm_id"], "label": row["target_label"], "name": target_name, "shape": "ellipse"}})
+            node_map.setdefault(row["source_id"], {"data": {"id": row["source_id"], "lm_id": row["source_lm_id"], "label": row["source_label"], "name": source_name, "shape": self._node_shape(row["source_label"], row["source_lm_id"])}})
+            node_map.setdefault(row["target_id"], {"data": {"id": row["target_id"], "lm_id": row["target_lm_id"], "label": row["target_label"], "name": target_name, "shape": self._node_shape(row["target_label"], row["target_lm_id"])}})
             edges.append({
                 "data": {
                     "id": row["edge_id"],
@@ -1447,6 +1524,188 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 }
             })
         return {"nodes": list(node_map.values()), "edges": edges}
+
+    # ------------------------------------------------------------------ #
+    # Fatty-acid pathway view (ported from legacy BioPAN type='fa')        #
+    #                                                                      #
+    # The FA view is an independent FA->FA conversion network (elongation /#
+    # desaturation, see fa_reactions.py). It reuses the same per-sample     #
+    # ratio z-score as the lipid views (_sum_lipid_values +                #
+    # _compute_ratio_zscore), so it does not affect lipid scoring at all.   #
+    # ------------------------------------------------------------------ #
+    FA_GRAPH_MODES: ClassVar[Tuple[str, ...]] = ("active", "suppressed")
+    FA_HIGHLIGHT_MODES: ClassVar[Tuple[str, ...]] = ("active", "suppressed")
+    FA_TABLE_MODES: ClassVar[Tuple[str, ...]] = ("active", "suppressed", "most_active", "most_suppressed")
+
+    @staticmethod
+    def _fa_alt(mode: str) -> str:
+        return "greater" if mode in {"active", "most_active"} else "less"
+
+    @staticmethod
+    def _canonical_fa(name: str) -> str:
+        """Canonical FA key: lowercased, parentheses/spaces stripped.
+
+        Makes the curated network entries (``FA(16:0)``) match whatever the
+        dataset uses (``FA(16:0)`` / ``FA 16:0`` / ``fa(16:0)``).
+        """
+        return re.sub(r"[\s()]", "", str(name).strip().lower())
+
+    def _measured_fa_index(self, lipid_lookup: Dict[str, QuantifiedLipid]) -> Dict[str, str]:
+        """Map canonical FA species name -> actual lipid_lookup key."""
+        index: Dict[str, str] = {}
+        for key in lipid_lookup:
+            lowered = key.strip().lower()
+            if lowered.startswith("fa(") or lowered.startswith("fa "):
+                index.setdefault(self._canonical_fa(key), key)
+        return index
+
+    def _fa_scored_edges(
+        self,
+        disease_group: str,
+        control_group: str,
+        mode: str,
+        paired: bool,
+        dataset: LipidDataset,
+    ) -> List[Dict[str, Any]]:
+        lipid_lookup = self._build_lipid_lookup(dataset)
+        disease_samples = self._group_samples(dataset, disease_group)
+        control_samples = self._group_samples(dataset, control_group)
+        alt = self._fa_alt(mode)
+        fa_index = self._measured_fa_index(lipid_lookup)
+
+        edges: List[Dict[str, Any]] = []
+        for reaction in get_fa_reactions():
+            reactant = str(reaction["reactant"])
+            product = str(reaction["product"])
+            reactant_key = fa_index.get(self._canonical_fa(reactant))
+            product_key = fa_index.get(self._canonical_fa(product))
+            if not reactant_key or not product_key:
+                continue
+            disease_products = self._sum_lipid_values([product_key], disease_samples, lipid_lookup)
+            disease_reactants = self._sum_lipid_values([reactant_key], disease_samples, lipid_lookup)
+            control_products = self._sum_lipid_values([product_key], control_samples, lipid_lookup)
+            control_reactants = self._sum_lipid_values([reactant_key], control_samples, lipid_lookup)
+            score = self._compute_ratio_zscore(
+                disease_products, disease_reactants, control_products, control_reactants,
+                alt=alt, paired=paired,
+            )
+            edges.append({
+                "source_label": reactant,
+                "target_label": product,
+                "source_id": self._safe_node_id(reactant),
+                "target_id": self._safe_node_id(product),
+                "edge_id": self._safe_edge_id(reactant, product),
+                "score": score,
+                "genes": list(reaction["genes"]),
+            })
+        return edges
+
+    def build_fa_graph(
+        self,
+        disease_group: str,
+        control_group: str,
+        mode: str = "active",
+        paired: bool = False,
+        dataset: Optional[LipidDataset] = None,
+    ) -> Dict[str, Any]:
+        resolved_dataset = self._get_dataset(dataset)
+        edge_rows = self._fa_scored_edges(disease_group, control_group, mode, paired, resolved_dataset)
+        node_map: Dict[str, Dict[str, Any]] = {}
+        edges: List[Dict[str, Any]] = []
+        for row in edge_rows:
+            node_map.setdefault(row["source_id"], {"data": {"id": row["source_id"], "lm_id": "", "label": row["source_label"], "name": row["source_label"], "shape": "triangle"}})
+            node_map.setdefault(row["target_id"], {"data": {"id": row["target_id"], "lm_id": "", "label": row["target_label"], "name": row["target_label"], "shape": "triangle"}})
+            edges.append({
+                "data": {
+                    "id": row["edge_id"],
+                    "source": row["source_id"],
+                    "target": row["target_id"],
+                    "weight": row["score"],
+                    "color": "#24a19c" if row["score"] > 0 else "#A634C7",
+                }
+            })
+        return {"nodes": list(node_map.values()), "edges": edges}
+
+    def build_fa_table(
+        self,
+        disease_group: str,
+        control_group: str,
+        threshold: float,
+        mode: str = "active",
+        paired: bool = False,
+        dataset: Optional[LipidDataset] = None,
+        limit: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        resolved_dataset = self._get_dataset(dataset)
+        edge_rows = self._fa_scored_edges(disease_group, control_group, mode, paired, resolved_dataset)
+        significant = self._select_significant_edges(edge_rows, threshold, mode)
+        rows: List[Dict[str, Any]] = []
+        for edge in significant:
+            rows.append({
+                "data": {
+                    "pathway": f"{edge['source_label']}&#8594;{edge['target_label']}",
+                    "score": edge["score"],
+                    "gene": self._merge_genes([edge["genes"]]),
+                },
+                "node_ids": [edge["source_id"], edge["target_id"]],
+                "edge_ids": [edge["edge_id"]],
+                "edge_scores": [edge["score"]],
+            })
+        rows.sort(key=lambda row: self._mode_rank_value(row["data"]["score"], mode), reverse=True)
+        if limit is not None:
+            rows = rows[:limit]
+        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup)}
+
+    def build_fa_highlight(
+        self,
+        disease_group: str,
+        control_group: str,
+        threshold: float,
+        mode: str = "active",
+        paired: bool = False,
+        dataset: Optional[LipidDataset] = None,
+    ) -> Dict[str, str]:
+        table = self.build_fa_table(disease_group, control_group, threshold, mode=mode, paired=paired, dataset=dataset)
+        return self._rows_to_highlight(table["pathways"])
+
+    def _fa_payload_items(
+        self,
+        disease_group: str,
+        control_group: str,
+        threshold: float,
+        paired: bool,
+        dataset: LipidDataset,
+        *,
+        graph_modes: Optional[Sequence[str]] = None,
+        highlight_modes: Optional[Sequence[str]] = None,
+        table_modes: Optional[Sequence[str]] = None,
+    ) -> Dict[str, Any]:
+        """Build the fa_* comparison payloads the frontend's Fatty acid view reads.
+
+        Keys mirror the lipid keys minus the {level}_{family} segments, e.g.
+        ``fa_<disease>_<control>_<mode>_<paired>.json`` (graph). Mode lists
+        default to the full set; callers pass a scoped subset to match the lazy
+        graph/tables split.
+        """
+        graph_modes = self.FA_GRAPH_MODES if graph_modes is None else graph_modes
+        highlight_modes = self.FA_HIGHLIGHT_MODES if highlight_modes is None else highlight_modes
+        table_modes = self.FA_TABLE_MODES if table_modes is None else table_modes
+
+        paired_suffix = self._paired_suffix(paired)
+        items: Dict[str, Any] = {}
+        for mode in graph_modes:
+            key = f"fa_{disease_group}_{control_group}_{mode}_{paired_suffix}.json"
+            items[key] = self.build_fa_graph(disease_group, control_group, mode=mode, paired=paired, dataset=dataset)
+        for mode in highlight_modes:
+            key = f"fa_{disease_group}_{control_group}_{mode}_{threshold}_{paired_suffix}.json"
+            items[key] = self.build_fa_highlight(disease_group, control_group, threshold, mode=mode, paired=paired, dataset=dataset)
+        for mode in table_modes:
+            key = f"fa_{disease_group}_{control_group}_{mode}_{threshold}_{paired_suffix}_tbl.json"
+            items[key] = self.build_fa_table(
+                disease_group, control_group, threshold, mode=mode, paired=paired, dataset=dataset,
+                limit=(10 if mode.startswith("most_") else None),
+            )
+        return items
 
     def build_reaction_highlight(
         self,
@@ -1537,7 +1796,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         rows = list(cached["pathways"])
         if limit is not None:
             rows = rows[:limit]
-        return {"pathways": rows}
+        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup)}
 
     def build_pathway_highlight(
         self,
@@ -1616,7 +1875,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         rows = list(cached["pathways"])
         if limit is not None:
             rows = rows[:limit]
-        return {"pathways": rows}
+        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup)}
 
     def build_edge_details(
         self,
@@ -1754,16 +2013,30 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
           levels and every mode (the table panel pulls all of these).
         """
         if scope == "tables":
-            return self._comparison_payload_items(
+            items = self._comparison_payload_items(
                 disease_group, control_group, threshold, paired, dataset, result_set, reaction_lookup,
                 families=[family], levels=list(self.LEVELS),
                 graph_modes=[], highlight_modes=[], table_modes=list(self.TABLE_MODES),
             )
-        return self._comparison_payload_items(
+            # The Fatty acid view is family/level-independent; its tables are
+            # pulled by the same "tables" scope, so build them alongside.
+            items.update(self._fa_payload_items(
+                disease_group, control_group, threshold, paired, dataset,
+                graph_modes=[], highlight_modes=[],
+            ))
+            return items
+        items = self._comparison_payload_items(
             disease_group, control_group, threshold, paired, dataset, result_set, reaction_lookup,
             families=[family], levels=[level],
             graph_modes=list(self.GRAPH_MODES), highlight_modes=list(self.HIGHLIGHT_MODES), table_modes=[],
         )
+        # FA graph + highlight payloads ride along with the "graph" scope so the
+        # Fatty acid view resolves without a dedicated build request.
+        items.update(self._fa_payload_items(
+            disease_group, control_group, threshold, paired, dataset,
+            table_modes=[],
+        ))
+        return items
 
     def merge_comparison_bundle(
         self,
@@ -1848,11 +2121,13 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         result_set: PathwayReactionSet,
         reaction_lookup: Dict[str, List[ReactionData]],
     ) -> Dict[str, Any]:
-        return self._comparison_payload_items(
+        items = self._comparison_payload_items(
             disease_group, control_group, threshold, paired, dataset, result_set, reaction_lookup,
             families=list(self.FAMILIES), levels=list(self.LEVELS),
             graph_modes=list(self.GRAPH_MODES), highlight_modes=list(self.HIGHLIGHT_MODES), table_modes=list(self.TABLE_MODES),
         )
+        items.update(self._fa_payload_items(disease_group, control_group, threshold, paired, dataset))
+        return items
 
     def _build_edge_detail_payloads(
         self,

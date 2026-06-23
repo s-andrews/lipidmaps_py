@@ -246,6 +246,79 @@ def test_reaction_exporter_builds_pathway_assets(tmp_path):
     assert table["pathways"][0]["data"]["class"] == "Phosphatidylcholine turnover (Glycerolipids and Glycerophospholipids)"
 
 
+def make_fa_dataset() -> LipidDataset:
+    samples = [
+        SampleMetadata(sample_name="ctrl_1", group="control"),
+        SampleMetadata(sample_name="ctrl_2", group="control"),
+        SampleMetadata(sample_name="ctrl_3", group="control"),
+        SampleMetadata(sample_name="case_1", group="case"),
+        SampleMetadata(sample_name="case_2", group="case"),
+        SampleMetadata(sample_name="case_3", group="case"),
+    ]
+    lipids = [
+        # FA(16:0) consumed; FA(18:0) and FA(18:1) produced in the case group, so
+        # the elongation/desaturation steps read as "active".
+        QuantifiedLipid(input_name="FA(16:0)", values={"ctrl_1": 10.0, "ctrl_2": 11.0, "ctrl_3": 12.0, "case_1": 5.0, "case_2": 6.0, "case_3": 7.0}),
+        QuantifiedLipid(input_name="FA(18:0)", values={"ctrl_1": 2.0, "ctrl_2": 2.5, "ctrl_3": 3.0, "case_1": 10.0, "case_2": 11.0, "case_3": 12.0}),
+        # Space-style name (no parentheses) to exercise FA name canonicalisation.
+        QuantifiedLipid(input_name="FA 18:1", values={"ctrl_1": 1.0, "ctrl_2": 1.5, "ctrl_3": 2.0, "case_1": 9.0, "case_2": 10.0, "case_3": 11.0}),
+    ]
+    return LipidDataset(samples=samples, lipids=lipids)
+
+
+def test_fa_graph_and_table_build_for_measured_fatty_acids():
+    exporter = BioPANPathwayExporter(dataset=make_fa_dataset())
+
+    graph = exporter.build_fa_graph(disease_group="case", control_group="control", mode="active")
+    node_labels = {node["data"]["label"] for node in graph["nodes"]}
+    assert {"FA(16:0)", "FA(18:0)", "FA(18:1)"} <= node_labels
+    # FA nodes render as triangles (matches the legend).
+    assert all(node["data"]["shape"] == "triangle" for node in graph["nodes"])
+    # The elongation/desaturation edges are present and scored.
+    edge_pairs = {(e["data"]["source"], e["data"]["target"]) for e in graph["edges"]}
+    assert (exporter._safe_node_id("FA(16:0)"), exporter._safe_node_id("FA(18:0)")) in edge_pairs
+
+    table = exporter.build_fa_table(disease_group="case", control_group="control", threshold=0.05, mode="active")
+    rows = table["pathways"]
+    assert rows, "expected significant FA reactions"
+    top = rows[0]
+    assert "&#8594;" in top["data"]["pathway"]
+    assert top["data"]["score"] > 1.645
+    # Enzyme genes from the curated FA network flow through to the table.
+    assert top["data"]["gene"] != "NA"
+
+
+def test_export_reaction_files_includes_fa_payloads(tmp_path):
+    exporter = BioPANPathwayExporter(dataset=make_fa_dataset())
+    exporter.export_reaction_files(
+        tmp_path / "FAsession00000001",
+        disease_group="case",
+        control_group="control",
+        threshold=0.05,
+        paired=False,
+        lazy=False,
+    )
+    graph_payload = load_comparison_payload(tmp_path / "FAsession00000001", "fa_case_control_active_notpaired.json")
+    assert graph_payload["edges"], "FA graph payload should contain edges"
+    table_payload = load_comparison_payload(tmp_path / "FAsession00000001", "fa_case_control_active_0.05_notpaired_tbl.json")
+    assert "pathways" in table_payload
+
+
+def test_fa_view_does_not_alter_lipid_scoring():
+    # Building the FA payloads must not change the lipid reaction scores.
+    baseline = BioPANPathwayExporter(dataset=make_pathway_dataset()).build_reaction_table(
+        disease_group="case", control_group="control", threshold=0.05, level="class", mode="active",
+    )["pathways"][0]["data"]["score"]
+
+    exporter = BioPANPathwayExporter(dataset=make_pathway_dataset())
+    exporter._fa_payload_items("case", "control", 0.05, False, make_pathway_dataset())
+    after = exporter.build_reaction_table(
+        disease_group="case", control_group="control", threshold=0.05, level="class", mode="active",
+    )["pathways"][0]["data"]["score"]
+
+    assert baseline == after
+
+
 def test_pathway_exporter_uses_legacy_one_sided_scores_for_active_and_suppressed_modes():
     active_exporter = BioPANPathwayExporter(dataset=make_pathway_dataset())
     active_reaction_rows = active_exporter.build_reaction_table(
@@ -336,12 +409,33 @@ def test_pathway_exporter_uses_reaction_gene_lookup_when_payload_omits_gene_name
     assert exporter._get_reaction_gene_symbols(reaction) == ["HSD3B2", "HSD3B1"]
 
 
-def test_pathway_exporter_prefers_uniprot_gene_lookup_from_rhea_curations():
+def test_pathway_exporter_prefers_api_genes_over_uniprot_lookup():
+    # The reactions API now serves genes from a ready table, so API-provided
+    # genes are used directly and the live UniProt lookup is not consulted.
+    exporter = BioPANPathwayExporter()
+    exporter._uniprot_gene_lookup = {"10273": ["SHOULD_NOT_BE_USED"]}
+
+    reaction = ReactionData(
+        genes=[
+            {"gene_name": "LCAT", "uniprot_id": "P04180"},
+            {"gene_name": "PLA2G15", "uniprot_id": "Q8NCC3"},
+        ],
+        curations=[{"database_name": "rhea", "database_id": "10273"}],
+    )
+
+    assert exporter._get_reaction_gene_symbols(reaction) == ["LCAT", "PLA2G15"]
+    # The gene -> UniProt accession map is populated for the frontend links.
+    assert exporter._gene_uniprot_lookup["LCAT"] == "P04180"
+    assert exporter._gene_uniprot_lookup["PLA2G15"] == "Q8NCC3"
+
+
+def test_pathway_exporter_falls_back_to_uniprot_lookup_when_no_api_genes():
+    # When the API has no genes for a reaction yet, fall back to the live
+    # UniProt lookup keyed by rhea_id.
     exporter = BioPANPathwayExporter()
     exporter._uniprot_gene_lookup = {"10273": ["LCAT", "PLA2G15"]}
 
     reaction = ReactionData(
-        genes=[{"gene_symbol": "SHOULD_NOT_BE_USED"}],
         curations=[{"database_name": "rhea", "database_id": "10273"}],
     )
 
