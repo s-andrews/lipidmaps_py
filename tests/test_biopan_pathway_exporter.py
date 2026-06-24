@@ -271,7 +271,9 @@ def test_fa_graph_and_table_build_for_measured_fatty_acids():
 
     graph = exporter.build_fa_graph(disease_group="case", control_group="control", mode="active")
     node_labels = {node["data"]["label"] for node in graph["nodes"]}
-    assert {"FA(16:0)", "FA(18:0)", "FA(18:1)"} <= node_labels
+    # FA species use shorthand nomenclature (FA 16:0, not FA(16:0)).
+    assert {"FA 16:0", "FA 18:0", "FA 18:1"} <= node_labels
+    assert not any("(" in label for label in node_labels)
     # FA nodes render as triangles (matches the legend).
     assert all(node["data"]["shape"] == "triangle" for node in graph["nodes"])
     # The elongation/desaturation edges are present and scored.
@@ -283,9 +285,12 @@ def test_fa_graph_and_table_build_for_measured_fatty_acids():
     assert rows, "expected significant FA reactions"
     top = rows[0]
     assert "&#8594;" in top["data"]["pathway"]
+    assert "(" not in top["data"]["pathway"]  # shorthand FA names
     assert top["data"]["score"] > 1.645
     # Enzyme genes from the curated FA network flow through to the table.
     assert top["data"]["gene"] != "NA"
+    # FA enzyme genes are tagged human for the frontend's taxonomy flag.
+    assert "9606" in table["gene_taxonomy"].get(top["data"]["gene"].split(",")[0], [])
 
 
 def test_export_reaction_files_includes_fa_payloads(tmp_path):
@@ -417,8 +422,8 @@ def test_pathway_exporter_prefers_api_genes_over_uniprot_lookup():
 
     reaction = ReactionData(
         genes=[
-            {"gene_name": "LCAT", "uniprot_id": "P04180"},
-            {"gene_name": "PLA2G15", "uniprot_id": "Q8NCC3"},
+            {"gene_name": "LCAT", "uniprot_id": "P04180", "taxonomy_id": 9606},
+            {"gene_name": "PLA2G15", "uniprot_id": "Q8NCC3", "taxonomy_id": 10090},
         ],
         curations=[{"database_name": "rhea", "database_id": "10273"}],
     )
@@ -427,6 +432,9 @@ def test_pathway_exporter_prefers_api_genes_over_uniprot_lookup():
     # The gene -> UniProt accession map is populated for the frontend links.
     assert exporter._gene_uniprot_lookup["LCAT"] == "P04180"
     assert exporter._gene_uniprot_lookup["PLA2G15"] == "Q8NCC3"
+    # The gene -> taxonomy map is populated for the human flag / hover.
+    assert exporter._gene_taxonomy_lookup["LCAT"] == ["9606"]
+    assert exporter._gene_taxonomy_lookup["PLA2G15"] == ["10090"]
 
 
 def test_pathway_exporter_falls_back_to_uniprot_lookup_when_no_api_genes():

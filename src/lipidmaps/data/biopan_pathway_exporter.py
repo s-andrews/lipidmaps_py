@@ -62,6 +62,9 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     # its UniProt entry page. Populated from the API-provided genes and (on the
     # fallback path) from the live UniProt lookup.
     _gene_uniprot_lookup: Dict[str, str] = PrivateAttr(default_factory=dict)
+    # gene symbol -> ordered list of taxonomy ids (as strings). Used by the
+    # frontend to flag human genes (9606) and show the taxonomy on hover.
+    _gene_taxonomy_lookup: Dict[str, List[str]] = PrivateAttr(default_factory=dict)
     _uniprot_client: UniProtRheaClient = PrivateAttr(default_factory=UniProtRheaClient)
 
     def _get_dataset(self, dataset: Optional[LipidDataset] = None) -> LipidDataset:
@@ -234,15 +237,17 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         ordered: List[str] = []
         seen = set()
 
-        def add(symbol: Any, accession: Any = None) -> None:
+        def add(symbol: Any, accession: Any = None, taxonomy: Any = None) -> None:
             text = str(symbol).strip() if symbol is not None else ""
-            if not text or text in seen:
+            if not text:
                 return
-            ordered.append(text)
-            seen.add(text)
+            if text not in seen:
+                ordered.append(text)
+                seen.add(text)
             acc = str(accession).strip() if accession else ""
             if acc:
                 self._gene_uniprot_lookup.setdefault(text, acc)
+            self._record_gene_taxonomy(text, taxonomy)
 
         # 1. Prefer the genes provided by the reactions API (no network call).
         for entry in getattr(reaction, "genes", []) or []:
@@ -267,8 +272,14 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 if value:
                     accession = value
                     break
+            taxonomy = None
+            for key in ("taxonomy_id", "taxonomy", "organism_id", "taxon_id"):
+                value = self._entry_value(entry, key)
+                if value:
+                    taxonomy = value
+                    break
             if symbol:
-                add(symbol, accession)
+                add(symbol, accession, taxonomy)
 
         for entry in getattr(reaction, "proteins", []) or []:
             for key in (
@@ -309,11 +320,21 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                         genes.append(symbol)
                     if record.accession.strip():
                         self._gene_uniprot_lookup.setdefault(symbol, record.accession.strip())
+                    self._record_gene_taxonomy(symbol, record.organism_id)
                 self._uniprot_gene_lookup[rhea_id] = genes
             for symbol in genes:
                 add(symbol, self._gene_uniprot_lookup.get(symbol))
 
         return ordered
+
+    def _record_gene_taxonomy(self, symbol: str, taxonomy: Any) -> None:
+        """Record a taxonomy id for a gene symbol (deduplicated, ordered)."""
+        taxonomy_id = str(taxonomy).strip() if taxonomy not in (None, "") else ""
+        if not symbol or not taxonomy_id:
+            return
+        bucket = self._gene_taxonomy_lookup.setdefault(symbol, [])
+        if taxonomy_id not in bucket:
+            bucket.append(taxonomy_id)
 
     def _component_headgroup(self, component: Any) -> Optional[str]:
         if component is None:
@@ -503,6 +524,12 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                         for symbol, accession in cached_accessions.items()
                         if accession
                     }
+                cached_taxonomy = data.get("gene_taxonomy_lookup")
+                if isinstance(cached_taxonomy, dict):
+                    self._gene_taxonomy_lookup = {
+                        str(symbol): [str(tax) for tax in (taxa or [])]
+                        for symbol, taxa in cached_taxonomy.items()
+                    }
                 return result_set, reaction_lookup
             except Exception:
                 logger.warning("Failed to load reaction match set cache from %s; rebuilding", cache_path, exc_info=True)
@@ -521,6 +548,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 "uniprot_gene_lookup": dict(self._uniprot_gene_lookup),
                 # Persist the gene -> UniProt accession map used for frontend links.
                 "gene_uniprot_lookup": dict(self._gene_uniprot_lookup),
+                # Persist the gene -> taxonomy ids map (human flag + hover).
+                "gene_taxonomy_lookup": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()},
             }
             cache_path.write_text(json.dumps(payload), encoding="utf-8")
         except Exception:
@@ -1550,6 +1579,14 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         """
         return re.sub(r"[\s()]", "", str(name).strip().lower())
 
+    @staticmethod
+    def _fa_display_name(name: str) -> str:
+        """Shorthand FA display name: ``FA(16:0)`` -> ``FA 16:0``."""
+        match = re.match(r"^FA\((.+)\)$", str(name).strip(), re.IGNORECASE)
+        if match:
+            return f"FA {match.group(1)}"
+        return str(name).strip()
+
     def _measured_fa_index(self, lipid_lookup: Dict[str, QuantifiedLipid]) -> Dict[str, str]:
         """Map canonical FA species name -> actual lipid_lookup key."""
         index: Dict[str, str] = {}
@@ -1589,6 +1626,11 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 disease_products, disease_reactants, control_products, control_reactants,
                 alt=alt, paired=paired,
             )
+            genes = list(reaction["genes"])
+            # The curated FA enzyme set (ELOVL/SCD/FADS) is human, so tag the
+            # genes with taxonomy 9606 for the frontend's human flag / hover.
+            for gene in genes:
+                self._record_gene_taxonomy(gene, "9606")
             edges.append({
                 "source_label": reactant,
                 "target_label": product,
@@ -1596,7 +1638,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 "target_id": self._safe_node_id(product),
                 "edge_id": self._safe_edge_id(reactant, product),
                 "score": score,
-                "genes": list(reaction["genes"]),
+                "genes": genes,
             })
         return edges
 
@@ -1613,8 +1655,10 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         node_map: Dict[str, Dict[str, Any]] = {}
         edges: List[Dict[str, Any]] = []
         for row in edge_rows:
-            node_map.setdefault(row["source_id"], {"data": {"id": row["source_id"], "lm_id": "", "label": row["source_label"], "name": row["source_label"], "shape": "triangle"}})
-            node_map.setdefault(row["target_id"], {"data": {"id": row["target_id"], "lm_id": "", "label": row["target_label"], "name": row["target_label"], "shape": "triangle"}})
+            source_label = self._fa_display_name(row["source_label"])
+            target_label = self._fa_display_name(row["target_label"])
+            node_map.setdefault(row["source_id"], {"data": {"id": row["source_id"], "lm_id": "", "label": source_label, "name": source_label, "shape": "triangle"}})
+            node_map.setdefault(row["target_id"], {"data": {"id": row["target_id"], "lm_id": "", "label": target_label, "name": target_label, "shape": "triangle"}})
             edges.append({
                 "data": {
                     "id": row["edge_id"],
@@ -1643,7 +1687,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         for edge in significant:
             rows.append({
                 "data": {
-                    "pathway": f"{edge['source_label']}&#8594;{edge['target_label']}",
+                    "pathway": f"{self._fa_display_name(edge['source_label'])}&#8594;{self._fa_display_name(edge['target_label'])}",
                     "score": edge["score"],
                     "gene": self._merge_genes([edge["genes"]]),
                 },
@@ -1654,7 +1698,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         rows.sort(key=lambda row: self._mode_rank_value(row["data"]["score"], mode), reverse=True)
         if limit is not None:
             rows = rows[:limit]
-        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup)}
+        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup), "gene_taxonomy": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()}}
 
     def build_fa_highlight(
         self,
@@ -1796,7 +1840,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         rows = list(cached["pathways"])
         if limit is not None:
             rows = rows[:limit]
-        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup)}
+        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup), "gene_taxonomy": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()}}
 
     def build_pathway_highlight(
         self,
@@ -1875,7 +1919,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         rows = list(cached["pathways"])
         if limit is not None:
             rows = rows[:limit]
-        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup)}
+        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup), "gene_taxonomy": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()}}
 
     def build_edge_details(
         self,
