@@ -72,6 +72,7 @@ class DataManager(LipidmapsBaseModel):
     use_headgroups: bool = Field(default=True, description="Whether to use headgroup mapping for filling missing LM IDs")
     fetch_reactions: bool = Field(default=True, description="Whether to fetch reactions by LM ID after processing CSV")
     taxonomy_group: Optional[str] = Field(default="all", description="Taxonomy group filter for reaction fetching (e.g. 'bacteria', 'mammalia', 'all')")
+    legacy_substrate_consumption: bool = Field(default=False, description="Reproduce the legacy BioPAN greedy substrate-consumption pairing (drops reactants whose products were claimed by an earlier reactant) so pathway z-scores match the old tool. Default off keeps deterministic many-to-many pairing.")
     transpose_file: bool = Field(
         default=False,
         description="If True, transpose the input CSV before ingestion (useful when lipids are columns and samples are rows)."
@@ -749,7 +750,10 @@ class DataManager(LipidmapsBaseModel):
         return resolved_dataset.set_sample_conditions(conditions, strict=strict)
 
     def get_biopan_pathway_exporter(self, dataset: Optional[LipidDataset] = None) -> BioPANPathwayExporter:
-        return BioPANPathwayExporter(dataset=dataset or self.dataset)
+        return BioPANPathwayExporter(
+            dataset=dataset or self.dataset,
+            legacy_substrate_consumption=self.legacy_substrate_consumption,
+        )
 
     def build_biopan_summary(
         self,

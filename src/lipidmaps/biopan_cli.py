@@ -55,11 +55,14 @@ def _write_cached_dataset(session_dir: Path, dataset: LipidDataset) -> Path:
 
 
 def _invalidate_match_set_cache(session_dir: Path) -> None:
-    cache_path = session_dir / "config" / BioPANPathwayExporter.MATCH_SET_CACHE_NAME
-    try:
-        cache_path.unlink(missing_ok=True)
-    except Exception:
-        logger.warning("Failed to invalidate reaction match set cache at %s", cache_path, exc_info=True)
+    base = BioPANPathwayExporter.MATCH_SET_CACHE_NAME
+    # Both the default and the legacy-pairing cache variants must be cleared.
+    for name in (base, base.replace(".json", "_legacy.json")):
+        cache_path = session_dir / "config" / name
+        try:
+            cache_path.unlink(missing_ok=True)
+        except Exception:
+            logger.warning("Failed to invalidate reaction match set cache at %s", cache_path, exc_info=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -78,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fetch-reactions", action="store_true", default=True, help="Fetch reactions from LIPID MAPS")
     parser.add_argument("--no-fetch-reactions", dest="fetch_reactions", action="store_false", help="Disable reaction fetching")
     parser.add_argument("--paired", action="store_true", help="Mark pathway calculation as paired")
+    parser.add_argument("--legacy-substrate-consumption", action="store_true", help="Reproduce legacy BioPAN greedy substrate-consumption pairing (matches old-tool z-scores)")
     parser.add_argument("--threshold", type=float, default=0.05, help="Threshold used for highlighted and ranked BioPAN outputs")
     parser.add_argument("--disease-group", help="Condition of interest for reaction asset export")
     parser.add_argument("--control-group", help="Control condition for reaction asset export")
@@ -157,6 +161,7 @@ class RunParams:
     use_headgroups: bool = True
     fetch_reactions: bool = True
     paired: bool = False
+    legacy_substrate_consumption: bool = False
     threshold: float = 0.05
     disease_group: Optional[str] = None
     control_group: Optional[str] = None
@@ -181,6 +186,7 @@ class RunParams:
             use_headgroups=args.use_headgroups,
             fetch_reactions=args.fetch_reactions,
             paired=args.paired,
+            legacy_substrate_consumption=args.legacy_substrate_consumption,
             threshold=args.threshold,
             disease_group=args.disease_group,
             control_group=args.control_group,
@@ -236,6 +242,7 @@ def run_session(
         use_headgroups=params.use_headgroups,
         fetch_reactions=params.fetch_reactions,
         taxonomy_group=params.taxonomy_group,
+        legacy_substrate_consumption=params.legacy_substrate_consumption,
     )
 
     reprocessed = False
@@ -257,6 +264,12 @@ def run_session(
         exporter = None
 
     manager.dataset = dataset
+    # A warm exporter built with a different legacy-pairing setting must not be
+    # reused, or a toggled comparison would serve stale (other-mode) z-scores.
+    if exporter is not None and getattr(
+        exporter, "legacy_substrate_consumption", False
+    ) != params.legacy_substrate_consumption:
+        exporter = None
     _apply_group_overrides(dataset, _parse_sample_group_overrides(params.sample_group))
 
     # Lazy per-view build: only build the requested view's comparison payloads

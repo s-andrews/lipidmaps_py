@@ -50,6 +50,14 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
 
     dataset: Optional[Any] = Field(default=None)
     class_reactions: Optional[List[Any]] = Field(default=None)
+    # When True, reproduce the legacy BioPAN greedy substrate-consumption
+    # (get_reaction_fa_coa in lib_parse_data.r): for each sum-composition class
+    # reaction each product is assigned to a single reactant (reactants ordered
+    # by ascending carbons then double bonds) and reactants left with no products
+    # are dropped. Off by default, which keeps the deterministic, order-independent
+    # many-to-many pairing (every connected substrate counts once). The toggle
+    # exists only to reproduce z-scores from the legacy tool.
+    legacy_substrate_consumption: bool = Field(default=False)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -486,13 +494,71 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             use_full_structure=True,
         )
         result_set.dataset_lipid_count = len(resolved_dataset.lipids)
+        if self.legacy_substrate_consumption:
+            self._apply_legacy_substrate_consumption(result_set)
         return result_set, reaction_lookup
+
+    def _apply_legacy_substrate_consumption(self, result_set: PathwayReactionSet) -> None:
+        """Greedy one-pass substrate consumption matching legacy BioPAN.
+
+        Mirrors get_reaction_fa_coa (lib_parse_data.r): per class reaction, walk
+        the reactants in ascending (carbons, double_bonds) order, let each claim
+        the still-available product species, then remove those products from the
+        pool so a later reactant cannot reuse them. Reactants that claim nothing
+        are dropped. Applies only to sum-composition reactions; full-structure
+        reactions are left as many-to-many (legacy get_reaction_fa_coa_full does
+        not consume).
+        """
+        from .utils.chain_parser import StructureLevel
+
+        for result in result_set.results.values():
+            pairs = result.pairs
+            if not pairs:
+                continue
+            # Legacy consumes only at sum-composition level.
+            if any(
+                getattr(pair.reactant, "level", None) == StructureLevel.FULL
+                or getattr(pair.product, "level", None) == StructureLevel.FULL
+                for pair in pairs
+            ):
+                continue
+
+            by_reactant: Dict[str, List[Any]] = {}
+            reactant_struct: Dict[str, Any] = {}
+            for pair in pairs:
+                key = pair.reactant.full_name
+                by_reactant.setdefault(key, []).append(pair)
+                reactant_struct.setdefault(key, pair.reactant)
+
+            ordered = sorted(
+                reactant_struct.values(),
+                key=lambda s: (s.total_carbons, s.total_double_bonds),
+            )
+            available = {pair.product.full_name for pair in pairs}
+            kept: List[Any] = []
+            for struct in ordered:
+                claimed = [
+                    pair
+                    for pair in by_reactant[struct.full_name]
+                    if pair.product.full_name in available
+                ]
+                if claimed:
+                    kept.extend(claimed)
+                    for pair in claimed:
+                        available.discard(pair.product.full_name)
+            result.pairs = kept
+            result.pairs_matched = len(kept)
 
     def _match_set_cache_path(self, output_dir: Path) -> Path:
         # output_dir is the session's "biopan" dir; the match-set cache lives
         # alongside the dataset cache in the sibling "config" dir, so it is not
         # touched by _cleanup_generated_json_files (which only globs biopan/*.json).
-        return output_dir.parent / "config" / self.MATCH_SET_CACHE_NAME
+        # The cached pairs differ between legacy and default pairing, so keep them
+        # under separate file names to avoid cross-contamination within a session.
+        name = self.MATCH_SET_CACHE_NAME
+        if self.legacy_substrate_consumption:
+            name = name.replace(".json", "_legacy.json")
+        return output_dir.parent / "config" / name
 
     def _load_or_build_match_set(
         self,

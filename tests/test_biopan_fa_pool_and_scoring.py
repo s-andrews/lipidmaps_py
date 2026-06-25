@@ -128,6 +128,52 @@ def test_release_reaction_scores_full_matched_species_set():
     assert diag["z_score"] > 0
 
 
+def test_legacy_substrate_consumption_drops_orphan_reactant():
+    """Legacy greedy consumption (get_reaction_fa_coa) assigns each product to a
+    single reactant in ascending (carbons, double_bonds) order and drops
+    reactants left with none. Default many-to-many keeps both."""
+    from lipidmaps.data.models.species_reaction import (
+        PathwayReactionSet,
+        ReactionMatchResult,
+        SpeciesReactionPair,
+    )
+    from lipidmaps.data.utils.chain_parser import ChainParser
+
+    parser = ChainParser()
+    cr = ClassReaction(reactant_class="LPC", product_class="PC")
+
+    def pair(reactant: str, product: str) -> SpeciesReactionPair:
+        return SpeciesReactionPair(
+            reactant=parser.parse(reactant), product=parser.parse(product), class_reaction=cr
+        )
+
+    # Both LPC 16:0 and LPC 18:0 can form the single product PC 34:0.
+    def fresh_pairs():
+        return [pair("LPC 16:0", "PC 34:0"), pair("LPC 18:0", "PC 34:0")]
+
+    exporter = BioPANPathwayExporter(
+        dataset=LipidDataset(samples=[SampleMetadata(sample_name="s", group="g")], lipids=[]),
+        legacy_substrate_consumption=True,
+    )
+
+    result = ReactionMatchResult(class_reaction=cr, pairs=fresh_pairs())
+    rs = PathwayReactionSet(results={"lpc,pc": result})
+    exporter._apply_legacy_substrate_consumption(rs)
+    surviving = {(p.reactant.total_carbons, p.reactant.total_double_bonds) for p in result.pairs}
+    # LPC 16:0 (sorted first) claims PC 34:0; LPC 18:0 is left with no product.
+    assert surviving == {(16, 0)}
+
+    # With two products, both reactants survive (one product each).
+    result2 = ReactionMatchResult(
+        class_reaction=cr,
+        pairs=[pair("LPC 16:0", "PC 34:0"), pair("LPC 18:0", "PC 34:0"), pair("LPC 18:0", "PC 36:0")],
+    )
+    rs2 = PathwayReactionSet(results={"lpc,pc": result2})
+    exporter._apply_legacy_substrate_consumption(rs2)
+    surviving2 = {(p.reactant.total_carbons, p.reactant.total_double_bonds) for p in result2.pairs}
+    assert surviving2 == {(16, 0), (18, 0)}
+
+
 def test_missing_aggregate_makes_reaction_unscorable():
     exporter = BioPANPathwayExporter()
     # A None product sum on one sample -> R's na_values guard -> z 0.
