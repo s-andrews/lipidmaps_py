@@ -40,7 +40,7 @@ After installation, you can import the package as shown in `lipidmaps_reactions_
 
 ```python
 import lipidmaps
-from lipidmaps import data, tools
+from lipidmaps import data
 
 # Import data
 lipid_data = lipidmaps.import_data("mydata.csv", lipid_col=1, sample_cols=[4,5,6,7])
@@ -52,30 +52,32 @@ lipid_data = lipidmaps.import_msdial("mydata_msdial.csv")
 print(f"Imported Lipids: {lipid_data.successful_import_count()}")
 print(f"Unrecognised Lipids: {lipid_data.failed_import_count()}")
 
-# Get reactions
-reactions = lipid_data.get_reactions(species="human", complete=True)
-
-
+# Fetch reactions for the imported lipids from LIPID MAPS
+reactions = lipid_data.dataset.fetch_reactions_by_lm_id(taxonomy_group="human")
+print(f"Reactions: {len(reactions)}")
 ```
 
 ## Project Structure
 
 ```
 lipidmaps_py/
-├── setup.py              # Package configuration
+├── setup.py                    # Package configuration
 ├── src/
-│   └── lipidmaps/       # Main package
-│       ├── __init__.py
-│       ├── data_importer.py
-│       ├── data/      # Data handling framework (subpackage)
-│       │   ├── __init__.py
-│       │   ├── data_manager.py
-│       │   ├── reaction_checker.py
-│       │   ├── config/
-│       │   ├── models/
-│       │   └── utils/
-│       └── tools/       # Utility tools (subpackage)
-│           └── __init__.py
+│   └── lipidmaps/              # Main package
+│       ├── __init__.py         # Top-level API: process_csv, import_data, ...
+│       ├── data_importer.py    # import_data / import_msdial -> LipidData
+│       ├── biopan_cli.py       # `lipidmaps-biopan` console entry point
+│       └── data/               # Core data framework (subpackage)
+│           ├── data_manager.py       # DataManager pipeline orchestration
+│           ├── quantitation.py       # QuantitationAnalyzer (normalization, stats)
+│           ├── biopan_exporter.py            # BioPAN display JSON
+│           ├── biopan_pathway_exporter.py    # BioPAN pathway/reaction z-scores
+│           ├── ingestion/            # CSV/TSV + metadata readers
+│           ├── validation/           # DataValidator
+│           ├── matching/             # Species-level reaction matchers
+│           ├── models/               # Pydantic v2 data models
+│           ├── utils/                # chain_parser, reaction_evaluator, headgroups
+│           └── config/               # Bundled JSON (biopan_pathways.json)
 └── lipidmaps_reactions_api.py  # API usage examples
 ```
 

@@ -7,6 +7,19 @@ import streamlit.components.v1 as components
 from lipidmaps.data.biopan_pathway_exporter import BioPANPathwayExporter
 
 
+@st.cache_resource(show_spinner=False)
+def _build_exporter_and_match_set(_dataset, cache_key: str):
+    """Build the exporter and reaction match set once per dataset.
+
+    `_dataset` is underscore-prefixed so Streamlit does not try to hash it; the
+    hashable `cache_key` (the dataset's stable id) drives cache invalidation, so
+    changing graph/table dropdowns reuses the match set instead of rebuilding it.
+    """
+    exporter = BioPANPathwayExporter(dataset=_dataset)
+    result_set, reaction_lookup = exporter.build_reaction_match_set(_dataset)
+    return exporter, result_set, reaction_lookup
+
+
 def _dataset_groups(dataset):
     groups = []
     for sample in getattr(dataset, "samples", []) or []:
@@ -218,8 +231,8 @@ def render_biopan_explorer(dataset, tab_key_prefix="biopan"):
         )
 
     with st.spinner("Building BioPAN reaction tables and graph..."):
-        exporter = BioPANPathwayExporter(dataset=dataset)
-        result_set, reaction_lookup = exporter.build_reaction_match_set(dataset)
+        cache_key = str(getattr(dataset, "id", None) or id(dataset))
+        exporter, result_set, reaction_lookup = _build_exporter_and_match_set(dataset, cache_key)
         if graph_family == "reaction":
             graph_payload = exporter.build_reaction_graph(
                 disease_group=disease_group,

@@ -295,14 +295,14 @@ class ReactionChecker(LipidmapsBaseModel):
                 response.raise_for_status()
             except requests.HTTPError:
                 # Log response body where available to help debugging 400/500 errors
-                body = None
                 try:
                     body = response.text
                 except Exception:
                     body = "<unavailable>"
                 logger.error(
-                    "Reaction API returned HTTP %s",
-                    response.status_code
+                    "Reaction API returned HTTP %s: %s",
+                    response.status_code,
+                    body,
                 )
                 raise
 
@@ -348,13 +348,5 @@ class ReactionChecker(LipidmapsBaseModel):
             return ReactionResponse(reactions=reactions)
 
         except requests.RequestException as e:
-            # Try to include response text if present on the exception/response
-            resp = getattr(e, "response", None)
-            body = None
-            if resp is not None:
-                try:
-                    body = resp.text
-                except Exception:
-                    body = "<unavailable>"
             logger.error("Reaction API call failed: %s", e)
             return ReactionResponse(reactions=[], error=str(e))

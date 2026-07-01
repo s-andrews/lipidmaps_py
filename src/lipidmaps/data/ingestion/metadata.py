@@ -7,7 +7,7 @@ This class provides methods to extract, validate, and standardize metadata from 
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 import pandas as pd
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class MetadataExtractor(BaseModel):
     """

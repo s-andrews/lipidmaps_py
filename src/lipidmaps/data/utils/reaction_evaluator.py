@@ -1,9 +1,12 @@
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..models.reaction import ReactionData, CompoundComponent
 from .chain_parser import ChainParser, LipidStructure
 from .lipid_reaction_rules import lipid_reaction_rules
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -307,7 +310,8 @@ class ReactionEvaluator:
                 r.evaluation = res
 
             except Exception:
-                r.possible = False
+                logger.exception("Failed to evaluate reaction %s", getattr(r, "reaction_id", r))
+                r.evaluation = self._build_evaluation(False, ["evaluation_error"]).to_dict()
     
     def evaluate_reaction(self, reaction: ReactionData, dataset: Optional[Any] = None) -> Dict[str, Any]:
         """

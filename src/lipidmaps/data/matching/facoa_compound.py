@@ -5,7 +5,7 @@ Handles reactions where a fatty acyl-CoA is added to a lipid,
 e.g., DG -> TG, LPC -> PC, MAG -> DAG.
 """
 
-from typing import List, Optional
+from typing import List
 
 from ..models.species_reaction import (
     ClassReaction,

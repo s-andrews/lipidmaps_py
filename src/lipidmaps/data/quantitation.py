@@ -7,7 +7,7 @@ functions for lipidomics data.
 
 import logging
 import math
-from typing import Dict, List, Optional, Tuple, Union, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
 from enum import Enum
 
 import numpy as np

@@ -8,14 +8,12 @@ This uses "all-to-all" matching because there's no way to determine
 which specific PG pair formed which CL from sum composition alone.
 """
 
-from itertools import combinations
 from typing import Dict, List, Set, Tuple
 
 from ..models.species_reaction import (
     ClassReaction,
     ReactionMatchResult,
     ReactionType,
-    SpeciesReactionPair,
 )
 from ..utils.chain_parser import LipidStructure
 from .base import MatcherContext, ReactionMatcher

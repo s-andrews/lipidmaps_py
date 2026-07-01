@@ -1,19 +1,19 @@
 
 import logging
-from typing import Any, List, Dict, Optional, Union, Callable, TYPE_CHECKING
+from typing import Any, List, Dict, Optional, Union, Callable
 import numpy as np
 import re
 from ..utils.headgroups import lipidmaps_headgroups
 from ..utils.lipid_reaction_rules import lipid_reaction_rules
-from ..utils.chain_parser import LipidStructure, StructureLevel, parse_lipid
-from .query import Query, from_callable, attr_eq, attr_in, attr_contains, attr_gt, has_attr
+from ..utils.chain_parser import LipidStructure, parse_lipid
+from .query import Query, from_callable
 from .base import LipidmapsBaseModel
-from pydantic import ConfigDict, Field, PrivateAttr, RootModel, field_validator, computed_field
+from pydantic import ConfigDict, Field, PrivateAttr, RootModel, field_validator
 from enum import Enum
 from datetime import datetime
 from .reaction import ReactionData, CompoundComponent, ReactionChecker
 from ...config import LMSD_REACTIONS_BASE_URL
-from ..validation.data_validator import DataValidator, ValidationReport
+from ..validation.data_validator import ValidationReport
 
 
 
@@ -171,9 +171,13 @@ class QuantifiedLipid(LipidmapsBaseModel):
     
     @property
     def structure(self) -> LipidStructure:
-        if self._structure is None and self.standardized_name is not None and "FA" not in self.input_name and "-coa" not in self.standardized_name.lower():
-            self._structure = parse_lipid(self.standardized_name)
-        elif "fa" in self.input_name.lower() or ("-coa" in self.standardized_name.lower() and self.standardized_name is not None):
+        if self._structure is not None:
+            return self._structure
+        std = self.standardized_name
+        std_lower = std.lower() if std is not None else ""
+        if std is not None and "FA" not in self.input_name and "-coa" not in std_lower:
+            self._structure = parse_lipid(std)
+        elif "fa" in self.input_name.lower() or "-coa" in std_lower:
             self._structure = parse_lipid(self.input_name)
         return self._structure
     
@@ -248,11 +252,18 @@ class QuantifiedLipid(LipidmapsBaseModel):
         return self.standardized_name is not None
     
     def zscore(self) -> Dict[str, float]:
-        vals = np.array(list(self.values.values()))
-        mean = np.mean(vals)
-        std = np.std(vals)
+        def _present(v: Optional[float]) -> bool:
+            return v is not None and not (isinstance(v, float) and np.isnan(v))
+
+        present = [v for v in self.values.values() if _present(v)]
+        if len(present) < 2:
+            return {k: 0.0 for k in self.values}
+        mean = float(np.mean(present))
+        std = float(np.std(present, ddof=1))
+        if std == 0:
+            return {k: 0.0 for k in self.values}
         return {
-            k: (v - mean) / std if std != 0 else 0.0 for k, v in self.values.items()
+            k: ((v - mean) / std) if _present(v) else 0.0 for k, v in self.values.items()
         }
 
     def set_normalized(self, entry: Union["NormalizedResult", str], vals: Optional[Dict[str, Optional[float]]] = None, meta: Optional[Dict[str, Any]] = None) -> None:
@@ -498,7 +509,7 @@ class LipidDataset(LipidmapsBaseModel):
     def check_structure_exist(self, headgroup: Optional[str] = None, total_carbons: Optional[int] = None, total_double_bonds: Optional[int] = None) -> bool:
         """LipidStructure object by headgroup, total_carbons, total_double_bonds"""
         if headgroup is None or total_carbons is None or total_double_bonds is None:
-            return None
+            return False
         result = False
         for lipid in self.lipids:
             try:

@@ -5,7 +5,7 @@ Handles reactions where one acyl chain is released as a free fatty acid,
 e.g., PC -> LPC, PE -> LPE, DG -> MG.
 """
 
-from typing import Dict, List, Optional
+from typing import List
 
 from ..models.species_reaction import (
     ClassReaction,

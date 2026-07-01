@@ -7,7 +7,7 @@ from pathlib import Path
 from .data_manager import DataManager
 from .models.lmsd import LMSD
 from .ingestion.csv_reader import CSVFormat
-from .matching import match_pathway_reactions, create_matcher_context
+from .matching import match_pathway_reactions
 from .models.species_reaction import ClassReaction, CompoundRequirement
 from .utils.chain_parser import (
     get_common_fa_names,
@@ -159,20 +159,12 @@ def main() -> None:
         )
 
     # Fetch reactions for all LM IDs in the dataset
-    reactions = dataset.fetch_reactions_by_lm_id(reaction_type="class-level", only_lipid_components=True, taxonomy_group="bacteria")
-    # print(reactions[:1])  # Print first 1 reaction for brevity
+    dataset.fetch_reactions_by_lm_id(reaction_type="class-level", only_lipid_components=True, taxonomy_group="bacteria")
     logger.info(f"Lipids with reactions: {dataset.list_lipids_with_reactions()[:1]}")
-    
+
     lipid_objects_with_reactions = dataset.get_lipids_with_reactions()
     logger.info(f"Total lipids with reactions: {len(lipid_objects_with_reactions)}")
     logger.info(f"Total reaction object in dataset: {len(dataset.reactions)}")
-    # for reaction_name in dataset.list_reactions():  # Print first 1 reaction name
-    #     logger.info(f"{reaction_name}")
-    # for reaction in dataset.reactions[:3]:  # Print first 3 lipid with reactions
-    #     print(f"Reaction name: {reaction.reaction_name} {reaction.reaction_id}\n"
-    #           f"Reactant names: {[(r.compound_name, r.compound_lm_id) for r in (reaction.reactants or [])]}\n"
-
-    #           f"Product names: {[(p.compound_name, p.compound_lm_id) for p in (reaction.products or [])]}")
 
     # Test species-level reaction matching
     if getattr(args, "test_matching", False):
@@ -185,8 +177,12 @@ def test_species_matching(dataset) -> None:
     logger.info("Testing species-level reaction matching")
     logger.info("=" * 60)
     
-    # Get all lipid names from dataset
-    lipid_names = [lipid.standardized_name or lipid.input_name or None for lipid in dataset.lipids]
+    # Get all lipid names from dataset (drop any lipid with no usable name)
+    lipid_names = [
+        lipid.standardized_name or lipid.input_name
+        for lipid in dataset.lipids
+        if lipid.standardized_name or lipid.input_name
+    ]
     logger.info(f"Dataset has {len(lipid_names)} lipids")
     
     # --- FA / FACoA pool construction ---

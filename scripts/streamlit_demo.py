@@ -18,8 +18,6 @@ if src_path not in sys.path:
 
 from lipidmaps.logging_utils import configure_logging  # type: ignore[reportMissingImports]
 from lipidmaps.data.biopan_pathway_exporter import BioPANPathwayExporter
-from lipidmaps.data.data_manager import DataManager
-from lipidmaps.data.models import reaction
 from lipidmaps.data.quantitation import QuantitationAnalyzer, NormalizationMethod
 from scripts.biopan_ui import render_biopan_explorer
 
@@ -27,11 +25,21 @@ from scripts.biopan_ui import render_biopan_explorer
 logger = logging.getLogger(__name__)
 
 
-def _read_tabular_file(file_path: str) -> pd.DataFrame:
+@st.cache_data(show_spinner=False)
+def _read_tabular_file_cached(file_path: str, mtime: float) -> pd.DataFrame:
+    # `mtime` participates in the cache key so edits to the same path invalidate it.
     _, ext = os.path.splitext(file_path)
     if ext.lower() in [".tsv", ".txt"]:
         return pd.read_csv(file_path, sep="\t")
     return pd.read_csv(file_path)
+
+
+def _read_tabular_file(file_path: str) -> pd.DataFrame:
+    try:
+        mtime = os.path.getmtime(file_path)
+    except OSError:
+        mtime = 0.0
+    return _read_tabular_file_cached(file_path, mtime)
 
 
 def _load_metadata_table(file_path: str) -> pd.DataFrame:
@@ -160,8 +168,6 @@ def main():
 
     # ---------------------- SIDEBAR ----------------------
     processed = False
-    generic_lm_id_button = False
-    fetch_reactions_button = False
 
     with st.sidebar:
         st.title("LIPID MAPS API")
@@ -436,7 +442,6 @@ def main():
                 len(getattr(dataset, "samples", []) or []),
                 getattr(dataset, "refmet_failed", False),
             )
-            st.write(f"validate_data: {validate_data}")
             # Validation report handling
             if validate_data and getattr(dataset, "validation_report", None):
                 status.update(label="Collecting validation results...", state="running")
@@ -538,6 +543,13 @@ def main():
             processed_table_container.write(f"Rows: {df_proc.shape[0]}, Columns: {df_proc.shape[1]}")
             # Show the table (read-only) and provide a selection control underneath.
             processed_table_container.dataframe(df_proc, hide_index=True)
+            processed_table_container.download_button(
+                "Download annotations CSV",
+                data=df_proc.to_csv(index=False).encode("utf-8"),
+                file_name="processed_annotations.csv",
+                mime="text/csv",
+                key="download_processed_annotations",
+            )
 
             search_container = st.container(border=True)  # reset container for additional content below the table
             # ---- Search field for quick query testing ----
@@ -592,7 +604,6 @@ def main():
 
                     # show suggested Query code for reproducing the search
                     try:
-                        from lipidmaps.data.models.query import attr_contains
                         q_code = " | ".join([
                             "attr_contains('input_name', '%s')" % search_q,
                             "attr_contains('standardized_name', '%s')" % search_q,
@@ -704,19 +715,19 @@ def main():
                 except Exception:
                     df_vals = pd.DataFrame(data)
 
-                    if df_vals.empty:
-                        st.info(f"No lipid values for sample {sample_sel}.")
-                    else:
-                        fig = px.bar(
-                            df_vals,
-                            x="input_name",
-                            y="value",
-                            title=f"Lipid values for sample {sample_sel}",
-                            color="input_name",
-                            color_discrete_sequence=px.colors.qualitative.Plotly,
-                        )
-                        fig.update_layout(xaxis_title="Lipid", yaxis_title="Value", xaxis_tickangle=-45)
-                        st.plotly_chart(fig, use_container_width=True, key="sample_lipid_bar_chart")
+                if df_vals.empty:
+                    st.info(f"No lipid values for sample {sample_sel}.")
+                else:
+                    fig = px.bar(
+                        df_vals,
+                        x="input_name",
+                        y="value",
+                        title=f"Lipid values for sample {sample_sel}",
+                        color="input_name",
+                        color_discrete_sequence=px.colors.qualitative.Plotly,
+                    )
+                    fig.update_layout(xaxis_title="Lipid", yaxis_title="Value", xaxis_tickangle=-45)
+                    st.plotly_chart(fig, use_container_width=True, key="sample_lipid_bar_chart")
             else:
                 st.info("No samples available in dataset.")
 
@@ -799,7 +810,6 @@ def main():
             st.subheader("Normalization")
             try:
                 norm_methods = [m for m in NormalizationMethod]
-                method_labels = {m: m.value for m in norm_methods}
 
                 sel_method = st.selectbox("Normalization method", options=norm_methods, format_func=lambda m: m.value, key="norm_method_select")
 
@@ -944,6 +954,20 @@ def main():
                                 st.download_button("Download normalized CSV", data=csv_bytes, file_name="normalized.csv", mime="text/csv")
                             except Exception:
                                 pass
+                            # heatmap of the normalized matrix (lipids x samples)
+                            try:
+                                numeric_norm = df_norm.select_dtypes(include="number")
+                                if not numeric_norm.empty:
+                                    heat = px.imshow(
+                                        numeric_norm,
+                                        aspect="auto",
+                                        color_continuous_scale="RdBu_r",
+                                        title="Normalized values heatmap",
+                                    )
+                                    heat.update_layout(xaxis_title="Sample", yaxis_title="Lipid")
+                                    st.plotly_chart(heat, use_container_width=True, key="normalized_heatmap")
+                            except Exception:
+                                pass
                     except Exception as e:
                         st.error(f"Normalization failed: {e}")
             except Exception:
@@ -1001,19 +1025,6 @@ def main():
                     st.plotly_chart(fig, use_container_width=True, key="neither_lm_id_found_distribution")
 
 
-    # --------------------------------------------------------------
-    # GENERIC LMID ASSIGNMENT
-    # --------------------------------------------------------------
-    if generic_lm_id_button and st.session_state["dataset"] is not None:
-        ds = st.session_state["dataset"]
-        updated = ds.fill_headgroups_from_names()
-        compound_headgroups_updated = ds.fill_compound_headgroups_from_lipids()
-        generic_lm_ids_updated = ds.fill_generic_lm_ids_from_headgroups()
-        st.session_state["generic_lm_id_assigned"] = True
-        st.success(f"Updated {updated} lipids using headgroup mapping.")
-        st.rerun()  # refresh processed page
-
-
     with tabs[tab_index["biopan"]]:
         dataset = st.session_state.get("dataset")
         if dataset is None:
@@ -1026,31 +1037,6 @@ def main():
     # --------------------------------------------------------------
     # REACTIONS TAB
     # --------------------------------------------------------------
-
-    if fetch_reactions_button and st.session_state["dataset"] is not None:
-        ds = st.session_state["dataset"]
-
-        try:
-            tg = st.session_state.get("taxonomy_group", None)   
-            if tg and tg != "all":
-                reactions = ds.fetch_reactions_by_lm_id(
-                    reaction_type="species-level",
-                    only_lipid_components=False,
-                    taxonomy_group=tg,
-                )
-            else:
-                # 'all' selected — omit taxonomy_group from request
-                reactions = ds.fetch_reactions_by_lm_id(
-                    reaction_type="species-level",
-                    only_lipid_components=False,
-                )
-            st.session_state["reactions"] = reactions
-
-            st.success(f"Fetched {len(reactions)} reactions.")
-            st.session_state["reactions_fetched"] = True
-            st.rerun()  # IMPORTANT: stable, never clears processed page
-        except Exception as e:
-            st.error(f"Error fetching reactions: {e}")
 
     with tabs[tab_index["reactions"]]:
         st.subheader("Reactions for LM IDs")
@@ -1104,7 +1090,7 @@ def main():
                     "reaction_name": getattr(r, "reaction_name", None),
                     "reactants": reactants_str,
                     "products": products_str,
-                    # "pathways": pathways_str,
+                    "pathways": pathways_str,
                     "ec_number": ec_str,
                     "genes": genes_str or "N/A",
                     "gene_source": _reaction_gene_source(r),
@@ -1114,10 +1100,36 @@ def main():
                     "possible_explanation": evaluation.get("pairs_info")
                 })
 
-            rxn_df = pd.DataFrame(rxn_rows)[0:20]
-            st.write(f"Rows: {rxn_df.shape[0]}, Columns: {rxn_df.shape[1]}")
+            rxn_df_full = pd.DataFrame(rxn_rows)
+            total_rxn = rxn_df_full.shape[0]
+            if total_rxn > 5:
+                max_show = st.slider(
+                    "Max reactions to display",
+                    min_value=5,
+                    max_value=total_rxn,
+                    value=min(20, total_rxn),
+                    key="reactions_max_rows",
+                )
+            else:
+                max_show = total_rxn
+            rxn_df = rxn_df_full.head(max_show)
+            st.write(f"Showing {rxn_df.shape[0]} of {total_rxn} reactions, {rxn_df.shape[1]} columns")
             # Display with HTML rendering for clickable EC number links
             st.write(rxn_df.to_html(escape=False, index=False), unsafe_allow_html=True)
+            try:
+                import re as _re
+                clean_rxn = rxn_df_full.map(
+                    lambda s: _re.sub(r"<[^>]+>", "", s) if isinstance(s, str) else s
+                )
+                st.download_button(
+                    "Download reactions CSV",
+                    data=clean_rxn.to_csv(index=False).encode("utf-8"),
+                    file_name="reactions.csv",
+                    mime="text/csv",
+                    key="download_reactions",
+                )
+            except Exception:
+                pass
         
             # For each reaction, show a small graph and metadata (reactants -> reaction -> products)
             def reaction_to_dot(reaction):
@@ -1271,6 +1283,7 @@ def main():
                         org = getattr(p, "organism", None)
 
                     pathway_rows.append({
+                        "pathway_id": pid,
                         "pathway_name": name,
                         "Description": desc,
                         "organism": org,
@@ -1290,6 +1303,13 @@ def main():
                 pathway_df = pd.DataFrame(unique_rows)
                 st.subheader("Pathways for Reactions")
                 st.dataframe(pathway_df, hide_index=True)
+                st.download_button(
+                    "Download pathways CSV",
+                    data=pathway_df.to_csv(index=False).encode("utf-8"),
+                    file_name="pathways.csv",
+                    mime="text/csv",
+                    key="download_pathways",
+                )
             else:
                 st.info("No pathway entries available for fetched reactions.")
             # Show lipids annotated with reactions
@@ -1357,6 +1377,27 @@ def main():
                                             file_name=f"reaction_zscores_{g1}_vs_{g2}_{method}.csv",
                                             mime="text/csv",
                                         )
+                                    except Exception:
+                                        pass
+                                    # scatter of group means, colored by z-score
+                                    try:
+                                        plot_df = df_rz.dropna(subset=["group1_mean", "group2_mean", "zscore"])
+                                        if not plot_df.empty:
+                                            scatter = px.scatter(
+                                                plot_df,
+                                                x="group2_mean",
+                                                y="group1_mean",
+                                                color="zscore",
+                                                hover_name="reaction_name",
+                                                color_continuous_scale="RdBu_r",
+                                                color_continuous_midpoint=0,
+                                                title=f"Reaction flux: {g1} vs {g2}",
+                                            )
+                                            scatter.update_layout(
+                                                xaxis_title=f"{g2} mean flux",
+                                                yaxis_title=f"{g1} mean flux",
+                                            )
+                                            st.plotly_chart(scatter, use_container_width=True, key="reaction_zscore_scatter")
                                     except Exception:
                                         pass
                             except Exception as e:

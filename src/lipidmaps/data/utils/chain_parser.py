@@ -9,7 +9,7 @@ import re
 from enum import Enum
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
-from pydantic import BaseModel, Field, field_validator, computed_field
+from pydantic import BaseModel, Field, computed_field
 from .headgroups import lipidmaps_headgroups
 
 if TYPE_CHECKING:

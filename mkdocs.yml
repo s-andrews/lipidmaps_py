@@ -8,6 +8,8 @@ nav:
   - Home: index.md
   - API: api.md
   - MODELS: models.md
+  - Pathway Scoring: pathway_scoring.md
+  - Custom Columns: custom_columns_guide.md
 
 plugins:
   - search

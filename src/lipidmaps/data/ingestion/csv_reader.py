@@ -139,10 +139,12 @@ class CSVIngestion(BaseModel):
                 reader = csv.DictReader(file, delimiter=delimiter)
                 fieldnames = reader.fieldnames or []
                 rows = list(reader)
-                if has_labels:
+                if has_labels and rows:
                     labels = [rows[0][fn] for fn in fieldnames]
                     logger.info(f"Labels detected: {labels}")
                     rows = rows[1:]
+                elif has_labels:
+                    logger.warning(f"has_labels set but {path.name} has no data rows; skipping label extraction")
 
         except UnicodeDecodeError:
             # Try alternative encoding
@@ -152,7 +154,7 @@ class CSVIngestion(BaseModel):
                 fieldnames = reader.fieldnames or []
                 
                 rows = list(reader)
-                if has_labels:
+                if has_labels and rows:
                     labels = [rows[0][fn] for fn in fieldnames]
                     rows = rows[1:]
 
@@ -201,11 +203,13 @@ class CSVIngestion(BaseModel):
         original_delimiter = self.delimiter
         self.delimiter = "\t"
 
-        result = self.read_standard_csv(path)
+        try:
+            result = self.read_standard_csv(path)
+        finally:
+            self.delimiter = original_delimiter
+
         result.format_type = CSVFormat.MSDIAL
         result.metadata["format_notes"] = "MS-DIAL format (basic parsing)"
-
-        self.delimiter = original_delimiter
 
         return result
 

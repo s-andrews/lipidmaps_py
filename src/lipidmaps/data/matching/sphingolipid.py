@@ -7,14 +7,14 @@ Handles sphingolipid-specific reactions involving sphingoid backbones:
 - SPB -> Cer (FACoA addition to sphingoid base)
 """
 
-from typing import List, Optional, Set
+from typing import List
 
 from ..models.species_reaction import (
     ClassReaction,
     ReactionMatchResult,
     ReactionType,
 )
-from ..utils.chain_parser import AcylChain, LipidStructure, SphingoBackbone
+from ..utils.chain_parser import AcylChain, LipidStructure
 from .base import MatcherContext, ReactionMatcher
 
 

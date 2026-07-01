@@ -5,7 +5,7 @@ Provides automatic selection of the appropriate reaction matcher
 based on reaction type (strategy pattern).
 """
 
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Optional
 
 from ..models.species_reaction import (
     ClassReaction,
@@ -20,9 +20,8 @@ from .facoa_compound import FACoACompoundMatcher, FACoACompoundMatcherFullStruct
 from .sphingolipid import (
     SphingoFACoAAdditionMatcher,
     SphingoFAReleaseMatcher,
-    SphingoSameStructureMatcher,
 )
-from .cardiolipin import CardiolipinMatcher, CardiolipinCompositionMatcher
+from .cardiolipin import CardiolipinMatcher
 
 
 class MatcherRegistry:

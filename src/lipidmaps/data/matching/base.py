@@ -12,7 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.species_reaction import (
     ClassReaction,
-    CompoundRequirement,
     ReactionMatchResult,
     ReactionType,
     SpeciesReactionPair,

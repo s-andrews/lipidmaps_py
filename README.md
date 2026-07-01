@@ -19,11 +19,13 @@ This project is intended for researchers and developers working with mass-spectr
 - **Name Standardization**: RefMet standardization of user provided metabolite names
 - **Quality Control**: Data validation and issue reporting
 - **Data Management**: DataManager for handling quantified lipid datasets
+- **LIPID MAPS API Integration**: LM ID lookup and validation via RefMet/LMSD
+- **Reaction Analysis**: Reaction fetching, species-level matching, and pathway (BioPAN) scoring
+- **Sample Metadata**: Experimental metadata, groups, and condition handling
 
 ### 🚧 In Progress
-- **LIPID MAPS API Integration**: LM ID lookup and validation
-- **Reaction Analysis**: Integration with LIPID MAPS reactions database
-- **Sample Metadata**: Support for experimental metadata and conditions
+- **MS-DIAL ingestion**: Format-specific parsing beyond the current basic tab-delimited read
+- **Pathway scoring UX**: Broader visualization and reporting on top of the z-score engine
 
 ## Installation
 
@@ -138,6 +140,8 @@ print(dataset.lipids[:1])
 print(f"Samples: {dataset.list_sample_names()[:5]}")
 
 # List first 5 lipid names
+print(f"Lipids: {dataset.list_lipid_names()[:5]}")
+```
 
 ### Export BioPAN Display Files
 
@@ -195,9 +199,6 @@ PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan \
 ```
 
 This is the compatibility path used by the BioPAN summary page when users edit condition names before opening pathway analysis.
-print(f"Lipids: {dataset.list_lipid_names()[:5]}")
-
-```
 
 ## Logging
 

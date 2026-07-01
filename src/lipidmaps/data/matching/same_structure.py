@@ -5,7 +5,7 @@ Handles reactions where the acyl chains remain unchanged,
 e.g., PC -> PA, PE -> PC, PA -> DG.
 """
 
-from typing import List, Set
+from typing import List
 
 from ..models.species_reaction import (
     ClassReaction,

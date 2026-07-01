@@ -1,5 +1,4 @@
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 lipid_reaction_rules: Dict[str, Any] = {
     "metadata": {

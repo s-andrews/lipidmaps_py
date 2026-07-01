@@ -1,11 +1,9 @@
-import csv
 import logging
 import re
 import tempfile
 from typing import List, Dict, Any, Union, Optional
 from pathlib import Path
 import pandas as pd
-# import networkx as nx
 from pydantic import ConfigDict, Field, field_validator
 from .models.base import LipidmapsBaseModel
 from .biopan_exporter import BioPANExporter
@@ -14,7 +12,6 @@ from .biopan_pathway_exporter import BioPANPathwayExporter
 from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset, LipidAnnotation, SampleConditions
 from .models.refmet import RefMet
 from .models.lmsd import LMSD, LMSDResult
-# from .reaction_checker import ReactionChecker, ReactionData
 from .models.reaction import ReactionData
 
 # import new ingestion and validation modules
@@ -625,14 +622,8 @@ class DataManager(LipidmapsBaseModel):
                 continue
             item = mapping[lm]
             try:
-                # if hasattr(q, "abbrev") and item.get("abbrev"):
-                #     q.abbrev = item.get("abbrev")
                 if hasattr(q, "generic_lm_id") and item.generic_lm_id:
                     q.generic_lm_id = item.generic_lm_id
-                # if hasattr(q, "abbrev_chains") and item.get("abbrev_chains"):
-                #     q.abbrev_chains = item.get("abbrev_chains")
-                # if hasattr(q, "smiles") and item.get("smiles"):
-                #     q.smiles = item.get("smiles")
                 updated += 1
             except Exception:
                 logger.exception(f"Failed to annotate lipid {getattr(q, 'input_name', None)} with LMSD details")
@@ -894,15 +885,20 @@ class DataManager(LipidmapsBaseModel):
             lipid_coverage = 0
 
             for lipid in self.dataset.lipids:
-                # Extract values for this group's samples
+                # Extract values for this group's samples, skipping missing/NaN entries
                 group_values = [
-                    lipid.values.get(name) for name in sample_names if name in lipid.values
+                    v
+                    for name in sample_names
+                    for v in (lipid.values.get(name),)
+                    if v is not None and not (isinstance(v, float) and np.isnan(v))
                 ]
 
                 if group_values:
                     lipid_coverage += 1
                     lipid_means[lipid.input_name] = float(np.mean(group_values))
-                    lipid_stds[lipid.input_name] = float(np.std(group_values))
+                    lipid_stds[lipid.input_name] = (
+                        float(np.std(group_values, ddof=1)) if len(group_values) > 1 else 0.0
+                    )
 
             group_stats[group_name] = {
                 "sample_count": len(samples),

@@ -8,7 +8,7 @@ class-level reaction rules.
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import Field, computed_field
 
 from .base import LipidmapsBaseModel
 from ..utils.chain_parser import LipidStructure, AcylChain

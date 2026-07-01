@@ -3,7 +3,7 @@ import pandas as pd
 from math import ceil
 
 
-from lipidmaps.data.models.reaction import ReactionChecker, ReactionData, CompoundComponent
+from lipidmaps.data.models.reaction import ReactionChecker, ReactionData
 from lipidmaps.config import LMSD_REACTIONS_BASE_URL
 
 
