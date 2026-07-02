@@ -437,6 +437,43 @@ def test_pathway_exporter_prefers_api_genes_over_uniprot_lookup():
     assert exporter._gene_taxonomy_lookup["PLA2G15"] == ["10090"]
 
 
+def test_pathway_exporter_records_gene_organism_names_from_api_genes():
+    # The reactions API serves the organism scientific/common name alongside each
+    # gene; the exporter records a taxonomy name (scientific_name preferred, then
+    # common_name) so the frontend can display the organism on hover.
+    exporter = BioPANPathwayExporter()
+    reaction = ReactionData(
+        genes=[
+            {
+                "taxonomy_id": 9606,
+                "uniprot_id": "P48449",
+                "gene_name": "LSS",
+                "scientific_name": "Homo sapiens",
+                "common_name": "human",
+            },
+            {
+                "taxonomy_id": 559292,
+                "uniprot_id": "P38604",
+                "gene_name": "ERG7",
+                "scientific_name": "Saccharomyces cerevisiae S288C",
+                "common_name": "",
+            },
+            {
+                # No scientific_name -> falls back to common_name.
+                "taxonomy_id": 10090,
+                "uniprot_id": "Q99N16",
+                "gene_name": "Lss",
+                "common_name": "mouse",
+            },
+        ],
+    )
+
+    assert exporter._get_reaction_gene_symbols(reaction) == ["LSS", "ERG7", "Lss"]
+    assert exporter._gene_taxonomy_name_lookup["LSS"] == ["Homo sapiens"]
+    assert exporter._gene_taxonomy_name_lookup["ERG7"] == ["Saccharomyces cerevisiae S288C"]
+    assert exporter._gene_taxonomy_name_lookup["Lss"] == ["mouse"]
+
+
 def test_pathway_exporter_falls_back_to_uniprot_lookup_when_no_api_genes():
     # When the API has no genes for a reaction yet, fall back to the live
     # UniProt lookup keyed by rhea_id.
