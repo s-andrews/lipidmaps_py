@@ -73,6 +73,9 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     # gene symbol -> ordered list of taxonomy ids (as strings). Used by the
     # frontend to flag human genes (9606) and show the taxonomy on hover.
     _gene_taxonomy_lookup: Dict[str, List[str]] = PrivateAttr(default_factory=dict)
+    # gene symbol -> ordered list of taxonomy names (scientific/common name from
+    # ncbi_taxonomy). Used by the frontend for the gene hover tooltip.
+    _gene_taxonomy_name_lookup: Dict[str, List[str]] = PrivateAttr(default_factory=dict)
     _uniprot_client: UniProtRheaClient = PrivateAttr(default_factory=UniProtRheaClient)
 
     def _get_dataset(self, dataset: Optional[LipidDataset] = None) -> LipidDataset:
@@ -245,7 +248,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         ordered: List[str] = []
         seen = set()
 
-        def add(symbol: Any, accession: Any = None, taxonomy: Any = None) -> None:
+        def add(symbol: Any, accession: Any = None, taxonomy: Any = None, taxonomy_name: Any = None) -> None:
             text = str(symbol).strip() if symbol is not None else ""
             if not text:
                 return
@@ -256,6 +259,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             if acc:
                 self._gene_uniprot_lookup.setdefault(text, acc)
             self._record_gene_taxonomy(text, taxonomy)
+            self._record_gene_taxonomy_name(text, taxonomy_name)
 
         # 1. Prefer the genes provided by the reactions API (no network call).
         for entry in getattr(reaction, "genes", []) or []:
@@ -286,8 +290,14 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 if value:
                     taxonomy = value
                     break
+            taxonomy_name = None
+            for key in ("scientific_name", "common_name", "organism_name"):
+                value = self._entry_value(entry, key)
+                if value:
+                    taxonomy_name = value
+                    break
             if symbol:
-                add(symbol, accession, taxonomy)
+                add(symbol, accession, taxonomy, taxonomy_name)
 
         for entry in getattr(reaction, "proteins", []) or []:
             for key in (
@@ -329,6 +339,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                     if record.accession.strip():
                         self._gene_uniprot_lookup.setdefault(symbol, record.accession.strip())
                     self._record_gene_taxonomy(symbol, record.organism_id)
+                    self._record_gene_taxonomy_name(symbol, record.organism_name)
                 self._uniprot_gene_lookup[rhea_id] = genes
             for symbol in genes:
                 add(symbol, self._gene_uniprot_lookup.get(symbol))
@@ -343,6 +354,15 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         bucket = self._gene_taxonomy_lookup.setdefault(symbol, [])
         if taxonomy_id not in bucket:
             bucket.append(taxonomy_id)
+
+    def _record_gene_taxonomy_name(self, symbol: str, taxonomy_name: Any) -> None:
+        """Record a taxonomy name for a gene symbol (deduplicated, ordered)."""
+        name = str(taxonomy_name).strip() if taxonomy_name not in (None, "") else ""
+        if not symbol or not name:
+            return
+        bucket = self._gene_taxonomy_name_lookup.setdefault(symbol, [])
+        if name not in bucket:
+            bucket.append(name)
 
     def _component_headgroup(self, component: Any) -> Optional[str]:
         if component is None:
@@ -596,6 +616,12 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                         str(symbol): [str(tax) for tax in (taxa or [])]
                         for symbol, taxa in cached_taxonomy.items()
                     }
+                cached_taxonomy_names = data.get("gene_taxonomy_name_lookup")
+                if isinstance(cached_taxonomy_names, dict):
+                    self._gene_taxonomy_name_lookup = {
+                        str(symbol): [str(name) for name in (names or [])]
+                        for symbol, names in cached_taxonomy_names.items()
+                    }
                 return result_set, reaction_lookup
             except Exception:
                 logger.warning("Failed to load reaction match set cache from %s; rebuilding", cache_path, exc_info=True)
@@ -616,6 +642,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 "gene_uniprot_lookup": dict(self._gene_uniprot_lookup),
                 # Persist the gene -> taxonomy ids map (human flag + hover).
                 "gene_taxonomy_lookup": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()},
+                # Persist the gene -> taxonomy names map (hover tooltip).
+                "gene_taxonomy_name_lookup": {k: list(v) for k, v in self._gene_taxonomy_name_lookup.items()},
             }
             cache_path.write_text(json.dumps(payload), encoding="utf-8")
         except Exception:
@@ -1697,6 +1725,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             # genes with taxonomy 9606 for the frontend's human flag / hover.
             for gene in genes:
                 self._record_gene_taxonomy(gene, "9606")
+                self._record_gene_taxonomy_name(gene, "Homo sapiens")
             edges.append({
                 "source_label": reactant,
                 "target_label": product,
@@ -1764,7 +1793,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         rows.sort(key=lambda row: self._mode_rank_value(row["data"]["score"], mode), reverse=True)
         if limit is not None:
             rows = rows[:limit]
-        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup), "gene_taxonomy": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()}}
+        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup), "gene_taxonomy": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()}, "gene_taxonomy_names": {k: list(v) for k, v in self._gene_taxonomy_name_lookup.items()}}
 
     def build_fa_highlight(
         self,
@@ -1906,7 +1935,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         rows = list(cached["pathways"])
         if limit is not None:
             rows = rows[:limit]
-        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup), "gene_taxonomy": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()}}
+        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup), "gene_taxonomy": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()}, "gene_taxonomy_names": {k: list(v) for k, v in self._gene_taxonomy_name_lookup.items()}}
 
     def build_pathway_highlight(
         self,
@@ -1985,7 +2014,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         rows = list(cached["pathways"])
         if limit is not None:
             rows = rows[:limit]
-        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup), "gene_taxonomy": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()}}
+        return {"pathways": rows, "gene_uniprot": dict(self._gene_uniprot_lookup), "gene_taxonomy": {k: list(v) for k, v in self._gene_taxonomy_lookup.items()}, "gene_taxonomy_names": {k: list(v) for k, v in self._gene_taxonomy_name_lookup.items()}}
 
     def build_edge_details(
         self,

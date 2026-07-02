@@ -21,6 +21,7 @@ class UniProtGeneRecord(LipidmapsBaseModel):
     accession: str = Field(default="")
     gene_primary: str = Field(default="")
     organism_id: str = Field(default="")
+    organism_name: str = Field(default="")
     ec: str = Field(default="")
 
 
@@ -37,7 +38,7 @@ class UniProtRheaClient(LipidmapsBaseModel):
             self.base_url,
             params={
                 "query": f"rhea:{rhea_id} AND reviewed:true",
-                "fields": "gene_primary,organism_id,ec,accession",
+                "fields": "gene_primary,organism_id,organism_name,ec,accession",
                 "format": "tsv",
             },
             timeout=self.timeout,
@@ -77,6 +78,8 @@ class UniProtRheaClient(LipidmapsBaseModel):
                 header_map["gene_primary"] = header
             elif "organism" in normalized and "id" in normalized:
                 header_map["organism_id"] = header
+            elif "organism" in normalized:
+                header_map["organism_name"] = header
             elif normalized.startswith("ec"):
                 header_map["ec"] = header
 
@@ -87,6 +90,7 @@ class UniProtRheaClient(LipidmapsBaseModel):
                     accession=(row.get(header_map.get("accession", ""), "") or "").strip(),
                     gene_primary=(row.get(header_map.get("gene_primary", ""), "") or "").strip(),
                     organism_id=(row.get(header_map.get("organism_id", ""), "") or "").strip(),
+                    organism_name=(row.get(header_map.get("organism_name", ""), "") or "").strip(),
                     ec=(row.get(header_map.get("ec", ""), "") or "").strip(),
                 )
             )
