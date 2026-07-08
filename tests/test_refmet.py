@@ -51,3 +51,29 @@ def test_refmet_fetch_logging_and_results(monkeypatch, caplog):
     assert results[0].lm_id == "LMFA00000001"
     assert "Fetching RefMet annotations for 1 metabolites from API" in caplog.text
     assert "RefMet API fetched" in caplog.text
+
+
+def test_refmet_batches_large_requests(monkeypatch):
+    names = ["A", "B", "C", "D", "E"]
+    monkeypatch.setenv("REFMET_BATCH_SIZE", "2")
+
+    calls = []
+
+    def fake_post(*args, **kwargs):
+        payload = kwargs["data"]["metabolite_name"]
+        requested_names = payload.split("\n") if payload else []
+        calls.append(requested_names)
+
+        lines = ["\t".join(["Input name", "Standardized name", "LM_ID"])]
+        for nm in requested_names:
+            lines.append("\t".join([nm, f"std-{nm}", f"LM{nm}"]))
+        return FakeResponse("\n".join(lines) + "\n")
+
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    results = RefMet.validate_metabolite_names(names)
+
+    assert isinstance(results, list)
+    assert [r.input_name for r in results] == names
+    assert [r.standardized_name for r in results] == [f"std-{n}" for n in names]
+    assert calls == [["A", "B"], ["C", "D"], ["E"]]
