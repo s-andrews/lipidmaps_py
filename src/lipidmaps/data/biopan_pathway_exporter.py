@@ -1525,15 +1525,9 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         lipid_lookup = self._build_lipid_lookup(resolved_dataset)
         grouped: "OrderedDict[str, OrderedDict[str, set[str]]]" = OrderedDict()
         for result, pathways in self._iter_pathway_results(result_set, reaction_lookup):
-            categories: List[str] = []
-            for pathway in pathways:
-                categories.extend(pathway.get("pathway_type", []))
-            ordered_categories: List[str] = []
-            seen = set()
-            for category in categories:
-                if category and category not in seen:
-                    ordered_categories.append(category)
-                    seen.add(category)
+            # Group/label by the readable pathway name (same key the graph edges use via
+            # _get_pathway_keys), not the raw Pathway-Ontology `pathway_type` array.
+            ordered_categories = self._get_pathway_keys(pathways)
             for category in ordered_categories:
                 category_bucket = grouped.setdefault(category, OrderedDict())
                 if level == "class":

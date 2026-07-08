@@ -237,7 +237,9 @@ def test_reaction_exporter_builds_pathway_assets(tmp_path):
         "lp_class_pathway_case_control_active_0.05_notpaired_tbl.json",
     )
 
-    assert tree == [{"text": "Glycerolipids and Glycerophospholipids", "children": [{"text": "PA"}, {"text": "PC"}]}]
+    # The tree groups by the readable pathway name (same key the graph edges use via
+    # _get_pathway_keys), not the raw Pathway-Ontology pathway_type.
+    assert tree == [{"text": "Phosphatidylcholine turnover", "children": [{"text": "PA"}, {"text": "PC"}]}]
     assert {node["data"]["label"] for node in graph["nodes"]} == {"PC", "PA"}
     assert graph["edges"][0]["data"]["id"] == "PCPA"
     assert highlight["nodes"] == "#pa,#pc"
