@@ -479,11 +479,18 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             infer_fa_from_lipids(lipid_names, include_mono_acyl=infer_mono_acyl),
         ) or get_common_fa_names()
 
-        facoa_names = self._ordered_union(
-            extract_facoa_from_reactions(dataset.reactions) if dataset.reactions else [],
-            measured_facoa,
-            infer_facoa_from_lipids(lipid_names, include_mono_acyl=infer_mono_acyl),
-        ) or get_common_facoa_names()
+        if measured_facoa:
+            # CoA species are explicitly present in the dataset: use exactly
+            # those, and do not auto-generate additional CoA from reactions or
+            # inferred acyl chains.
+            facoa_names = self._ordered_union(measured_facoa)
+        else:
+            # No CoA in the dataset: generate a possible CoA pool from reaction
+            # compounds + inferred acyl chains, falling back to common defaults.
+            facoa_names = self._ordered_union(
+                extract_facoa_from_reactions(dataset.reactions) if dataset.reactions else [],
+                infer_facoa_from_lipids(lipid_names, include_mono_acyl=infer_mono_acyl),
+            ) or get_common_facoa_names()
 
         return lipid_names, fa_names, facoa_names
 

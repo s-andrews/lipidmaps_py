@@ -225,15 +225,22 @@ def test_species_matching(dataset) -> None:
 
     facoa_from_reactions = extract_facoa_from_reactions(dataset.reactions) if dataset.reactions else []
     facoa_inferred = infer_facoa_from_lipids(lipid_names, include_mono_acyl=infer_mono_acyl)
-    facoa_names = _ordered_union(facoa_from_reactions, facoa_from_names, facoa_inferred)
-    if facoa_names:
-        logger.info(
-            f"CoA pool: {len(facoa_names)} species "
-            f"(reactions={len(facoa_from_reactions)}, dataset={len(facoa_from_names)}, inferred={len(facoa_inferred)})"
-        )
+    if facoa_from_names:
+        # CoA species are explicitly present in the dataset: use exactly those,
+        # and do not auto-generate additional CoA from reactions or inferred chains.
+        facoa_names = _ordered_union(facoa_from_names)
+        logger.info(f"CoA pool: {len(facoa_names)} dataset CoA species (generation skipped)")
     else:
-        facoa_names = get_common_facoa_names()
-        logger.info(f"Using {len(facoa_names)} common CoA species (no CoA in dataset)")
+        # No CoA in the dataset: generate a possible CoA pool.
+        facoa_names = _ordered_union(facoa_from_reactions, facoa_inferred)
+        if facoa_names:
+            logger.info(
+                f"CoA pool: {len(facoa_names)} generated species "
+                f"(reactions={len(facoa_from_reactions)}, inferred={len(facoa_inferred)})"
+            )
+        else:
+            facoa_names = get_common_facoa_names()
+            logger.info(f"Using {len(facoa_names)} common CoA species (no CoA in dataset)")
     
     # Define some common class reactions to test
     test_reactions = [
