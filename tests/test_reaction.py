@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lipidmaps.data.models.reaction import ReactionChecker
+from lipidmaps.data.models.reaction import CompoundComponent, ReactionChecker, ReactionData
 
 
 class FakeResponse:
@@ -99,3 +99,36 @@ def test_check_reactions_preserves_genes_for_generic_reactions(monkeypatch):
     ]
     assert [component.compound_name for component in reaction.reactants] == ["Sphingomyelin"]
     assert [component.compound_name for component in reaction.products] == ["Ceramide"]
+
+
+def test_reaction_data_derives_is_shunt_from_pathway_name():
+    reaction = ReactionData(
+        pathways=[{"pathway_name": "Cholesterol biosynthesis (Shunt)"}]
+    )
+    assert reaction.is_shunt is True
+
+
+def test_reaction_data_honours_structured_is_shunt():
+    reaction = ReactionData(pathways=[{"is_shunt": True}])
+    assert reaction.is_shunt is True
+
+
+def test_reaction_data_not_shunt_for_ordinary_pathway():
+    reaction = ReactionData(
+        pathways=[{"pathway_name": "Phosphatidylcholine turnover"}]
+    )
+    assert reaction.is_shunt is False
+
+
+def test_filter_reaction_preserves_is_shunt():
+    reaction = ReactionData(
+        reactants=[
+            CompoundComponent(compound_type="lm_main", compound_name="lanosterol"),
+            CompoundComponent(compound_type="lm_notlipids", compound_name="water"),
+        ],
+        products=[CompoundComponent(compound_type="lm_main", compound_name="cholesterol")],
+        pathways=[{"pathway_name": "Cholesterol biosynthesis (Shunt)"}],
+    )
+    assert reaction.is_shunt is True
+    filtered = reaction.filter_reaction(only_lipid_components=True)
+    assert filtered.is_shunt is True

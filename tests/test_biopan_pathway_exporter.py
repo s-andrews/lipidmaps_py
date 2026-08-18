@@ -509,3 +509,82 @@ def test_reaction_data_preserves_explicit_rhea_id():
     )
 
     assert reaction.list_rhea_ids() == ["18766"]
+
+
+def make_shunt_sterol_dataset() -> LipidDataset:
+    """A dataset with two sterol species linked by a shunt reaction."""
+    dataset = LipidDataset(
+        samples=[
+            SampleMetadata(sample_name="ctrl_1", group="control"),
+            SampleMetadata(sample_name="ctrl_2", group="control"),
+            SampleMetadata(sample_name="ctrl_3", group="control"),
+            SampleMetadata(sample_name="case_1", group="case"),
+            SampleMetadata(sample_name="case_2", group="case"),
+            SampleMetadata(sample_name="case_3", group="case"),
+        ],
+        lipids=[
+            QuantifiedLipid(input_name="lanosterol", values={"ctrl_1": 6.0, "ctrl_2": 6.5, "ctrl_3": 7.0, "case_1": 12.0, "case_2": 11.0, "case_3": 10.0}),
+            QuantifiedLipid(input_name="cholesterol", values={"ctrl_1": 12.0, "ctrl_2": 11.0, "ctrl_3": 10.0, "case_1": 3.0, "case_2": 2.5, "case_3": 2.0}),
+        ],
+    )
+    dataset.reactions = [
+        ReactionData(
+            reactants=[CompoundComponent(compound_name="lanosterol", compound_headgroup="lanosterol")],
+            products=[CompoundComponent(compound_name="cholesterol", compound_headgroup="cholesterol")],
+            pathways=[
+                {
+                    "pathway_name": "Cholesterol biosynthesis (Shunt)",
+                    "pathway_type": ["Lipid biosynthesis"],
+                }
+            ],
+        )
+    ]
+    return dataset
+
+
+def test_shunt_reaction_flags_class_reaction_and_edges():
+    from lipidmaps.data.models.species_reaction import ReactionType
+
+    exporter = BioPANPathwayExporter(dataset=make_shunt_sterol_dataset())
+    result_set, reaction_lookup = exporter.build_reaction_match_set()
+
+    result = result_set.get_result("lanosterol", "cholesterol")
+    assert result is not None
+    assert result.class_reaction.is_shunt is True
+    assert result.class_reaction.reaction_type == ReactionType.NAMED_COMPOUND
+    assert result.pairs_matched == 1
+
+    edges = exporter._build_reaction_edges(
+        disease_group="case",
+        control_group="control",
+        level="class",
+        dataset=exporter._get_dataset(None),
+        result_set=result_set,
+        reaction_lookup=reaction_lookup,
+        paired=False,
+        mode="active",
+    )
+    assert edges, "expected a shunt edge"
+    edge = edges[0]
+    assert edge["is_shunt"] is True
+    assert any(p.get("is_shunt") for p in edge["pathways"])
+    assert "[shunt]" in edge["pathway_label"]
+
+
+def test_non_shunt_edge_not_flagged():
+    exporter = BioPANPathwayExporter(dataset=make_pathway_dataset())
+    result_set, reaction_lookup = exporter.build_reaction_match_set()
+    edges = exporter._build_reaction_edges(
+        disease_group="case",
+        control_group="control",
+        level="class",
+        dataset=exporter._get_dataset(None),
+        result_set=result_set,
+        reaction_lookup=reaction_lookup,
+        paired=False,
+        mode="active",
+    )
+    assert edges
+    for edge in edges:
+        assert edge["is_shunt"] is False
+        assert "[shunt]" not in edge["pathway_label"]

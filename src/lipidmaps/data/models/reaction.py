@@ -5,6 +5,7 @@ from typing import List, Optional, Union, Dict, Any
 
 from pydantic import ConfigDict, Field, field_validator
 from .base import LipidmapsBaseModel
+from ..utils.shunt import reaction_is_shunt
 logger = logging.getLogger(__name__)
 
 
@@ -45,6 +46,10 @@ class ReactionData(LipidmapsBaseModel):
     reaction_name: Optional[str] = None
     reaction_id: Optional[int] = None
     reaction_type: Optional[str] = None
+    # True when this reaction belongs to a shunt / alternate-route pathway.
+    # Derived from ``pathways`` in ``model_post_init`` (or honoured if the API
+    # sends it directly). See ``lipidmaps.data.utils.shunt``.
+    is_shunt: bool = False
     # Detailed evaluation produced by `ReactionEvaluator.evaluate_reaction()`.
     # Contains keys like `possible` (bool), `explanation` (str), and any
     # additional diagnostic `details` the evaluator may include.
@@ -114,7 +119,11 @@ class ReactionData(LipidmapsBaseModel):
         return ordered
 
     def model_post_init(self, __context: Any) -> None:
-        """Populate normalized Rhea identifiers from curations when present."""
+        """Populate normalized Rhea identifiers and the shunt flag."""
+
+        # Derive the shunt flag from pathway metadata (honouring any structured
+        # value the API already provided).
+        self.is_shunt = self.is_shunt or reaction_is_shunt(self.pathways)
 
         if self.list_rhea_ids():
             return
@@ -216,7 +225,8 @@ class ReactionData(LipidmapsBaseModel):
             curations=self.curations,
             rhea_id=self.rhea_id,
             pathways=self.pathways,
-            reaction_type=self.reaction_type
+            reaction_type=self.reaction_type,
+            is_shunt=self.is_shunt,
         )
 
 

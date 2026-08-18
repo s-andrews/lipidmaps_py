@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Set
 from pydantic import Field, computed_field
 
 from .base import LipidmapsBaseModel
-from ..utils.chain_parser import LipidStructure, AcylChain
+from ..utils.chain_parser import ChainParser, LipidStructure, AcylChain, StructureLevel
 
 
 class CompoundRequirement(str, Enum):
@@ -30,6 +30,18 @@ class ReactionType(str, Enum):
     SPHINGO_FACOA_ADD = "sphingo_facoa_addition"  # Sphingolipid FACoA add (SPB -> Cer)
     CARDIOLIPIN = "cardiolipin"             # Special CL handling (all-to-all)
     DESATURATION = "desaturation"           # dhCer -> Cer type reactions
+    NAMED_COMPOUND = "named_compound"        # Pair by compound identity, not composition
+
+
+# Named (non-chain) molecular species whose reactions change composition and so
+# cannot be paired by acyl composition -- primarily sterol biosynthesis
+# intermediates. Matched by identity/presence instead. Lower-cased for lookup.
+NAMED_COMPOUND_CLASSES = frozenset({
+    "st", "cholesterol", "lanosterol", "desmosterol", "zymosterol",
+    "7-dehydrocholesterol", "7-dhc", "7-dehydrodesmosterol", "dihydrolanosterol",
+    "lathosterol", "zymostenol", "sq", "squalene", "2_3-epoxysq",
+    "2,3-epoxysqualene", "2_3;24_25-diepoxysq",
+})
 
 
 class ClassReaction(LipidmapsBaseModel):
@@ -49,7 +61,12 @@ class ClassReaction(LipidmapsBaseModel):
     compound_require: CompoundRequirement = Field(default=CompoundRequirement.NONE)
     acyl_add: bool = Field(default=False, description="True if reaction adds acyl chain")
     is_molspecies: bool = Field(default=False, description="True if described at molecular species level")
-    
+
+    # Label: True if this reaction is part of a shunt / alternate-route pathway.
+    # Orthogonal to the mechanism (reaction_type); used for display and to route
+    # named-compound (sterol) reactions to identity-based matching.
+    is_shunt: bool = Field(default=False, description="True if a shunt / alternate-route reaction")
+
     # Associated genes
     genes: List[str] = Field(default_factory=list)
     
@@ -77,7 +94,14 @@ class ClassReaction(LipidmapsBaseModel):
                 return ReactionType.SPHINGO_FA_RELEASE
             elif self.compound_require == CompoundRequirement.FACOA:
                 return ReactionType.SPHINGO_FACOA_ADD
-        
+
+        # Named-compound (sterol / shunt) reactions change composition and have
+        # no acyl chains, so they must be paired by compound identity rather than
+        # by composition. Only diverts named (non-chain) species; ordinary
+        # chain-bearing reactions fall through to the mechanism checks below.
+        if self._is_named_compound_reaction():
+            return ReactionType.NAMED_COMPOUND
+
         # Check for desaturation (dh -> non-dh)
         if (self.reactant_class.startswith("dh") and 
             not self.product_class.startswith("dh") and
@@ -91,6 +115,28 @@ class ClassReaction(LipidmapsBaseModel):
             return ReactionType.FA_RELEASE
         else:  # FACOA
             return ReactionType.FACOA_ADDITION
+
+    def _is_named_class(self, name: str) -> bool:
+        """True if a class name denotes a named, non-chain molecular species.
+
+        A class is "named" when it is in the sterol/named allow-set, or -- for a
+        shunt reaction -- when it parses to the MOLECULAR structure level (no
+        acyl chains). The shunt gate keeps this from diverting ordinary
+        chain-bearing classes (PC, Cer, ...) which also parse MOLECULAR when bare.
+        """
+        if not name:
+            return False
+        if name.lower() in NAMED_COMPOUND_CLASSES:
+            return True
+        if self.is_shunt:
+            species = ChainParser().parse(name)
+            return bool(species and species.level == StructureLevel.MOLECULAR)
+        return False
+
+    def _is_named_compound_reaction(self) -> bool:
+        """True if both reactant and product are named (non-chain) species."""
+        return (self._is_named_class(self.reactant_class)
+                and self._is_named_class(self.product_class))
 
 
 class SpeciesReactionPair(LipidmapsBaseModel):

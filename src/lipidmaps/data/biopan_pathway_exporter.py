@@ -16,7 +16,8 @@ from .matching import match_pathway_reactions
 from .models.base import LipidmapsBaseModel
 from .models.reaction import ReactionData
 from .models.sample import LipidDataset, QuantifiedLipid
-from .models.species_reaction import ClassReaction, CompoundRequirement, PathwayReactionSet, ReactionMatchResult, SpeciesReactionPair
+from .models.species_reaction import ClassReaction, CompoundRequirement, PathwayReactionSet, ReactionMatchResult, ReactionType, SpeciesReactionPair
+from .utils.shunt import is_shunt_pathway
 from .models.uniprot import UniProtRheaClient
 from .utils.chain_parser import (
     extract_facoa_from_reactions,
@@ -406,19 +407,28 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
 
         def register(reaction, reactant_class, product_class, compound_require, acyl_add):
             key = f"{reactant_class},{product_class}".lower()
+            reaction_is_shunt = bool(getattr(reaction, "is_shunt", False))
             if key not in reaction_map:
-                reaction_map[key] = ClassReaction(
+                class_reaction = ClassReaction(
                     reactant_class=reactant_class,
                     product_class=product_class,
                     reaction_class="Matched reactions",
                     compound_require=compound_require,
                     acyl_add=acyl_add,
                     genes=self._get_reaction_gene_symbols(reaction),
+                    is_shunt=reaction_is_shunt,
                 )
+                reaction_map[key] = class_reaction
             else:
-                merged = reaction_map[key].genes + self._get_reaction_gene_symbols(reaction)
+                class_reaction = reaction_map[key]
+                # The class edge is a shunt if any contributing reaction is.
+                class_reaction.is_shunt = class_reaction.is_shunt or reaction_is_shunt
+                merged = class_reaction.genes + self._get_reaction_gene_symbols(reaction)
                 seen = set()
-                reaction_map[key].genes = [gene for gene in merged if gene and not (gene in seen or seen.add(gene))]
+                class_reaction.genes = [gene for gene in merged if gene and not (gene in seen or seen.add(gene))]
+            # Named-compound (sterol / shunt) reactions are described at the
+            # molecular-species level; mirror that in the flag for downstream use.
+            class_reaction.is_molspecies = class_reaction.reaction_type == ReactionType.NAMED_COMPOUND
             reaction_lookup.setdefault(key, []).append(reaction)
 
         for reaction in getattr(dataset, "reactions", []) or []:
@@ -1159,6 +1169,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 ordered.append({
                     "pathway_name": pathway_name,
                     "pathway_type": pathway_types,
+                    "is_shunt": is_shunt_pathway(entry),
                 })
         return ordered
 
@@ -1173,6 +1184,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 label = f"{pathway_name} ({'/'.join(categories)})"
             else:
                 label = pathway_name or "/".join(categories)
+            if label and entry.get("is_shunt"):
+                label = f"{label} [shunt]"
             if label and label not in seen:
                 labels.append(label)
                 seen.add(label)
@@ -1232,6 +1245,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             edge_pathways = self._get_result_pathways(result, reaction_lookup)
             pathway_keys = self._get_pathway_keys(edge_pathways)
             pathway_label = self._format_pathway_labels(edge_pathways)
+            edge_is_shunt = any(p.get("is_shunt") for p in edge_pathways) or result.class_reaction.is_shunt
 
             if level == "class":
                 reactant = result.class_reaction.reactant_class
@@ -1250,6 +1264,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                     "pathways": edge_pathways,
                     "pathway_keys": pathway_keys,
                     "pathway_label": pathway_label,
+                    "is_shunt": edge_is_shunt,
                 })
                 continue
 
@@ -1270,6 +1285,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                     "pathways": edge_pathways,
                     "pathway_keys": pathway_keys,
                     "pathway_label": pathway_label,
+                    "is_shunt": edge_is_shunt,
                 })
         return edges
 
