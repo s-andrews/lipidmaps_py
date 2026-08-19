@@ -1,19 +1,122 @@
+import logging
+import tempfile
+
 import streamlit as st
 import os
 import sys
 import pandas as pd
 import plotly.express as px
-from lipidmaps.data.data_manager import DataManager
-from lipidmaps.data.models import reaction
-from lipidmaps.data.quantitation import QuantitationAnalyzer, NormalizationMethod
 
 # ---------------------- BOOTSTRAP ----------------------
 dir_path = os.path.dirname(os.path.realpath(__file__))
+project_root = os.path.abspath(os.path.join(dir_path, '..'))
 src_path = os.path.abspath(os.path.join(dir_path, '../src'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+from lipidmaps.logging_utils import configure_logging  # type: ignore[reportMissingImports]
+from lipidmaps.data.biopan_pathway_exporter import BioPANPathwayExporter
+from lipidmaps.data.quantitation import QuantitationAnalyzer, NormalizationMethod
+from scripts.biopan_ui import render_biopan_explorer
+
+
+logger = logging.getLogger(__name__)
+
+
+@st.cache_data(show_spinner=False)
+def _read_tabular_file_cached(file_path: str, mtime: float) -> pd.DataFrame:
+    # `mtime` participates in the cache key so edits to the same path invalidate it.
+    _, ext = os.path.splitext(file_path)
+    if ext.lower() in [".tsv", ".txt"]:
+        return pd.read_csv(file_path, sep="\t")
+    return pd.read_csv(file_path)
+
+
+def _read_tabular_file(file_path: str) -> pd.DataFrame:
+    try:
+        mtime = os.path.getmtime(file_path)
+    except OSError:
+        mtime = 0.0
+    return _read_tabular_file_cached(file_path, mtime)
+
+
+def _load_metadata_table(file_path: str) -> pd.DataFrame:
+    metadata_df = _read_tabular_file(file_path).copy()
+    metadata_df.columns = [str(column).strip() for column in metadata_df.columns]
+
+    required_columns = {"sample_name", "group"}
+    missing_columns = sorted(required_columns.difference(metadata_df.columns))
+    if missing_columns:
+        raise ValueError(
+            "Metadata file must contain required columns: sample_name and group"
+        )
+
+    metadata_df["sample_name"] = metadata_df["sample_name"].astype(str).str.strip()
+    metadata_df["group"] = metadata_df["group"].astype(str).str.strip()
+
+    if "label" in metadata_df.columns:
+        metadata_df["label"] = metadata_df["label"].apply(
+            lambda value: value.strip() if isinstance(value, str) else value
+        )
+
+    empty_sample_names = metadata_df["sample_name"].eq("")
+    empty_groups = metadata_df["group"].eq("")
+    if empty_sample_names.any() or empty_groups.any():
+        raise ValueError("Metadata file rows must include non-empty sample_name and group values")
+
+    duplicate_samples = metadata_df[metadata_df["sample_name"].duplicated()]["sample_name"].tolist()
+    if duplicate_samples:
+        duplicate_text = ", ".join(sorted(set(duplicate_samples)))
+        raise ValueError(f"Metadata file contains duplicate sample_name values: {duplicate_text}")
+
+    return metadata_df
+
+
+def _apply_metadata_to_dataset(dataset, metadata_df: pd.DataFrame) -> pd.DataFrame:
+    dataset_samples = [sample.sample_name for sample in getattr(dataset, "samples", []) or []]
+    metadata_samples = metadata_df["sample_name"].tolist()
+
+    metadata_only = sorted(set(metadata_samples).difference(dataset_samples))
+    dataset_only = sorted(set(dataset_samples).difference(metadata_samples))
+    if metadata_only or dataset_only:
+        problems = []
+        if metadata_only:
+            problems.append("metadata-only sample_name values: " + ", ".join(metadata_only))
+        if dataset_only:
+            problems.append("dataset samples missing from metadata: " + ", ".join(dataset_only))
+        raise ValueError("Metadata file does not match dataset samples: " + "; ".join(problems))
+
+    metadata_lookup = metadata_df.set_index("sample_name").to_dict(orient="index")
+    for sample in getattr(dataset, "samples", []) or []:
+        row = metadata_lookup[sample.sample_name]
+        sample.group = row["group"]
+        if "label" in row and pd.notna(row["label"]):
+            sample.label = str(row["label"]).strip() or None
+
+    return metadata_df
+
+
+def _reaction_gene_exporter(dataset) -> BioPANPathwayExporter:
+    """Create an exporter used to resolve reaction gene symbols consistently."""
+
+    return BioPANPathwayExporter(dataset=dataset)
+
+
+def _resolved_reaction_genes(exporter: BioPANPathwayExporter, reaction_obj) -> str:
+    genes = exporter._get_reaction_gene_symbols(reaction_obj)
+    return ", ".join(genes) if genes else "N/A"
+
+
+def _reaction_gene_source(reaction_obj) -> str:
+    rhea_ids = reaction_obj.list_rhea_ids() if hasattr(reaction_obj, "list_rhea_ids") else []
+    if rhea_ids:
+        return "UniProt via Rhea"
+    return "LIPID MAPS payload"
+
 def main():
+    configure_logging()
     st.set_page_config(
         page_title="LIPID MAPS Quantitative Data Demo",
         page_icon="LM",
@@ -22,6 +125,8 @@ def main():
     )
 
     st.header("Quantitative Data Demo")
+    if st.session_state.get("processed"):
+        st.info("BioPAN graph and ranked-table visuals are available in the `BioPAN` tab after processing a dataset.")
     
     # Display file being analyzed if processed
     if st.session_state.get("processed") and st.session_state.get("_last_file_used"):
@@ -36,9 +141,12 @@ def main():
         Process the file to see standardized lipid annotations.
         """)
 
+    processing_status_placeholder = st.empty()
+
     # ---------------------- SESSION DEFAULTS ----------------------
     defaults = {
         "file_to_use": None,
+        "metadata_file_to_use": None,
         "dataset": None,
         "processed": False,
         "validation_issues": [],
@@ -51,6 +159,8 @@ def main():
         "show_validation_section": True,
         "reactions": [],              # persistent reactions
         "taxonomy_group": "all",
+        "refmet_failed": False,
+        "sample_metadata_table": None,
     }
 
     for k, v in defaults.items():
@@ -58,8 +168,6 @@ def main():
 
     # ---------------------- SIDEBAR ----------------------
     processed = False
-    generic_lm_id_button = False
-    fetch_reactions_button = False
 
     with st.sidebar:
         st.title("LIPID MAPS API")
@@ -76,11 +184,13 @@ def main():
 
             selected_file = st.selectbox("Select test data", ["(none)"] + test_files)
             uploaded_file = st.file_uploader("Or upload CSV", type=["csv", "tsv"])
+            uploaded_metadata_file = st.file_uploader("Optional metadata file", type=["csv", "tsv"], key="metadata_uploader")
 
             file_to_use = None
             file_name = None
+            metadata_file_to_use = None
+            metadata_file_name = None
             if uploaded_file:
-                import tempfile
                 with tempfile.NamedTemporaryFile(delete=False) as tmp:
                     tmp.write(uploaded_file.read())
                     file_to_use = tmp.name
@@ -90,12 +200,21 @@ def main():
                 file_to_use = os.path.join(test_data_dir, selected_file)
                 file_name = selected_file
                 uploaded_file = None
+
+            if uploaded_metadata_file:
+                metadata_suffix = os.path.splitext(uploaded_metadata_file.name)[1] or ".csv"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=metadata_suffix) as tmp:
+                    tmp.write(uploaded_metadata_file.read())
+                    metadata_file_to_use = tmp.name
+                    metadata_file_name = uploaded_metadata_file.name
             
             prev_file_name = st.session_state.get("_last_file_used")
+            prev_metadata_name = st.session_state.get("_last_metadata_file_used")
             st.session_state["file_to_use"] = file_to_use
+            st.session_state["metadata_file_to_use"] = metadata_file_to_use
 
             # If the chosen file changed, reset dependent session state to sensible defaults
-            if file_name != prev_file_name:
+            if file_name != prev_file_name or metadata_file_name != prev_metadata_name:
                 reset_keys = [
                     "dataset",
                     "processed",
@@ -108,6 +227,7 @@ def main():
                     "show_all_issues",
                     "show_validation_section",
                     "reactions",
+                    "sample_metadata_table",
                 ]
 
                 for key in reset_keys:
@@ -122,6 +242,7 @@ def main():
                     st.session_state.pop("selected_lipid_idx", None)
 
                 st.session_state["_last_file_used"] = file_name
+                st.session_state["_last_metadata_file_used"] = metadata_file_name
 
         # ---- OPTIONS ----
         with st.expander("Options", expanded=True):
@@ -212,10 +333,12 @@ def main():
                     pass
             else:
                 st.error(f"Reactions file not found: {mod_path}")
+                logger.error("Reactions page module not found: %s", mod_path)
         except Exception as e:
             st.error(f"Failed to load All Reactions page: {e}")
+            logger.exception("Failed to load All Reactions page")
         return
-    tab_labels = ["Preview", "Processed", "Reactions", "Validation"]
+    tab_labels = ["Preview", "Processed", "BioPAN", "Reactions", "Validation", "Parser"]
     tabs = st.tabs(tab_labels)
 
     tab_index = {name.lower(): i for i, name in enumerate(tab_labels)}
@@ -247,22 +370,81 @@ def main():
                 st.dataframe(df, hide_index=True)
             except Exception as e:
                 st.error(f"Error reading file: {e}")
+                logger.exception("Failed to preview input file %s", fp)
+
+        metadata_fp = st.session_state.get("metadata_file_to_use")
+        if metadata_fp:
+            st.subheader("Preview of Metadata File")
+            try:
+                metadata_df = _load_metadata_table(metadata_fp)
+                st.write(f"Rows: {metadata_df.shape[0]}, Columns: {metadata_df.shape[1]}")
+                st.dataframe(metadata_df, hide_index=True)
+            except Exception as e:
+                st.error(f"Error reading metadata file: {e}")
+                logger.exception("Failed to preview metadata file %s", metadata_fp)
 
     # --------------------------------------------------------------
     # PROCESSING ACTION
     # --------------------------------------------------------------
     if processed and st.session_state["file_to_use"]:
+        status = processing_status_placeholder.status(
+            "Starting data processing...",
+            expanded=True,
+        )
         try:
             fp = st.session_state["file_to_use"]
+            metadata_fp = st.session_state.get("metadata_file_to_use")
+            logger.info("Processing dataset from %s", fp)
+
+            status.write(f"Input file: {os.path.basename(fp)}")
+            if metadata_fp:
+                status.write(f"Metadata file: {os.path.basename(metadata_fp)}")
+            status.write(
+                "Options: "
+                f"validate={validate_data}, refmet={use_refmet}, "
+                f"headgroups={use_headgroups}, reactions={fetch_reactions}, "
+                f"transpose={transpose_file}, labels={has_labels}, taxonomy={taxonomy_group}"
+            )
+            status.update(
+                label="Processing lipid table, annotations, and optional reaction data...",
+                state="running",
+            )
 
             from lipidmaps import process_csv
-            dataset = process_csv(fp, validate_data=validate_data, use_refmet=use_refmet, use_headgroups=use_headgroups, taxonomy_group=taxonomy_group, transpose_file=transpose_file, has_labels=has_labels)
+            dataset = process_csv(
+                fp,
+                validate_data=validate_data,
+                use_refmet=use_refmet,
+                use_headgroups=use_headgroups,
+                fetch_reactions=fetch_reactions,
+                taxonomy_group=taxonomy_group,
+                transpose_file=transpose_file,
+                has_labels=has_labels,
+            )
+            status.update(label="Dataset is generated ...", state="running")
+            metadata_df = None
+            if metadata_fp:
+                status.update(label="Applying sample metadata...", state="running")
+                metadata_df = _load_metadata_table(metadata_fp)
+                metadata_df = _apply_metadata_to_dataset(dataset, metadata_df)
+                st.session_state["sample_metadata_table"] = metadata_df.to_dict(orient="records")
+            else:
+                st.session_state["sample_metadata_table"] = None
+
+            status.update(label="Saving processed dataset to the session...", state="running")
+
             st.session_state["dataset"] = dataset
             st.session_state["processed"] = True
             st.session_state["reactions"] = []  # clear old reactions
-            st.write(f"validate_data: {validate_data}")
+            logger.info(
+                "Dataset processed: %s lipids, %s samples, refmet_failed=%s",
+                len(getattr(dataset, "lipids", []) or []),
+                len(getattr(dataset, "samples", []) or []),
+                getattr(dataset, "refmet_failed", False),
+            )
             # Validation report handling
             if validate_data and getattr(dataset, "validation_report", None):
+                status.update(label="Collecting validation results...", state="running")
                 vr = dataset.validation_report
                 st.session_state["validation_passed"] = vr.passed
                 st.session_state["validation_issues"] = vr.issues or []
@@ -272,10 +454,57 @@ def main():
                 st.session_state["has_validation_report"] = False
                 st.session_state["validation_issues"] = []
 
+            # Track RefMet API status
+            st.session_state["refmet_failed"] = getattr(dataset, "refmet_failed", False)
+
+            # Auto-refresh headgroup -> lipid-index mapping for UI convenience
+            try:
+                status.update(label="Preparing derived views for the UI...", state="running")
+                hg_map_idx = {}
+                for i, lipid in enumerate(dataset.lipids):
+                    try:
+                        s = lipid.structure
+                    except Exception:
+                        s = None
+                    if s is None:
+                        continue
+                    hg = getattr(s, "headgroup", None) or "Unknown"
+                    hg_map_idx.setdefault(hg, []).append(i)
+                st.session_state["hg_map_idx"] = hg_map_idx
+            except Exception:
+                # Non-fatal; mapping is only a convenience for the UI
+                pass
+
+            # If labels were supplied in the CSV, prefer them for sample groups when no metadata file is provided
+            try:
+                if has_labels and metadata_fp is None:
+                    for s in getattr(dataset, "samples", []) or []:
+                        lbl = getattr(s, "label", None)
+                        if lbl:
+                            s.group = lbl
+            except Exception:
+                # non-fatal UI convenience
+                pass
+
+            status.update(
+                label=(
+                    f"Processing complete: {len(getattr(dataset, 'lipids', []) or [])} lipids, "
+                    f"{len(getattr(dataset, 'samples', []) or [])} samples"
+                ),
+                state="complete",
+                expanded=False,
+            )
+
             st.rerun()   # important
 
         except Exception as e:
+            status.update(
+                label=f"Processing failed: {e}",
+                state="error",
+                expanded=True,
+            )
             st.error(f"Error processing file: {e}")
+            logger.exception("Error processing file in Streamlit demo")
 
     # --------------------------------------------------------------
     # PROCESSED TAB — ALWAYS RENDER
@@ -287,6 +516,13 @@ def main():
             processed_table_container.info("No processed dataset yet.")
         else:
             processed_table_container.subheader("Processed Lipid Annotations")
+
+            # Show warning if RefMet API failed
+            if st.session_state.get("refmet_failed"):
+                processed_table_container.warning(
+                    "RefMet API request failed. Lipid standardization and classification data may be incomplete. "
+                    "This can happen due to network issues or API unavailability. You can try reprocessing later."
+                )
 
             # Build DataFrame and keep mapping to lipid objects
             lipid_rows = []
@@ -307,6 +543,13 @@ def main():
             processed_table_container.write(f"Rows: {df_proc.shape[0]}, Columns: {df_proc.shape[1]}")
             # Show the table (read-only) and provide a selection control underneath.
             processed_table_container.dataframe(df_proc, hide_index=True)
+            processed_table_container.download_button(
+                "Download annotations CSV",
+                data=df_proc.to_csv(index=False).encode("utf-8"),
+                file_name="processed_annotations.csv",
+                mime="text/csv",
+                key="download_processed_annotations",
+            )
 
             search_container = st.container(border=True)  # reset container for additional content below the table
             # ---- Search field for quick query testing ----
@@ -361,7 +604,6 @@ def main():
 
                     # show suggested Query code for reproducing the search
                     try:
-                        from lipidmaps.data.models.query import attr_contains
                         q_code = " | ".join([
                             "attr_contains('input_name', '%s')" % search_q,
                             "attr_contains('standardized_name', '%s')" % search_q,
@@ -418,7 +660,52 @@ def main():
 
             # Simple per-sample listing using dataset helper
             st.subheader("Per-sample lipid values")
-            sample_opts = dataset.list_sample_names() if getattr(dataset, 'samples', None) else []
+            # Show experimental conditions (groups) and allow filtering samples by condition
+            try:
+                conds = sorted({(s.group or "Unknown") for s in (dataset.samples or [])})
+            except Exception:
+                conds = []
+
+            cond_sel = None
+            if conds:
+                cond_sel = st.selectbox("Filter by condition (group)", ["(all)"] + conds, key="condition_select")
+
+            # Build sample options, optionally filtered by selected condition
+            try:
+                if cond_sel and cond_sel != "(all)":
+                    sample_opts = [s.sample_name for s in dataset.samples if (s.group or "Unknown") == cond_sel]
+                else:
+                    sample_opts = dataset.list_sample_names() if getattr(dataset, 'samples', None) else []
+            except Exception:
+                sample_opts = dataset.list_sample_names() if getattr(dataset, 'samples', None) else []
+
+            # If labels were read from CSV, display them alongside sample names
+            try:
+                sample_rows = []
+                metadata_records = st.session_state.get("sample_metadata_table") or []
+                metadata_lookup = {
+                    row["sample_name"]: row for row in metadata_records if "sample_name" in row
+                }
+                for s in (dataset.samples or []):
+                    if sample_opts and s.sample_name not in sample_opts:
+                        continue
+                    row = {
+                        "sample_name": s.sample_name,
+                        "group": getattr(s, 'group', None),
+                        "label": getattr(s, 'label', None),
+                    }
+                    extra_metadata = metadata_lookup.get(s.sample_name, {})
+                    for key, value in extra_metadata.items():
+                        if key in {"sample_name", "group", "label"}:
+                            continue
+                        row[key] = value
+                    sample_rows.append(row)
+                if sample_rows:
+                    st.write("Sample metadata")
+                    st.dataframe(pd.DataFrame(sample_rows), hide_index=True)
+            except Exception:
+                pass
+
             if sample_opts:
                 sample_sel = st.selectbox("Select sample to list lipid values", sample_opts, key="sample_list_select")
                 data = dataset.get_lipid_values_for_samples(sample_sel)
@@ -428,19 +715,19 @@ def main():
                 except Exception:
                     df_vals = pd.DataFrame(data)
 
-                    if df_vals.empty:
-                        st.info(f"No lipid values for sample {sample_sel}.")
-                    else:
-                        fig = px.bar(
-                            df_vals,
-                            x="input_name",
-                            y="value",
-                            title=f"Lipid values for sample {sample_sel}",
-                            color="input_name",
-                            color_discrete_sequence=px.colors.qualitative.Plotly,
-                        )
-                        fig.update_layout(xaxis_title="Lipid", yaxis_title="Value", xaxis_tickangle=-45)
-                        st.plotly_chart(fig, use_container_width=True, key="sample_lipid_bar_chart")
+                if df_vals.empty:
+                    st.info(f"No lipid values for sample {sample_sel}.")
+                else:
+                    fig = px.bar(
+                        df_vals,
+                        x="input_name",
+                        y="value",
+                        title=f"Lipid values for sample {sample_sel}",
+                        color="input_name",
+                        color_discrete_sequence=px.colors.qualitative.Plotly,
+                    )
+                    fig.update_layout(xaxis_title="Lipid", yaxis_title="Value", xaxis_tickangle=-45)
+                    st.plotly_chart(fig, use_container_width=True, key="sample_lipid_bar_chart")
             else:
                 st.info("No samples available in dataset.")
 
@@ -522,9 +809,7 @@ def main():
             # ---------------------- NORMALIZATION ----------------------
             st.subheader("Normalization")
             try:
-                from lipidmaps.data.quantitation import NormalizationMethod, QuantitationAnalyzer
                 norm_methods = [m for m in NormalizationMethod]
-                method_labels = {m: m.value for m in norm_methods}
 
                 sel_method = st.selectbox("Normalization method", options=norm_methods, format_func=lambda m: m.value, key="norm_method_select")
 
@@ -573,6 +858,9 @@ def main():
                         st.info(desc)
                 except Exception:
                     pass
+
+    # Parser tab moved to avoid interfering with surrounding try/except blocks.
+    # The interactive parser UI will be rendered just before the Validation tab.
 
                 internal_std = None
                 if sel_method == NormalizationMethod.INTERNAL_STANDARD:
@@ -666,6 +954,20 @@ def main():
                                 st.download_button("Download normalized CSV", data=csv_bytes, file_name="normalized.csv", mime="text/csv")
                             except Exception:
                                 pass
+                            # heatmap of the normalized matrix (lipids x samples)
+                            try:
+                                numeric_norm = df_norm.select_dtypes(include="number")
+                                if not numeric_norm.empty:
+                                    heat = px.imshow(
+                                        numeric_norm,
+                                        aspect="auto",
+                                        color_continuous_scale="RdBu_r",
+                                        title="Normalized values heatmap",
+                                    )
+                                    heat.update_layout(xaxis_title="Sample", yaxis_title="Lipid")
+                                    st.plotly_chart(heat, use_container_width=True, key="normalized_heatmap")
+                            except Exception:
+                                pass
                     except Exception as e:
                         st.error(f"Normalization failed: {e}")
             except Exception:
@@ -723,80 +1025,36 @@ def main():
                     st.plotly_chart(fig, use_container_width=True, key="neither_lm_id_found_distribution")
 
 
-    # --------------------------------------------------------------
-    # GENERIC LMID ASSIGNMENT
-    # --------------------------------------------------------------
-    if generic_lm_id_button and st.session_state["dataset"] is not None:
-        ds = st.session_state["dataset"]
-        updated = ds.fill_missing_lm_ids_from_headgroups()
-        st.session_state["generic_lm_id_assigned"] = True
-        st.success(f"Updated {updated} lipids using headgroup mapping.")
-        st.rerun()  # refresh processed page
-
+    with tabs[tab_index["biopan"]]:
+        dataset = st.session_state.get("dataset")
+        if dataset is None:
+            st.info("Process a dataset first to open the BioPAN reaction explorer.")
+        elif not getattr(dataset, "reactions", None):
+            st.info("This dataset has no fetched reactions yet, so the BioPAN view cannot build tables or graphs.")
+        else:
+            render_biopan_explorer(dataset, tab_key_prefix="biopan_tab")
 
     # --------------------------------------------------------------
     # REACTIONS TAB
     # --------------------------------------------------------------
 
-    if fetch_reactions_button and st.session_state["dataset"] is not None:
-        ds = st.session_state["dataset"]
-
-        try:
-            tg = st.session_state.get("taxonomy_group", None)   
-            if tg and tg != "all":
-                reactions = ds.fetch_reactions_by_lm_id(
-                    reaction_type="species-level",
-                    only_lipid_components=False,
-                    taxonomy_group=tg,
-                )
-            else:
-                # 'all' selected — omit taxonomy_group from request
-                reactions = ds.fetch_reactions_by_lm_id(
-                    reaction_type="species-level",
-                    only_lipid_components=False,
-                )
-            st.session_state["reactions"] = reactions
-
-            st.success(f"Fetched {len(reactions)} reactions.")
-            st.session_state["reactions_fetched"] = True
-            st.rerun()  # IMPORTANT: stable, never clears processed page
-        except Exception as e:
-            st.error(f"Error fetching reactions: {e}")
-
     with tabs[tab_index["reactions"]]:
         st.subheader("Reactions for LM IDs")
         st.write(f"Taxonomy group filter: {st.session_state.get('taxonomy_group', 'all')}")
 
-        if not getattr(st.session_state["dataset"], "reactions", None):
+        dataset = st.session_state.get("dataset")
+        if dataset is None:
+            st.info("No processed dataset yet.")
+        elif not getattr(dataset, "reactions", None):
             st.info("No reactions fetched yet. Use Tools → Fetch reactions by LM ID.")
         else:
-            # Show plausible reactions filtered by headgroup rules
-            try:
-                plausible = []
-                try:
-                    plausible = dataset.possible_reactions(getattr(st.session_state, "reactions", []))
-                except Exception:
-                    from lipidmaps.data.utils.lipid_reaction_rules import reactions_possible_in_dataset
-                    plausible = reactions_possible_in_dataset(dataset, getattr(st.session_state, "reactions", []))
+            st.info("The BioPAN graph and ranked-table explorer now lives in the dedicated `BioPAN` tab. Raw LM reaction details remain here.")
+            gene_exporter = _reaction_gene_exporter(dataset)
 
-                if plausible:
-                    st.subheader("Plausible reactions (headgroup-based filter)")
-                    pr_rows = []
-                    for r in plausible:
-                        pr_rows.append({
-                            "reaction_id": getattr(r, "reaction_id", None),
-                            "reaction_name": getattr(r, "reaction_name", None),
-                        })
-                    try:
-                        st.dataframe(pd.DataFrame(pr_rows), hide_index=True)
-                    except Exception:
-                        st.write(pr_rows)
-            except Exception:
-                pass
-
+            st.markdown("### Raw LM reaction details")
             # Build reactions table, handling pathway dicts or objects
             rxn_rows = []
-            for r in getattr(st.session_state["dataset"], "reactions", []):
+            for r in getattr(dataset, "reactions", []):
                 # Create clickable LM ID links for reactants
                 reactants_links = []
                 for c in getattr(r, "reactants", []):
@@ -823,10 +1081,10 @@ def main():
                     if ec:
                         ec_links.append(f'<a href="https://www.brenda-enzymes.org/enzyme.php?ecno={ec}" target="_blank">{ec}</a>')
                 ec_str = ", ".join(ec_links) if ec_links else "N/A"
-                genes_str = ", ".join([
-                    s for s in ((p.get("gene_name") if isinstance(p, dict) else getattr(p, "gene_name", None)) for p in getattr(r, "genes", [])) if s
-                ])
+                genes_str = _resolved_reaction_genes(gene_exporter, r)
+                rhea_ids = ", ".join(r.list_rhea_ids()) if hasattr(r, "list_rhea_ids") and r.list_rhea_ids() else "N/A"
                 organisms = ", ".join(r.organisms) if r.organisms else "N/A"
+                evaluation = getattr(r, "evaluation", {}) or {}
                 rxn_rows.append({
                     "reaction_id": getattr(r, "reaction_id", None),
                     "reaction_name": getattr(r, "reaction_name", None),
@@ -834,13 +1092,44 @@ def main():
                     "products": products_str,
                     "pathways": pathways_str,
                     "ec_number": ec_str,
+                    "genes": genes_str or "N/A",
+                    "gene_source": _reaction_gene_source(r),
+                    "rhea_ids": rhea_ids,
                     "organisms": organisms,
+                    "possible": evaluation.get("possible"),
+                    "possible_explanation": evaluation.get("pairs_info")
                 })
 
-            rxn_df = pd.DataFrame(rxn_rows)
-            st.write(f"Rows: {rxn_df.shape[0]}, Columns: {rxn_df.shape[1]}")
+            rxn_df_full = pd.DataFrame(rxn_rows)
+            total_rxn = rxn_df_full.shape[0]
+            if total_rxn > 5:
+                max_show = st.slider(
+                    "Max reactions to display",
+                    min_value=5,
+                    max_value=total_rxn,
+                    value=min(20, total_rxn),
+                    key="reactions_max_rows",
+                )
+            else:
+                max_show = total_rxn
+            rxn_df = rxn_df_full.head(max_show)
+            st.write(f"Showing {rxn_df.shape[0]} of {total_rxn} reactions, {rxn_df.shape[1]} columns")
             # Display with HTML rendering for clickable EC number links
             st.write(rxn_df.to_html(escape=False, index=False), unsafe_allow_html=True)
+            try:
+                import re as _re
+                clean_rxn = rxn_df_full.map(
+                    lambda s: _re.sub(r"<[^>]+>", "", s) if isinstance(s, str) else s
+                )
+                st.download_button(
+                    "Download reactions CSV",
+                    data=clean_rxn.to_csv(index=False).encode("utf-8"),
+                    file_name="reactions.csv",
+                    mime="text/csv",
+                    key="download_reactions",
+                )
+            except Exception:
+                pass
         
             # For each reaction, show a small graph and metadata (reactants -> reaction -> products)
             def reaction_to_dot(reaction):
@@ -886,7 +1175,7 @@ def main():
                 return "\n".join(lines)
 
             # Provide a dropdown to select a reaction and view its graph + metadata
-            reactions = getattr(st.session_state["dataset"], "reactions", [])
+            reactions = getattr(dataset, "reactions", [])
             if reactions:
                 reaction_options = [f"{i}: {getattr(r, 'reaction_name', '')} ({getattr(r, 'reaction_id', '')})" for i, r in enumerate(reactions)]
                 sel = st.selectbox("Select reaction to view", ["(none)"] + reaction_options, key="reaction_select")
@@ -916,11 +1205,71 @@ def main():
                                 pathways_list.append(p.get("name") or p.get("pathway_name"))
                             else:
                                 pathways_list.append(getattr(p, "pathway_name", None) or getattr(p, "name", None))
+                        st.write("**Resolved genes:**", _resolved_reaction_genes(gene_exporter, r))
+                        st.write("**Gene source:**", _reaction_gene_source(r))
+                        rhea_ids = r.list_rhea_ids() if hasattr(r, "list_rhea_ids") else []
+                        st.write("**Rhea IDs:**", ", ".join(rhea_ids) if rhea_ids else "N/A")
                         st.write("**Pathways:**", ", ".join([p for p in pathways_list if p]))
+                        # Show rule evaluation result with detailed diagnostics
+                        possible = getattr(r, "possible", None)
+                        explanation = getattr(r, "possible_explanation", None)
+                        evaluation = getattr(r, "evaluation", None) or {}
+                        if possible is not None:
+                            color = "green" if possible else "red"
+                            st.markdown(f"**Possible:** <span style='color:{color}; font-weight:bold'>{possible}</span>", unsafe_allow_html=True)
+
+                        # human-readable explanation (summary)
+                        if explanation:
+                            with st.expander("Explanation", expanded=False):
+                                st.write(explanation)
+
+                        # structured evaluation details
+                        if evaluation:
+                            with st.expander("Evaluation details", expanded=False):
+                                # show the explanation from the evaluator if present
+                                if evaluation.get("explanation"):
+                                    st.markdown("**Summary:**")
+                                    st.write(evaluation.get("explanation"))
+
+                                details = evaluation.get("details") or []
+                                if details:
+                                    rows = []
+                                    for pdict in details:
+                                        rinfo = pdict.get("reactant", {})
+                                        pinfo = pdict.get("product", {})
+                                        rule = pdict.get("rule", {})
+                                        rows.append({
+                                            "reactant_hg": rinfo.get("headgroup"),
+                                            "reactant_linkage": rinfo.get("linkage"),
+                                            "reactant_chain_count": rinfo.get("chain_count"),
+                                            "reactant_total_carbons": rinfo.get("total_carbons"),
+                                            "reactant_total_DB": rinfo.get("total_double_bonds"),
+                                            "product_hg": pinfo.get("headgroup"),
+                                            "product_linkage": pinfo.get("linkage"),
+                                            "product_chain_count": pinfo.get("chain_count"),
+                                            "product_total_carbons": pinfo.get("total_carbons"),
+                                            "product_total_DB": pinfo.get("total_double_bonds"),
+                                            "require_same_linkage": rule.get("require_same_linkage"),
+                                            "required_acyl_chains": rule.get("required_acyl_chains"),
+                                            "can_convert_to": ",".join(rule.get("can_convert_to") or []) if rule.get("can_convert_to") else None,
+                                        })
+
+                                    try:
+                                        df_eval = pd.DataFrame(rows)
+                                        st.dataframe(df_eval, hide_index=True)
+                                    except Exception:
+                                        st.write(rows)
+
+                                # raw JSON view
+                                try:
+                                    st.subheader("Raw evaluation JSON")
+                                    st.json(evaluation)
+                                except Exception:
+                                    pass
 
             # Build pathways table, handling pathway dicts or objects and multiple pathways per reaction
             pathway_rows = []
-            for r in getattr(st.session_state["dataset"], "reactions", []):
+            for r in getattr(dataset, "reactions", []):
                 for p in getattr(r, "pathways", []) or []:
                     if isinstance(p, dict):
                         pid = p.get("id")
@@ -934,6 +1283,7 @@ def main():
                         org = getattr(p, "organism", None)
 
                     pathway_rows.append({
+                        "pathway_id": pid,
                         "pathway_name": name,
                         "Description": desc,
                         "organism": org,
@@ -953,6 +1303,13 @@ def main():
                 pathway_df = pd.DataFrame(unique_rows)
                 st.subheader("Pathways for Reactions")
                 st.dataframe(pathway_df, hide_index=True)
+                st.download_button(
+                    "Download pathways CSV",
+                    data=pathway_df.to_csv(index=False).encode("utf-8"),
+                    file_name="pathways.csv",
+                    mime="text/csv",
+                    key="download_pathways",
+                )
             else:
                 st.info("No pathway entries available for fetched reactions.")
             # Show lipids annotated with reactions
@@ -979,10 +1336,192 @@ def main():
                 else:
                     st.info("No lipids in the dataset have reactions.")
 
+            # Reaction-level quantitation: z-scores between two groups
+            try:
+                if dataset and getattr(dataset, 'reactions', None):
+                    st.subheader("Reaction-level comparison (z-scores)")
+                    analyzer = QuantitationAnalyzer(dataset=dataset)
+                    groups = sorted({analyzer._sample_group_name(s) for s in dataset.samples})
+                    if len(groups) >= 2:
+                        g1 = st.selectbox("Group 1 (numerator)", groups, key="rx_g1")
+                        g2 = st.selectbox("Group 2 (denominator)", [g for g in groups if g != g1], key="rx_g2")
+                        method = st.selectbox("Method", ["ratio", "difference"], index=0, key="rx_method")
+                        if st.button("Compute reaction z-scores", key="compute_rx_z"):
+                            try:
+                                rz = analyzer.reaction_zscores(g1, g2, method=method)
+                                if not rz:
+                                    st.info("No reaction flux data available for selected groups.")
+                                else:
+                                    rows = []
+                                    for rid, info in rz.items():
+                                        rows.append({
+                                            "reaction_id": rid,
+                                            "reaction_name": info.get("reaction_name"),
+                                            "group1_mean": info.get("group1_mean"),
+                                            "group2_mean": info.get("group2_mean"),
+                                            "zscore": info.get("zscore"),
+                                            "n1": info.get("n1"),
+                                            "n2": info.get("n2"),
+                                        })
+                                    df_rz = pd.DataFrame(rows)
+                                    try:
+                                        df_rz = df_rz.sort_values(by='zscore', key=lambda s: s.abs(), ascending=False)
+                                    except Exception:
+                                        pass
+                                    st.dataframe(df_rz, hide_index=True)
+                                    try:
+                                        csv_bytes = df_rz.to_csv(index=False).encode('utf-8')
+                                        st.download_button(
+                                            "Download z-scores CSV",
+                                            data=csv_bytes,
+                                            file_name=f"reaction_zscores_{g1}_vs_{g2}_{method}.csv",
+                                            mime="text/csv",
+                                        )
+                                    except Exception:
+                                        pass
+                                    # scatter of group means, colored by z-score
+                                    try:
+                                        plot_df = df_rz.dropna(subset=["group1_mean", "group2_mean", "zscore"])
+                                        if not plot_df.empty:
+                                            scatter = px.scatter(
+                                                plot_df,
+                                                x="group2_mean",
+                                                y="group1_mean",
+                                                color="zscore",
+                                                hover_name="reaction_name",
+                                                color_continuous_scale="RdBu_r",
+                                                color_continuous_midpoint=0,
+                                                title=f"Reaction flux: {g1} vs {g2}",
+                                            )
+                                            scatter.update_layout(
+                                                xaxis_title=f"{g2} mean flux",
+                                                yaxis_title=f"{g1} mean flux",
+                                            )
+                                            st.plotly_chart(scatter, use_container_width=True, key="reaction_zscore_scatter")
+                                    except Exception:
+                                        pass
+                            except Exception as e:
+                                st.error(f"Failed to compute reaction z-scores: {e}")
+                    else:
+                        st.info("Need at least two groups in dataset to compute reaction comparisons.")
+            except Exception:
+                pass
+
 
     # --------------------------------------------------------------
     # VALIDATION TAB
     # --------------------------------------------------------------
+    # Insert Parser tab just before Validation to avoid nesting issues
+    with tabs[tab_index["parser"]]:
+        st.subheader("Lipid Parser Tester")
+        st.write("Enter a lipid species name to parse using the ChainParser.")
+        parser_input = st.text_input("Lipid name", value="PC 16:0_18:1", key="parser_input")
+        parse_now = st.button("Parse", key="parser_parse")
+        if parse_now:
+            try:
+                from lipidmaps.data.utils.chain_parser import parse_lipid, ChainParser
+
+                parsed = parse_lipid(parser_input)
+                # Prefer pydantic v2 model_dump, fall back to dict()
+                try:
+                    parsed_dict = parsed.model_dump()
+                except Exception:
+                    try:
+                        parsed_dict = parsed.dict()
+                    except Exception:
+                        parsed_dict = str(parsed)
+
+                st.json(parsed_dict)
+
+                # show available headgroups for reference
+                try:
+                    hgs = list(ChainParser.HEADGROUPS)
+                    st.expander("Available headgroups (from headgroups.py)", expanded=False).write(hgs)
+                except Exception:
+                    pass
+            except Exception as e:
+                st.error(f"Parser failed: {e}")
+
+        # If a dataset is loaded, offer the option to summarize parsed structures
+        if st.session_state.get("dataset") is not None:
+            ds = st.session_state.get("dataset")
+            # Build and store a lightweight mapping: headgroup -> list of lipid indices
+            if st.button("Refresh structures by headgroup", key="get_struct_by_hg"):
+                try:
+                    hg_map_idx = {}
+                    for i, lipid in enumerate(ds.lipids):
+                        try:
+                            s = lipid.structure
+                        except Exception:
+                            s = None
+                        if s is None:
+                            continue
+                        hg = getattr(s, "headgroup", None) or "Unknown"
+                        hg_map_idx.setdefault(hg, []).append(i)
+
+                    st.session_state["hg_map_idx"] = hg_map_idx
+                except Exception as e:
+                    st.error(f"Failed to build headgroup mapping: {e}")
+
+            # Allow clearing the mapping explicitly
+            if st.button("Clear headgroup mapping", key="clear_hg_map"):
+                if "hg_map_idx" in st.session_state:
+                    st.session_state.pop("hg_map_idx", None)
+                    st.success("Headgroup mapping cleared.")
+                else:
+                    st.info("No headgroup mapping to clear.")
+
+            # If a mapping exists in session state, render it persistently so selections survive reruns
+            hg_map_idx = st.session_state.get("hg_map_idx")
+            if hg_map_idx:
+                try:
+                    summary = {hg: len(v) for hg, v in hg_map_idx.items()}
+                    df_summary = pd.DataFrame(list(summary.items()), columns=["headgroup", "count"]).sort_values("count", ascending=False)
+                    st.subheader("Structures by headgroup")
+                    st.dataframe(df_summary, hide_index=True)
+
+                    sel = st.selectbox("Select headgroup to list structures", ["(all)"] + sorted(list(hg_map_idx.keys())), key="hg_map_select")
+                    if sel and sel != "(all)":
+                        indices = hg_map_idx.get(sel, [])
+                        liprows = []
+                        for idx in indices:
+                            try:
+                                lip = ds.lipids[idx]
+                            except Exception:
+                                continue
+                            reactions = []
+                            for r in getattr(lip, "reactions", []) or []:
+                                reactions.append(getattr(r, "reaction_name", None) or getattr(r, "reaction_id", None))
+                            liprows.append({
+                                "index": idx,
+                                "input_name": getattr(lip, "input_name", None),
+                                "lm_id": getattr(lip, "lm_id", None),
+                                "generic_lm_id": getattr(lip, "generic_lm_id", None),
+                                "reactions_count": len(reactions),
+                                "reactions": ", ".join([r for r in reactions if r])
+                            })
+                        if liprows:
+                            st.subheader(f"Lipids in headgroup: {sel}")
+                            st.dataframe(pd.DataFrame(liprows), hide_index=True)
+                        else:
+                            st.info(f"No lipids or reactions for headgroup {sel}.")
+                    else:
+                        # show brief sample of structures for all headgroups
+                        sample_rows = []
+                        for hg, indices in list(hg_map_idx.items())[:50]:
+                            examples = []
+                            for idx in indices[:3]:
+                                try:
+                                    s = ds.lipids[idx].standardized_name or ds.lipids[idx].input_name
+                                except Exception:
+                                    s = None
+                                if s:
+                                    examples.append(s)
+                            sample_rows.append({"headgroup": hg, "examples": examples})
+                        st.dataframe(pd.DataFrame(sample_rows), hide_index=True)
+                except Exception as e:
+                    st.error(f"Failed to display headgroup mapping: {e}")
+
     with tabs[tab_index["validation"]]:
         if not st.session_state["show_validation_section"]:
             st.info("Validation report is hidden.")

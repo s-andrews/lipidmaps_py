@@ -1,29 +1,25 @@
-import csv
 import logging
 import re
 import tempfile
 from typing import List, Dict, Any, Union, Optional
 from pathlib import Path
 import pandas as pd
-# import networkx as nx
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 from .models.base import LipidmapsBaseModel
+from .biopan_exporter import BioPANExporter
+from .biopan_pathway_exporter import BioPANPathwayExporter
 # import the data models we will produce
-from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset
+from .models.sample import SampleMetadata, QuantifiedLipid, LipidDataset, LipidAnnotation, SampleConditions
 from .models.refmet import RefMet
 from .models.lmsd import LMSD, LMSDResult
-# from .reaction_checker import ReactionChecker, ReactionData
 from .models.reaction import ReactionData
 
 # import new ingestion and validation modules
 from .ingestion.csv_reader import CSVIngestion, CSVFormat
 from .validation.data_validator import DataValidator, ValidationReport
-from .utils.headgroups import lipidmaps_headgroups
 
 
 logger = logging.getLogger(__name__)
-
-
 
 class DataManager(LipidmapsBaseModel):
 
@@ -73,6 +69,7 @@ class DataManager(LipidmapsBaseModel):
     use_headgroups: bool = Field(default=True, description="Whether to use headgroup mapping for filling missing LM IDs")
     fetch_reactions: bool = Field(default=True, description="Whether to fetch reactions by LM ID after processing CSV")
     taxonomy_group: Optional[str] = Field(default="all", description="Taxonomy group filter for reaction fetching (e.g. 'bacteria', 'mammalia', 'all')")
+    legacy_substrate_consumption: bool = Field(default=False, description="Reproduce the legacy BioPAN greedy substrate-consumption pairing (drops reactants whose products were claimed by an earlier reactant) so pathway z-scores match the old tool. Default off keeps deterministic many-to-many pairing.")
     transpose_file: bool = Field(
         default=False,
         description="If True, transpose the input CSV before ingestion (useful when lipids are columns and samples are rows)."
@@ -98,7 +95,7 @@ class DataManager(LipidmapsBaseModel):
         description="Label to use for groups - Usually derived from group_mapping or second row in CSV.",
     )
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @field_validator("sample_columns", mode="before")
     @classmethod
@@ -177,17 +174,19 @@ class DataManager(LipidmapsBaseModel):
 
         # If refmet is enabled, annotate lipids with refmet results before creating the dataset, so that standardized names and lm_ids are available on the QuantifiedLipid objects within the dataset from the start
         # Default is true since it provides standardized names and can improve LMSD matching downstream, but can be disabled if users want to skip that step or handle annotation separately
+        refmet_failed = False
         if self.use_refmet:
-            self.annotate_lipids_with_refmet(quantified)
+            refmet_success = self.annotate_lipids_with_refmet(quantified)
+            refmet_failed = not refmet_success
 
-        dataset = LipidDataset(samples=samples_meta, lipids=quantified, column_info=column_info)
+        dataset = LipidDataset(samples=samples_meta, lipids=quantified, column_info=column_info, refmet_failed=refmet_failed)
         self.dataset = dataset
         logger.info(
             f"Created LipidDataset: {len(samples_meta)} samples, {len(quantified)} lipids"
         )
 
         if self.use_headgroups:
-            headgroup_updates = self.dataset.fill_missing_lm_ids_from_headgroups()
+            headgroup_updates = self.dataset.fill_generic_lm_ids_from_headgroups()
             logger.info(f"Filled missing LM IDs using headgroup mapping: {headgroup_updates} updated")
 
         if self.fetch_reactions:
@@ -387,14 +386,24 @@ class DataManager(LipidmapsBaseModel):
             logger.info(f"Total skipped rows: {skipped_rows}")
         return quantified
 
-    def annotate_lipids_with_refmet(self, quantified: List[Any]) -> None:
-        """Annotate QuantifiedLipid objects with RefMet data."""
+    def annotate_lipids_with_refmet(self, quantified: List[Any]) -> bool:
+        """Annotate QuantifiedLipid objects with RefMet data.
+        
+        Returns:
+            True if annotation succeeded, False if it failed.
+        """
         try:
             # Extract lipid names
             lipid_names = [q.input_name for q in quantified]
 
             # Call RefMet API to get results
             refmet_results = RefMet.validate_metabolite_names(lipid_names)
+            if isinstance(refmet_results, dict):
+                logger.error(
+                    "RefMet returned an error payload; continuing without standardized names: %s",
+                    refmet_results.get("error", "unknown error"),
+                )
+                return False
             logger.info(f"RefMet returned {len(refmet_results)} results")
 
             # Apply results to quantified lipids
@@ -414,18 +423,31 @@ class DataManager(LipidmapsBaseModel):
                         q.lm_id_found_by = "RefMet"
                 except Exception:
                     pass
-                q.sub_class = result.sub_class
-                q.formula = result.formula
-                q.mass = result.exact_mass
-                q.super_class = result.super_class
-                q.main_class = result.main_class
-                q.chebi_id = result.chebi_id
-                q.kegg_id = result.kegg_id
-                q.refmet_id = result.refmet_id
+                
+                # Create annotation object with classification and IDs
+                q.annotation = LipidAnnotation(
+                    sub_class=result.sub_class,
+                    main_class=result.main_class,
+                    super_class=result.super_class,
+                    chebi_id=result.chebi_id,
+                    kegg_id=result.kegg_id,
+                    refmet_id=result.refmet_id,
+                    formula=result.formula,
+                    mass=result.exact_mass,
+                )
+            return True
         except Exception:
             logger.exception(
                 "RefMet annotation failed; continuing without standardized names"
             )
+            return False
+
+    #NOTE: This method is separate from the main CSV processing flow since we get lm_id results 
+    # from RefMet annotation, and later we fill generic lm_id's from headgroups.
+    #NOTE: This method updates input list of quantified object and if no dataset is provided, 
+    # it will update the manager's current dataset.lipids list if available. 
+    # This allows it to be used as a standalone method for filling lm_id details on any list of 
+    # QuantifiedLipid objects, or as part of the main CSV processing flow.
 
     def fill_missing_lm_ids_from_lmsd(
         self, quantified: Optional[List[Any]] = None, use_standardized_name: bool = True
@@ -543,7 +565,7 @@ class DataManager(LipidmapsBaseModel):
         return updated_count
 
 
-    def fill_missing_lm_ids_from_headgroups(self, dataset: Optional[LipidDataset] = None) -> int:
+    def fill_generic_lm_ids_from_headgroups(self, dataset: Optional[LipidDataset] = None) -> int:
         """
         Fill missing lm_id fields on QuantifiedLipid objects using headgroup mapping from headgroups.py.
         Args:
@@ -557,7 +579,7 @@ class DataManager(LipidmapsBaseModel):
             logger.warning("No dataset or lipids to fill with headgroup mapping.")
             return 0
         # Call the new method on LipidDataset
-        return dataset.fill_missing_lm_ids_from_headgroups()
+        return dataset.fill_generic_lm_ids_from_headgroups()
 
     def annotate_lipids_with_lmsd_details(self, dataset: Optional[LipidDataset] = None, molecules: Optional[List[LMSDResult]] = None) -> int:
         """Annotate quantified lipids with additional LMSD details (abbrev, generic_lm_id).
@@ -600,14 +622,8 @@ class DataManager(LipidmapsBaseModel):
                 continue
             item = mapping[lm]
             try:
-                # if hasattr(q, "abbrev") and item.get("abbrev"):
-                #     q.abbrev = item.get("abbrev")
                 if hasattr(q, "generic_lm_id") and item.generic_lm_id:
                     q.generic_lm_id = item.generic_lm_id
-                # if hasattr(q, "abbrev_chains") and item.get("abbrev_chains"):
-                #     q.abbrev_chains = item.get("abbrev_chains")
-                # if hasattr(q, "smiles") and item.get("smiles"):
-                #     q.smiles = item.get("smiles")
                 updated += 1
             except Exception:
                 logger.exception(f"Failed to annotate lipid {getattr(q, 'input_name', None)} with LMSD details")
@@ -699,6 +715,99 @@ class DataManager(LipidmapsBaseModel):
         }
 
         return summary
+
+    def get_biopan_exporter(self, dataset: Optional[LipidDataset] = None) -> BioPANExporter:
+        return BioPANExporter(dataset=dataset or self.dataset)
+
+    def get_sample_conditions(
+        self,
+        dataset: Optional[LipidDataset] = None,
+    ) -> SampleConditions:
+        resolved_dataset = dataset or self.dataset
+        if resolved_dataset is None:
+            raise ValueError("Sample conditions require a populated dataset")
+        return resolved_dataset.get_sample_conditions()
+
+    def set_sample_conditions(
+        self,
+        conditions: Union[SampleConditions, Dict[str, str]],
+        dataset: Optional[LipidDataset] = None,
+        *,
+        strict: bool = True,
+    ) -> SampleConditions:
+        resolved_dataset = dataset or self.dataset
+        if resolved_dataset is None:
+            raise ValueError("Sample conditions require a populated dataset")
+        return resolved_dataset.set_sample_conditions(conditions, strict=strict)
+
+    def get_biopan_pathway_exporter(self, dataset: Optional[LipidDataset] = None) -> BioPANPathwayExporter:
+        return BioPANPathwayExporter(
+            dataset=dataset or self.dataset,
+            legacy_substrate_consumption=self.legacy_substrate_consumption,
+        )
+
+    def build_biopan_summary(
+        self,
+        dataset: Optional[LipidDataset] = None,
+        lipidlynxx: str = "no",
+    ) -> Dict[str, Any]:
+        """Build the subset of BioPAN summary data needed by the PHP frontend."""
+        return self.get_biopan_exporter(dataset).build_summary(lipidlynxx=lipidlynxx)
+
+    def build_biopan_msg1(
+        self,
+        dataset: Optional[LipidDataset] = None,
+        lipidlynxx_error: bool = False,
+    ) -> Dict[str, Any]:
+        """Build BioPAN parse-stage status data used by the summary page."""
+        return self.get_biopan_exporter(dataset).build_msg1(lipidlynxx_error=lipidlynxx_error)
+
+    def build_biopan_msg2(self, dataset: Optional[LipidDataset] = None) -> Dict[str, Any]:
+        """Build BioPAN processing-stage status data used by the pathway page."""
+        return self.get_biopan_exporter(dataset).build_msg2()
+
+    def export_biopan_display_files(
+        self,
+        output_path: Union[str, Path],
+        dataset: Optional[LipidDataset] = None,
+        lipidlynxx: str = "no",
+        lipidlynxx_error: bool = False,
+        include_msg1: bool = True,
+        include_summary: bool = True,
+        include_msg2: bool = True,
+    ) -> Dict[str, str]:
+        """Write BioPAN display JSON files into a session directory or its biopan subdir."""
+        written_files = self.get_biopan_exporter(dataset).export_display_files(
+            output_path=output_path,
+            lipidlynxx=lipidlynxx,
+            lipidlynxx_error=lipidlynxx_error,
+            include_msg1=include_msg1,
+            include_summary=include_summary,
+            include_msg2=include_msg2,
+        )
+        logger.info("Exported BioPAN display files to %s", output_path)
+        return written_files
+
+    def export_biopan_reaction_files(
+        self,
+        output_path: Union[str, Path],
+        disease_group: str,
+        control_group: str,
+        threshold: float = 0.05,
+        paired: bool = False,
+        dataset: Optional[LipidDataset] = None,
+        lazy: bool = False,
+    ) -> Dict[str, str]:
+        written_files = self.get_biopan_pathway_exporter(dataset).export_reaction_files(
+            output_path=output_path,
+            disease_group=disease_group,
+            control_group=control_group,
+            threshold=threshold,
+            paired=paired,
+            lazy=lazy,
+        )
+        logger.info("Exported BioPAN reaction files to %s", output_path)
+        return written_files
     
     def dataset_dict(self) -> Dict[str, Any]:
         """Serialize the dataset to plain dict for JSON output or downstream analysis."""
@@ -776,15 +885,20 @@ class DataManager(LipidmapsBaseModel):
             lipid_coverage = 0
 
             for lipid in self.dataset.lipids:
-                # Extract values for this group's samples
+                # Extract values for this group's samples, skipping missing/NaN entries
                 group_values = [
-                    lipid.values.get(name) for name in sample_names if name in lipid.values
+                    v
+                    for name in sample_names
+                    for v in (lipid.values.get(name),)
+                    if v is not None and not (isinstance(v, float) and np.isnan(v))
                 ]
 
                 if group_values:
                     lipid_coverage += 1
                     lipid_means[lipid.input_name] = float(np.mean(group_values))
-                    lipid_stds[lipid.input_name] = float(np.std(group_values))
+                    lipid_stds[lipid.input_name] = (
+                        float(np.std(group_values, ddof=1)) if len(group_values) > 1 else 0.0
+                    )
 
             group_stats[group_name] = {
                 "sample_count": len(samples),

@@ -1,23 +1,779 @@
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 lipid_reaction_rules: Dict[str, Any] = {
     "metadata": {
-        "version": "0.1",
-        "description": "Rules for lipid headgroup remodeling and fatty acid mass shifts for quantitation.",
+        "version": "0.2-delta-schema",
+        "description": "Lipid headgroup and acyl-chain remodeling rules using delta-based schema.",
         "units": "Daltons (Da)",
-        "usage_note": "Conserve acyl tails (Total C:DB) during headgroup swaps.",
+        "usage_note": "Acyl-chain conservation is enforced via delta rules; linkage type is preserved unless stated."
     },
-    "headgroups": {
-        "PA": {"name": "Phosphatidic Acid", "mass_shift": 79.9663, "can_convert_to": ["PC", "PE", "PS", "PI", "PG", "DAG"]},
-        "PC": {"name": "Phosphatidylcholine", "mass_shift": 165.0555, "can_convert_to": ["PA", "LPC", "DAG", "SM"]},
-        "PE": {"name": "Phosphatidylethanolamine", "mass_shift": 123.0085, "can_convert_to": ["PA", "PC", "PS", "LPE"]},
-        "PS": {"name": "Phosphatidylserine", "mass_shift": 167.0222, "can_convert_to": ["PE", "PA"]},
-        "PI": {"name": "Phosphatidylinositol", "mass_shift": 242.0192, "can_convert_to": ["PA", "PIP", "PIP2", "PIP3"]},
-        "PG": {"name": "Phosphatidylglycerol", "mass_shift": 154.0031, "can_convert_to": ["CL", "PA"]},
-        "DAG": {"name": "Diacylglycerol", "mass_shift": 17.0027, "can_convert_to": ["PA", "PC", "PE", "TAG"]},
-        "TAG": {"name": "Triacylglycerol", "mass_shift": "VARIABLE_BY_TAIL", "can_convert_to": ["DAG"]},
+
+    "headgroup_reactions": {
+
+        # ----------------------------------------------------------
+        # PC / LPC (ester)
+        # ----------------------------------------------------------
+        "PC": {
+            "name": "Phosphatidylcholine",
+            "linkage_type": "ester",
+            "acyl_chains": 2,
+            "mass_shift": 165.0555,
+            "can_convert_to": ["PA", "PS", "LPC", "DG", "SM"],
+
+            "conversion_rules": {
+
+                # PC → LPC (PLA2)
+                "LPC": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                },
+
+                # PC → PS (base-exchange with serine)
+                "PS": {
+                    "reaction_requirements": {"external_compounds": ["serine"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_swap"
+                },
+
+                # PC → PA (phospholipase D)
+                "PA": {
+                    "reaction_requirements": {"external_compounds": ["serine"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_swap"
+                },
+
+                # ✅ PC → DG (phospholipase C)
+                "DG": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_cleavage"
+                },
+
+                # ✅ PC → SM (sphingomyelin synthase)
+                "SM": {
+                    "reaction_requirements": {"external_compounds": ["Cer"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_transfer"
+                }
+            }
+        },
+
+        "LPC": {
+            "name": "Lyso-PC",
+            "linkage_type": "ester",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["PC"],
+            "conversion_rules": {
+                "PC": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
+        # Ether PC O-
+        # ----------------------------------------------------------
+        "PC O-": {
+            "name": "Ether phosphatidylcholine",
+            "linkage_type": "ether_alkyl",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["LPC O-", "DG O-"],
+            "conversion_rules": {
+                # Deacylation (PLA2-like)
+                "LPC O-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                },
+                
+                # Headgroup cleavage (PLC-like) → ether DG
+                "DG O-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_cleavage"
+                }
+
+            }
+        },
+
+        "DG O-": {
+            "name": "Ether diacylglycerol",
+            "linkage_type": "ether_alkyl",
+            "acyl_chains": 1,   # 1 ether + 1 acyl chain total = 1 modifiable chain
+            "mass_shift": None,
+            "can_convert_to": ["TG O-", "LPE O-", "PC O-"],
+
+            "conversion_rules": {
+
+                # DG O- → TG O- (acylation)
+                "TG O-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                },
+
+                # DG O- → PC O- (headgroup attachment)
+                "PC O-": {
+                    "reaction_requirements": {"external_compounds": ["CDP-choline"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_attachment"
+                },
+
+                # DG O- → LPE O- (deacylation)
+                "LPE O-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+            }
+        },
+
+        "TG O-": {
+            "name": "Ether triacylglycerol",
+            "linkage_type": "ether_alkyl",
+            "acyl_chains": 2,   # 1 ether + 2 acyl
+            "mass_shift": "VARIABLE_BY_TAIL",
+            "can_convert_to": ["DG O-"],
+
+            "conversion_rules": {
+                "DG O-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+            }
+        },
+
+        "TG P-": {
+            "name": "Plasmalogen TG (vinyl ether TG)",
+            "linkage_type": "ether_vinyl",
+            "acyl_chains": 2,
+            "mass_shift": "VARIABLE_BY_TAIL",
+            "can_convert_to": ["DG P-"],
+
+            "conversion_rules": {
+                "DG P-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+            }
+        },
+        "LPC O-": {
+            "name": "Ether lyso-PC",
+            "linkage_type": "ether_alkyl",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["PC O-"],
+            "conversion_rules": {
+                "PC O-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
+        # Plasmalogen PC P-
+        # ----------------------------------------------------------
+        "PC P-": {
+            "name": "Plasmalogen PC (vinyl ether)",
+            "linkage_type": "ether_vinyl",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["LPC P-"],
+            "conversion_rules": {
+                "LPC P-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "plasmalogen"
+                }
+            }
+        },
+
+        "LPC P-": {
+            "name": "Lyso-plasmalogen PC",
+            "linkage_type": "ether_vinyl",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["PC P-"],
+            "conversion_rules": {
+                "PC P-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
+        # PE / LPE (ester)
+        # ----------------------------------------------------------
+        "PE": {
+            "name": "Phosphatidylethanolamine",
+            "linkage_type": "ester",
+            "acyl_chains": 2,
+            "mass_shift": 123.0085,
+            "can_convert_to": ["PA", "PC", "PS", "LPE"],
+
+            "conversion_rules": {
+
+                # ----------------------------------------------------------
+                # PE → LPE (PLA2 deacylation)
+                # ----------------------------------------------------------
+                "LPE": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                },
+
+                # ----------------------------------------------------------
+                # PE → PC (PEMT methylation pathway)
+                # Requires 3 SAM molecules, but we only model externally as "SAM"
+                # ----------------------------------------------------------
+                "PC": {
+                    "reaction_requirements": {"external_compounds": ["SAM"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "methylation"
+                },
+
+                # ----------------------------------------------------------
+                # PE → PS (base exchange, PSS1/2)
+                # ----------------------------------------------------------
+                "PS": {
+                    "reaction_requirements": {"external_compounds": ["serine"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_swap"
+                },
+
+                # ----------------------------------------------------------
+                # PE → PA (PLD-like phosphodiester cleavage)
+                # ----------------------------------------------------------
+                "PA": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_cleavage"
+                }
+
+                # ----------------------------------------------------------
+                # OPTIONAL: PE → DG (PLC-like cleavage)
+                # Rare biologically but allowed for model symmetry with PC → DG.
+                # Uncomment if desired:
+                #
+                # "DG": {
+                #     "reaction_requirements": {"external_compounds": []},
+                #     "acyl_chain_change": 0,
+                #     "require_same_linkage": True,
+                #     "reaction_type": "headgroup_cleavage"
+                # }
+                # ----------------------------------------------------------
+            }
+        },
+
+        "LPE": {
+            "name": "Lyso-PE",
+            "linkage_type": "ester",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["PE"],
+            "conversion_rules": {
+                "PE": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        "DG P-": {
+            "name": "Plasmalogen DG (vinyl ether DG)",
+            "linkage_type": "ether_vinyl",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["TG P-", "PC P-", "LPE P-"],
+
+            "conversion_rules": {
+
+                # DG P- → TG P- (acylation)
+                "TG P-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                },
+
+                # DG P- → PC P- (CDP-choline attachment)
+                "PC P-": {
+                    "reaction_requirements": {"external_compounds": ["CDP-choline"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_attachment"
+                },
+
+                # DG P- → LPE P- (deacylation)
+                "LPE P-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+            }
+        },
+        # ----------------------------------------------------------
+        # Ether PE O-
+        # ----------------------------------------------------------
+        "PE O-": {
+            "name": "Ether PE",
+            "linkage_type": "ether_alkyl",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["LPE O-"],
+            "conversion_rules": {
+                "LPE O-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+            }
+        },
+
+        "LPE O-": {
+            "name": "Ether LPE",
+            "linkage_type": "ether_alkyl",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["PE O-"],
+            "conversion_rules": {
+                "PE O-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
+        # Plasmalogen PE P-
+        # ----------------------------------------------------------
+        "PE P-": {
+            "name": "Plasmalogen PE",
+            "linkage_type": "ether_vinyl",
+            "acyl_chains": 1,
+            "can_convert_to": ["LPE P-"],
+            "conversion_rules": {
+                "LPE P-": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "plasmalogen"
+                }
+            }
+        },
+
+        "LPE P-": {
+            "name": "Lyso-plasmalogen PE",
+            "linkage_type": "ether_vinyl",
+            "acyl_chains": 1,
+            "can_convert_to": ["PE P-"],
+            "conversion_rules": {
+                "PE P-": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
+        # PG
+        # ----------------------------------------------------------
+        "PG": {
+            "name": "Phosphatidylglycerol",
+            "linkage_type": "ester",
+            "acyl_chains": 2,
+            "mass_shift": 154.0031,
+
+            "can_convert_to": ["CL", "PA", "LPG"],
+
+            "conversion_rules": {
+
+                # ----------------------------------------------------------
+                # PG → CL (cardiolipin synthesis via CLS)
+                # ----------------------------------------------------------
+                "CL": {
+                    "reaction_requirements": {"external_compounds": ["CDP-DAG"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_condensation"
+                },
+
+                # ----------------------------------------------------------
+                # PG → PA (phospholipase-D-like cleavage)
+                # Removes glycerol headgroup.
+                # ----------------------------------------------------------
+                "PA": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_cleavage"
+                },
+
+                # ----------------------------------------------------------
+                # PG → LPG (PLA2 deacylation)
+                # Mirrors PC→LPC and PE→LPE.
+                # ----------------------------------------------------------
+                "LPG": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
+        # LPA / PA
+        # ----------------------------------------------------------
+        "LPA": {
+            "name": "Lyso-PA",
+            "acyl_chains": 1,
+            "linkage_type": "ester",
+            "can_convert_to": ["PA"],
+            "conversion_rules": {
+                "PA": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        "PA": {
+            "name": "Phosphatidic acid",
+            "linkage_type": "ester",
+            "acyl_chains": 2,
+            "mass_shift": 79.9663,
+            "can_convert_to": ["PC", "PE", "PS", "PI", "PG", "DG", "LPA"],
+
+            "conversion_rules": {
+
+                # ----------------------------------------------------------
+                # PA → DG (phosphatidic acid phosphatase / Lipin)
+                # ----------------------------------------------------------
+                "DG": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "dephosphorylation"
+                },
+
+                # ----------------------------------------------------------
+                # PA → LPA (PLA2 deacylation)
+                # ----------------------------------------------------------
+                "LPA": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                },
+
+                # ----------------------------------------------------------
+                # PA → PC (Kennedy pathway: CDP-choline + DAG → PC)
+                # Modeled directly as headgroup addition to PA.
+                # ----------------------------------------------------------
+                "PC": {
+                    "reaction_requirements": {"external_compounds": ["CDP-choline"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_attachment"
+                },
+
+                # ----------------------------------------------------------
+                # PA → PE (Kennedy pathway: CDP-ethanolamine)
+                # ----------------------------------------------------------
+                "PE": {
+                    "reaction_requirements": {"external_compounds": ["CDP-ethanolamine"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_attachment"
+                },
+
+                # ----------------------------------------------------------
+                # PA → PS (via CDP-DAG → PS synthase)
+                # ----------------------------------------------------------
+                "PS": {
+                    "reaction_requirements": {"external_compounds": ["CDP-DAG", "serine"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_attachment"
+                },
+
+                # ----------------------------------------------------------
+                # PA → PI (via CDP-DAG → PI synthase)
+                # ----------------------------------------------------------
+                "PI": {
+                    "reaction_requirements": {"external_compounds": ["CDP-DAG", "inositol"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_attachment"
+                },
+
+                # ----------------------------------------------------------
+                # PA → PG (via CDP-DAG → PGP → PG)
+                # ----------------------------------------------------------
+                "PG": {
+                    "reaction_requirements": {"external_compounds": ["CDP-DAG", "glycerol-3-phosphate"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_attachment"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
+        # Sphingolipids (always delta = 0)
+        # ----------------------------------------------------------
+        "Cer": {
+            "name": "Ceramide",
+            "linkage_type": "amide",
+            "has_sphingoid": True,
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["SM"],
+            "conversion_rules": {
+                "SM": {
+                    "reaction_requirements": {"external_compounds": ["PC"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "sphingolipid"
+                }
+            }
+        },
+
+        "dhCer": {
+            "name": "Dihydroceramide",
+            "linkage_type": "amide",
+            "has_sphingoid": True,
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["Cer","dhSM"],
+            "conversion_rules": {
+                "Cer": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "sphingolipid"
+                },
+                "dhSM": {
+                    "reaction_requirements": {"external_compounds": ["PC"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "sphingolipid"
+                }
+            }
+        },
+
+        "SM": {
+            "name": "Sphingomyelin",
+            "linkage_type": "amide",
+            "has_sphingoid": True,
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["Cer"],
+            "conversion_rules": {
+                "Cer": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "hydrolysis"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
+        # PS / LPS
+        # ----------------------------------------------------------
+        "LPS": {
+            "name": "Lyso-PS",
+            "linkage_type": "ester",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["PS"],
+            "conversion_rules": {
+                "PS": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        "PS": {
+            "name": "Phosphatidylserine",
+            "linkage_type": "ester",
+            "acyl_chains": 2,
+            "mass_shift": 167.0222,
+            "can_convert_to": ["PE","PA","LPS"],
+            "conversion_rules": {
+                "LPS": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+            }
+        },
+
+        # ----------------------------------------------------------
+        # PI / LPI
+        # ----------------------------------------------------------
+        "LPI": {
+            "name": "Lyso-PI",
+            "linkage_type": "ester",
+            "acyl_chains": 1,
+            "mass_shift": None,
+            "can_convert_to": ["PI"],
+            "conversion_rules": {
+                "PI": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+
+        "PI": {
+            "name": "Phosphatidylinositol",
+            "linkage_type": "ester",
+            "acyl_chains": 2,
+            "mass_shift": 242.0192,
+            "can_convert_to": ["PA","PIP","LPI"]
+        },
+
+        "MG": {
+            "name": "Monoacylglycerol",
+            "linkage_type": "ester",
+            "acyl_chains": 1,
+            "mass_shift": None,  # optional, MG mass is tail + glycerol backbone
+            "can_convert_to": ["DG"],
+
+            "conversion_rules": {
+                "DG": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                }
+            }
+        },
+        # ----------------------------------------------------------
+        # DG / TG
+        # ----------------------------------------------------------
+        "DG": {
+            "name": "Diacylglycerol",
+            "linkage_type": "ester",
+            "acyl_chains": 2,
+            "mass_shift": 17.0027,
+            "can_convert_to": ["PA","PC","PE","TG", "MG"],
+            "conversion_rules": {          
+
+                # DG → PA (phosphorylation)
+                "PA": {
+                    "reaction_requirements": {"external_compounds": ["ATP"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "phosphorylation"
+                },
+
+                # DG → PC (Kennedy pathway)
+                "PC": {
+                    "reaction_requirements": {"external_compounds": ["CDP-choline"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_attachment"
+                },
+
+                # DG → PE (Kennedy pathway)
+                "PE": {
+                    "reaction_requirements": {"external_compounds": ["CDP-ethanolamine"]},
+                    "acyl_chain_change": 0,
+                    "require_same_linkage": True,
+                    "reaction_type": "headgroup_attachment"
+                },
+
+                # DG → TG (acylation)
+                "TG": {
+                    "reaction_requirements": {"external_compounds": ["acylcoa"]},
+                    "acyl_chain_change": 1,
+                    "require_same_linkage": True,
+                    "reaction_type": "acylation"
+                },
+                
+                # ✅ DG → MG (deacylation)
+                "MG": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+
+
+            }
+        },
+
+        "TG": {
+            "name": "Triacylglycerol",
+            "linkage_type": "ester",
+            "acyl_chains": 3,
+            "mass_shift": "VARIABLE_BY_TAIL",
+            "can_convert_to": ["DG"],
+            "conversion_rules": {
+                "DG": {
+                    "reaction_requirements": {"external_compounds": []},
+                    "acyl_chain_change": -1,
+                    "require_same_linkage": True,
+                    "reaction_type": "deacylation"
+                }
+            }
+        }
     },
+
+    # ----------------------------------------------------------
+    # Fatty acid masses (unchanged from original)
+    # ----------------------------------------------------------
     "fatty_acids": {
         "12:0": {"name": "Lauric", "mass_delta": 182.1671},
         "14:0": {"name": "Myristic", "mass_delta": 210.1984},
@@ -40,96 +796,17 @@ lipid_reaction_rules: Dict[str, Any] = {
         "22:5": {"name": "DPA", "mass_delta": 312.2453},
         "22:6": {"name": "DHA", "mass_delta": 310.2297},
         "24:0": {"name": "Lignoceric", "mass_delta": 350.3549},
-        "24:1": {"name": "Nervonic", "mass_delta": 348.3392},
+        "24:1": {"name": "Nervonic", "mass_delta": 348.3392}
     },
+
+    # ----------------------------------------------------------
+    # Biochemical deltas (unchanged)
+    # ----------------------------------------------------------
     "biochemical_deltas": {
         "methylation_CH2": 14.0156,
         "desaturation_H2_loss": -2.0156,
         "PE_to_PS_delta": 44.0137,
         "PE_to_PC_delta": 42.0470,
-        "hydration_H2O": 18.0106,
-    },
+        "hydration_H2O": 18.0106
+    }
 }
-
-
-def _extract_headgroup_from_name(name: Optional[str]) -> Optional[str]:
-    """Attempt to extract a headgroup prefix from a compound name string.
-
-    Examples: 'PC(16:0/18:1)' -> 'PC', 'PE 16:0/18:1' -> 'PE'
-    """
-    if not name:
-        return None
-    m = re.match(r"^([A-Za-z0-9]+)", name.strip())
-    if not m:
-        return None
-    hg = m.group(1)
-    return hg if hg in lipid_reaction_rules.get("headgroups", {}) else None
-
-
-def reactions_possible_in_dataset(dataset, reactions: List[Any]) -> List[Any]:
-    """Return subset of `reactions` that are plausible given `dataset` and the headgroup rules.
-
-    Heuristic used:
-    - Determine which headgroups are present in the dataset by scanning lipid `input_name` prefixes.
-    - For each reaction, extract headgroups from reactant and product component names.
-    - A reaction is considered possible if at least one reactant headgroup is present in the dataset
-      and at least one product headgroup is listed as a `can_convert_to` target for that reactant
-      according to `lipid_reaction_rules`.
-
-    This is intentionally conservative and rule-driven; it favors reactions that map known
-    headgroup conversions and where the dataset actually contains the required starting headgroups.
-    """
-    present_hgs = set()
-    for l in getattr(dataset, 'lipids', []):
-        try:
-            name = getattr(l, 'input_name', None)
-            hg = _extract_headgroup_from_name(name)
-            if hg:
-                present_hgs.add(hg)
-        except Exception:
-            continue
-
-    possible = []
-    for rxn in reactions:
-        # gather reactant and product headgroups
-        reactant_hgs = set()
-        product_hgs = set()
-        for role in ('reactants', 'products'):
-            items = getattr(rxn, role, None) or (rxn.get(role) if isinstance(rxn, dict) else None) or []
-            for item in items:
-                # item may be dict or object
-                if isinstance(item, dict):
-                    name = item.get('compound_name') or item.get('name') or item.get('compound')
-                else:
-                    name = getattr(item, 'compound_name', None) or getattr(item, 'name', None) or getattr(item, 'compound', None)
-                hg = _extract_headgroup_from_name(name)
-                if hg:
-                    if role == 'reactants':
-                        reactant_hgs.add(hg)
-                    else:
-                        product_hgs.add(hg)
-
-        # If no reactant headgroups extracted, skip (not enough info)
-        if not reactant_hgs:
-            continue
-
-        # Evaluate rule compatibility
-        matched = False
-        for rh in reactant_hgs:
-            if rh not in lipid_reaction_rules.get('headgroups', {}):
-                continue
-            allowed = set(lipid_reaction_rules['headgroups'][rh].get('can_convert_to', []))
-            # if any product headgroup matches allowed targets, and dataset contains the reactant headgroup,
-            # mark reaction as possible
-            if product_hgs and (allowed & product_hgs) and (rh in present_hgs):
-                matched = True
-                break
-            # If products unknown, still consider plausible if dataset contains reactant
-            if not product_hgs and (rh in present_hgs):
-                matched = True
-                break
-
-        if matched:
-            possible.append(rxn)
-
-    return possible

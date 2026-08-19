@@ -21,6 +21,9 @@ Main classes:
 
 # Convenience wrapper for direct CSV processing
 from .data.data_manager import DataManager
+from .data.biopan_exporter import BioPANExporter
+from .data.biopan_pathway_exporter import BioPANPathwayExporter
+from .data.models.sample import SampleConditions
 
 
 def process_csv(csv_path, **kwargs):
@@ -53,6 +56,9 @@ __all__ = [
     "import_data",
     "process_csv",
     "DataManager",
+    "BioPANExporter",
+    "BioPANPathwayExporter",
+    "SampleConditions",
     "QuantitationAnalyzer",
     "QuantitationConfig",
     "NormalizationMethod",

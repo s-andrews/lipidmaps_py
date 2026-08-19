@@ -1,0 +1,1 @@
+"""Static configuration assets for lipidmaps.data."""

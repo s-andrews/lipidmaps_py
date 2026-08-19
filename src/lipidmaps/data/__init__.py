@@ -13,11 +13,19 @@ Main components:
 """
 
 from .data_manager import DataManager
+from .biopan_exporter import BioPANExporter
+from .biopan_pathway_exporter import BioPANPathwayExporter
 from .models.sample import (
+    LipidAnnotation,
     LipidDataset,
     QuantifiedLipid,
+    SampleConditions,
     SampleMetadata,
     Quantitation,
+)
+from .utils.chain_parser import (
+    LipidStructure,
+    parse_lipid,
 )
 from .models.refmet import (
     RefMet
@@ -28,6 +36,10 @@ from .models.reaction import (
     ReactionChecker,
     ReactionResponse,
 )
+from .models.uniprot import (
+    UniProtGeneRecord,
+    UniProtRheaClient,
+)
 from .quantitation import (
     QuantitationAnalyzer,
     QuantitationConfig,
@@ -36,10 +48,42 @@ from .quantitation import (
     create_analyzer,
 )
 
+# Pathway analysis
+from .matching import (
+    MatcherContext,
+    MatcherRegistry,
+    match_pathway_reactions,
+    create_matcher_context,
+)
+from .models.species_reaction import (
+    ClassReaction,
+    CompoundRequirement,
+    PathwayReactionSet,
+    ReactionMatchResult,
+    ReactionType,
+    SpeciesReactionPair,
+)
+from .utils.chain_parser import (
+    AcylChain,
+    ChainParser,
+    LipidStructure,
+    SphingoBackbone,
+    # FA/FACoA utilities
+    get_common_fa_names,
+    get_common_facoa_names,
+    get_extended_fa_names,
+    get_extended_facoa_names,
+    infer_fa_from_lipids,
+    infer_facoa_from_lipids,
+)
+
 __all__ = [
     "DataManager",
+    "BioPANExporter",
+    "BioPANPathwayExporter",
     "LipidDataset",
     "QuantifiedLipid",
+    "SampleConditions",
     "SampleMetadata",
     "Quantitation",
     "RefMet",
@@ -47,9 +91,33 @@ __all__ = [
     "CompoundComponent",
     "ReactionChecker",
     "ReactionResponse",
+    "UniProtGeneRecord",
+    "UniProtRheaClient",
     "QuantitationAnalyzer",
     "QuantitationConfig",
     "NormalizationMethod",
     "QuantitationUnit",
     "create_analyzer",
+    # Matching
+    "MatcherContext",
+    "MatcherRegistry",
+    "match_pathway_reactions",
+    "create_matcher_context",
+    "ClassReaction",
+    "CompoundRequirement",
+    "PathwayReactionSet",
+    "ReactionMatchResult",
+    "ReactionType",
+    "SpeciesReactionPair",
+    "AcylChain",
+    "ChainParser",
+    "LipidStructure",
+    "SphingoBackbone",
+    # FA/FACoA utilities
+    "get_common_fa_names",
+    "get_common_facoa_names",
+    "get_extended_fa_names",
+    "get_extended_facoa_names",
+    "infer_fa_from_lipids",
+    "infer_facoa_from_lipids",
 ]

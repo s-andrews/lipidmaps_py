@@ -40,10 +40,10 @@ class TestCustomColumns(unittest.TestCase):
 
     def test_default_column_behavior(self):
         """Test default behavior: first column is lipid, rest are samples."""
-        data = import_data(self.standard_csv.name)
+        data = import_data(self.standard_csv.name, use_refmet=False, use_headgroups=False, fetch_reactions=False)
 
-        self.assertEqual(len(data.lipids()), 2)
-        self.assertEqual(len(data.samples()), 3)
+        self.assertEqual(len(data.dataset.lipids), 2)
+        self.assertEqual(len(data.dataset.samples), 3)
         self.assertIn("Sample1", data.sample_names)
         self.assertIn("Sample2", data.sample_names)
         self.assertIn("Sample3", data.sample_names)
@@ -54,10 +54,13 @@ class TestCustomColumns(unittest.TestCase):
             self.custom_csv.name,
             lipid_col=2,  # LipidName column
             sample_cols=[3, 4],  # Value1, Value2
+            use_refmet=False,
+            use_headgroups=False,
+            fetch_reactions=False
         )
 
-        self.assertEqual(len(data.lipids()), 2)
-        self.assertEqual(len(data.samples()), 2)
+        self.assertEqual(len(data.dataset.lipids), 2)
+        self.assertEqual(len(data.dataset.samples), 2)
         self.assertIn("Value1", data.sample_names)
         self.assertIn("Value2", data.sample_names)
 
@@ -67,10 +70,13 @@ class TestCustomColumns(unittest.TestCase):
             self.custom_csv.name,
             lipid_col="LipidName",
             sample_cols=["Value1", "Value2"],
+            use_refmet=False,
+            use_headgroups=False,
+            fetch_reactions=False
         )
 
-        self.assertEqual(len(data.lipids()), 2)
-        self.assertEqual(len(data.samples()), 2)
+        self.assertEqual(len(data.dataset.lipids), 2)
+        self.assertEqual(len(data.dataset.samples), 2)
         self.assertIn("Value1", data.sample_names)
         self.assertIn("Value2", data.sample_names)
 
@@ -80,20 +86,26 @@ class TestCustomColumns(unittest.TestCase):
             self.custom_csv.name,
             lipid_col=2,  # Index for LipidName
             sample_cols=["Value1", "Value2"],  # Names for samples
+            use_refmet=False,
+            use_headgroups=False,
+            fetch_reactions=False
         )
 
-        self.assertEqual(len(data.lipids()), 2)
-        self.assertEqual(len(data.samples()), 2)
+        self.assertEqual(len(data.dataset.lipids), 2)
+        self.assertEqual(len(data.dataset.samples), 2)
 
     def test_group_mapping(self):
         """Test explicit group-to-sample mapping."""
         data = import_data(
             self.standard_csv.name,
             group_mapping={"Control": ["Sample1", "Sample2"], "Treatment": ["Sample3"]},
+            use_refmet=False,
+            use_headgroups=False,
+            fetch_reactions=False
         )
 
-        self.assertEqual(len(data.lipids()), 2)
-        self.assertEqual(len(data.samples()), 3)
+        self.assertEqual(len(data.dataset.lipids), 2)
+        self.assertEqual(len(data.dataset.samples), 3)
 
         # Check group assignments
         samples_dict = {s.sample_name: s.group for s in data.dataset.samples}
@@ -108,10 +120,13 @@ class TestCustomColumns(unittest.TestCase):
             lipid_col="LipidName",
             sample_cols=["Value1", "Value2"],
             group_mapping={"GroupA": ["Value1"], "GroupB": ["Value2"]},
+            use_refmet=False,
+            use_headgroups=False,
+            fetch_reactions=False
         )
 
-        self.assertEqual(len(data.lipids()), 2)
-        self.assertEqual(len(data.samples()), 2)
+        self.assertEqual(len(data.dataset.lipids), 2)
+        self.assertEqual(len(data.dataset.samples), 2)
 
         samples_dict = {s.sample_name: s.group for s in data.dataset.samples}
         self.assertEqual(samples_dict["Value1"], "GroupA")
@@ -120,25 +135,25 @@ class TestCustomColumns(unittest.TestCase):
     def test_invalid_lipid_column_index(self):
         """Test error handling for invalid lipid column index."""
         with self.assertRaises(ValueError) as ctx:
-            import_data(self.standard_csv.name, lipid_col=99)
+            import_data(self.standard_csv.name, lipid_col=99, use_refmet=False, use_headgroups=False, fetch_reactions=False)
         self.assertIn("out of range", str(ctx.exception))
 
     def test_invalid_lipid_column_name(self):
         """Test error handling for invalid lipid column name."""
         with self.assertRaises(ValueError) as ctx:
-            import_data(self.standard_csv.name, lipid_col="NonExistent")
+            import_data(self.standard_csv.name, lipid_col="NonExistent", use_refmet=False, use_headgroups=False, fetch_reactions=False)
         self.assertIn("not found", str(ctx.exception))
 
     def test_invalid_sample_column_index(self):
         """Test error handling for invalid sample column index."""
         with self.assertRaises(ValueError) as ctx:
-            import_data(self.standard_csv.name, sample_cols=[99])
+            import_data(self.standard_csv.name, sample_cols=[99], use_refmet=False, use_headgroups=False, fetch_reactions=False)
         self.assertIn("out of range", str(ctx.exception))
 
     def test_invalid_sample_column_name(self):
         """Test error handling for invalid sample column name."""
         with self.assertRaises(ValueError) as ctx:
-            import_data(self.standard_csv.name, sample_cols=["NonExistent"])
+            import_data(self.standard_csv.name, sample_cols=["NonExistent"], use_refmet=False, use_headgroups=False, fetch_reactions=False)
         self.assertIn("not found", str(ctx.exception))
 
     def test_data_manager_direct_usage(self):
@@ -147,6 +162,7 @@ class TestCustomColumns(unittest.TestCase):
             lipid_name_column="LipidName",
             sample_columns=["Value1", "Value2"],
             group_mapping={"Control": ["Value1"], "Treatment": ["Value2"]},
+            use_refmet=False, use_headgroups=False, fetch_reactions=False
         )
 
         dataset = manager.process_csv(self.custom_csv.name)
@@ -167,6 +183,9 @@ class TestCustomColumns(unittest.TestCase):
                 "Control": ["Sample1"],
                 # Sample2 and Sample3 not mapped
             },
+            use_refmet=False,
+            use_headgroups=False,
+            fetch_reactions=False
         )
 
         samples_dict = {s.sample_name: s.group for s in data.dataset.samples}
@@ -180,6 +199,9 @@ class TestCustomColumns(unittest.TestCase):
         data = import_data(
             self.standard_csv.name,
             group_mapping={"Control": ["Sample1", "Sample2"], "Treatment": ["Sample3"]},
+            use_refmet=False,
+            use_headgroups=False,
+            fetch_reactions=False
         )
 
         stats = data.get_group_statistics()

@@ -19,11 +19,13 @@ This project is intended for researchers and developers working with mass-spectr
 - **Name Standardization**: RefMet standardization of user provided metabolite names
 - **Quality Control**: Data validation and issue reporting
 - **Data Management**: DataManager for handling quantified lipid datasets
+- **LIPID MAPS API Integration**: LM ID lookup and validation via RefMet/LMSD
+- **Reaction Analysis**: Reaction fetching, species-level matching, and pathway (BioPAN) scoring
+- **Sample Metadata**: Experimental metadata, groups, and condition handling
 
 ### 🚧 In Progress
-- **LIPID MAPS API Integration**: LM ID lookup and validation
-- **Reaction Analysis**: Integration with LIPID MAPS reactions database
-- **Sample Metadata**: Support for experimental metadata and conditions
+- **MS-DIAL ingestion**: Format-specific parsing beyond the current basic tab-delimited read
+- **Pathway scoring UX**: Broader visualization and reporting on top of the z-score engine
 
 ## Installation
 
@@ -139,7 +141,83 @@ print(f"Samples: {dataset.list_sample_names()[:5]}")
 
 # List first 5 lipid names
 print(f"Lipids: {dataset.list_lipid_names()[:5]}")
+```
 
+### Export BioPAN Display Files
+
+If you already have a populated `LipidDataset`, use `BioPANExporter` to write the JSON files that the BioPAN PHP frontend expects for summary and pathway display:
+
+```python
+from lipidmaps.data import BioPANExporter
+
+written = BioPANExporter(dataset=dataset).export_display_files(
+   "/lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ"
+)
+print(written)
+```
+
+If you are already working through `DataManager`, the compatibility wrapper still works:
+
+```python
+from lipidmaps.data import DataManager
+
+manager = DataManager(dataset=dataset)
+written = manager.export_biopan_display_files("/lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ")
+print(written)
+```
+
+This writes `msg1.json`, `summary.json`, and `msg2.json` into the session's `biopan` folder.
+
+### Regenerate BioPAN Session Assets
+
+To regenerate BioPAN-compatible session files directly from `lipidmaps_py`, run:
+
+```bash
+PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan /lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ
+```
+
+You can also export the reaction assets for a specific group comparison:
+
+```bash
+PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan \
+   /lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ \
+   --disease-group aldr_old \
+   --control-group al_young \
+   --threshold 0.05
+```
+
+This writes the summary assets plus the current reaction subset assets consumed by BioPAN, such as `lp_class_reaction.json`, the graph payloads, table payloads, and edge detail JSON files.
+
+If you need to override sample-to-group assignments before exporting, repeat `--sample-group`:
+
+```bash
+PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan \
+   /lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ \
+   --sample-group SB001=control \
+   --sample-group SB002=control \
+   --sample-group SB003=treated
+```
+
+This is the compatibility path used by the BioPAN summary page when users edit condition names before opening pathway analysis.
+
+## Logging
+
+Runtime logs are written into a dedicated `logs/` directory.
+
+- Default location during repo-based runs: `logs/` at the top of the `lipidmaps_py` checkout.
+- Default location outside the repo layout: `logs/` under the current working directory.
+- Override location: set `LIPIDMAPS_LOG_DIR=/your/path` before running the CLI.
+
+The package creates two rotating log files:
+
+- `logs/lipidmaps_py.log` for info, warning, and error messages.
+- `logs/lipidmaps_py.error.log` for error messages only.
+
+Example:
+
+```bash
+LIPIDMAPS_LOG_DIR=/tmp/lipidmaps-logs \
+PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan /lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ
 ```
 
 ## Refmet Name Standardization
@@ -161,8 +239,8 @@ print(refmet_results)
 - Defining molecular species in lipidomics assays are difficult and we rely on generic lipid structures where R groups are not specified. We use headgroup matching for generic structure ID's if RefMet doesn't return lm_id's.  
 ```python
 # Update LIPID MAPS ids by headgroups
-# fill_missing_lm_ids_from_headgroups(dataset) will assign headgroup LIPID MAPS ids to lipids as generic lm_id and return the updated count.
-updated_count = dataset.fill_missing_lm_ids_from_headgroups()
+# fill_generic_lm_ids_from_headgroups(dataset) will assign headgroup LIPID MAPS ids to lipids as generic lm_id and return the updated count.
+updated_count = dataset.fill_generic_lm_ids_from_headgroups()
 
 # List lipid names where an lm id is assigned
 print(f"Lipid names with assigned lm ids: {dataset.list_lipids_with_lmid()[:5]}")
@@ -318,6 +396,7 @@ streamlit run scripts/streamlit_demo.py
 
 In this demo, you can either use existing csv and tsv files in demo folder or upload your own.
 You can preview your data, see validation report and associated LIPID MAPS reactions.
+The Streamlit launch path also uses the shared package logging setup, so demo startup and runtime errors are written to `logs/lipidmaps_py.log` and `logs/lipidmaps_py.error.log` by default.
 
 ## New / Updated API Methods
 

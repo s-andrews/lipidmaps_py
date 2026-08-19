@@ -9,16 +9,14 @@ import logging
 from typing import Union, Optional, List, Dict, Any
 from pathlib import Path
 
-from pydantic import BaseModel, Field, computed_field, ConfigDict
+from pydantic import BaseModel, Field, PrivateAttr, computed_field, ConfigDict
 
 from .data.data_manager import DataManager
-from .data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
-from .data.models.reaction import ReactionData, CompoundComponent
+from .data.models.sample import LipidDataset
 from .data.quantitation import (
     QuantitationAnalyzer,
     QuantitationConfig,
     NormalizationMethod,
-    QuantitationUnit,
     create_analyzer,
 )
 
@@ -43,17 +41,12 @@ class LipidData(BaseModel):
         default_factory=lambda: LipidDataset(samples=[], lipids=[])
     )
     manager: Optional[DataManager] = Field(default=None)
+    _analyzer: Optional[QuantitationAnalyzer] = PrivateAttr(default=None)
 
     def model_post_init(self, __context: Any) -> None:
         """Initialize manager if not provided."""
         if self.manager is None:
             object.__setattr__(self, "manager", DataManager(dataset=self.dataset))
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def lipids_list(self) -> List[QuantifiedLipid]:
-        """Return list of QuantifiedLipid objects."""
-        return self.dataset.lipids
 
     @computed_field  # type: ignore[misc]
     @property
@@ -79,79 +72,6 @@ class LipidData(BaseModel):
     def failed_import_count(self) -> int:
         """Return count of failed lipid imports."""
         return len(self.failed_lipids)
-
-    def failed_import_names(self) -> List[str]:
-        """Return list of names that failed to import."""
-        return self.failed_lipids
-
-    def samples(self) -> List[str]:
-        """Return list of sample names."""
-        return self.sample_names
-
-    def lipids(self) -> List[QuantifiedLipid]:
-        """Return list of QuantifiedLipid objects."""
-        return self.dataset.lipids
-
-    def get_value_for_lipid(
-        self, lipid: Union[str, QuantifiedLipid], sample: str
-    ) -> Optional[float]:
-        """Get quantitation value for a specific lipid in a sample.
-
-        Args:
-            lipid: Lipid name (str) or QuantifiedLipid object
-            sample: Sample ID
-
-        Returns:
-            Quantitation value or None if not found
-        """
-        if isinstance(lipid, str):
-            # Find lipid by name
-            lipid_obj = next(
-                (
-                    sample_lipid
-                    for sample_lipid in self.dataset.lipids
-                    if sample_lipid.input_name == lipid or sample_lipid.standardized_name == lipid
-                ),
-                None,
-            )
-            if lipid_obj is None:
-                return None
-            return lipid_obj.values.get(sample)
-        else:
-            return lipid.values.get(sample)
-
-    def get_lipid_by_name(self, name: str) -> Optional[QuantifiedLipid]:
-        """Get a QuantifiedLipid by input name or standardized name.
-
-        Args:
-            name: Lipid name to search for
-
-        Returns:
-            QuantifiedLipid object or None if not found
-        """
-        return next(
-            (
-                sample_lipid
-                for sample_lipid in self.dataset.lipids
-                if sample_lipid.input_name == name or sample_lipid.standardized_name == name
-            ),
-            None,
-        )
-
-    def get_lipids_by_class(self, lipid_class: str) -> List[QuantifiedLipid]:
-        """Get all lipids belonging to a specific class.
-
-        Args:
-            lipid_class: Lipid class name (e.g., 'PC', 'TAG')
-
-        Returns:
-            List of QuantifiedLipid objects
-        """
-        return [
-            lipid
-            for lipid in self.dataset.lipids
-            if lipid.main_class == lipid_class or lipid.sub_class == lipid_class
-        ]
 
     def get_lm_ids(self) -> List[str]:
         """Get all unique LIPID MAPS IDs from the dataset.
@@ -197,90 +117,6 @@ class LipidData(BaseModel):
             return self.manager.dataset_dict()
         return self.model_dump()
 
-    # TODO: Future methods for reactions integration
-    def get_reactions(self, species: str = "human", complete: bool = True):
-        """
-        Retrieve reactions for imported lipids from LIPID MAPS API.
-
-        Args:
-            species: Species to filter reactions (default: "human")
-            complete: Only include complete reactions (default: True)
-
-        Returns:
-            Reactions object
-
-        Note:
-            This method requires LIPID MAPS API integration (future implementation)
-        """
-        raise NotImplementedError(
-            "Reactions integration not yet implemented. "
-            "This will call LIPID MAPS API to retrieve reaction data."
-        )
-
-    def get_lipids_for_reaction_component(
-        self, component: Union[str, CompoundComponent]
-    ) -> List[QuantifiedLipid]:
-        """Get all lipids matching a reaction component.
-
-        Args:
-            component: Component LM ID (str) or CompoundComponent object
-
-        Returns:
-            List of QuantifiedLipid objects matching the component
-        """
-        # If reactions integration is not enabled for this LipidData instance,
-        # signal via NotImplementedError to match the higher-level API contract.
-        if not getattr(self, "_reactions_available", True):
-            raise NotImplementedError(
-                "Reaction helper methods are not available for this LipidData instance."
-            )
-
-        if hasattr(component, "compound_lm_id"):
-            comp_id = component.compound_lm_id
-        else:
-            comp_id = str(component)
-
-        if not comp_id:
-            return []
-
-        comp_id_lower = comp_id.lower()
-        return [
-            l
-            for l in self.dataset.lipids
-            if (l.lm_id and l.lm_id.lower() == comp_id_lower)
-            or (l.generic_lm_id and l.generic_lm_id.lower() == comp_id_lower)
-        ]
-
-    def get_value_for_reaction_component(
-        self,
-        component: Union[str, CompoundComponent],
-        sample: Optional[Union[str, SampleMetadata]] = None,
-        method: str = "sum",
-    ) -> Optional[float]:
-        """Get quantitation for a reaction component.
-
-        A reaction component may map to multiple lipids in the dataset.
-        This method aggregates values across all matching lipids.
-
-        Args:
-            component: Component LM ID (str) or CompoundComponent object
-            sample: Sample name (str) or SampleMetadata object
-            method: Aggregation method ('sum', 'mean', 'max', 'min')
-
-        Returns:
-            Aggregated quantitation value, or None if no matches
-        """
-        if not getattr(self, "_reactions_available", True):
-            raise NotImplementedError(
-                "Reaction helper methods are not available for this LipidData instance."
-            )
-
-        if sample is None:
-            # Mirror previous behavior where callers may omit sample; raise TypeError
-            # to indicate misuse rather than silently proceeding.
-            raise TypeError("get_value_for_reaction_component() missing required 'sample' argument")
-
-        return self.analyzer.get_value_for_reaction_component(component, sample, method)
 
     # =========================================================================
     # QUANTITATION ANALYSIS
@@ -525,6 +361,9 @@ def import_data(
     sample_cols: Optional[Union[List[int], List[str]]] = None,
     group_mapping: Optional[Dict[str, List[str]]] = None,
     validate: bool = False,
+    use_refmet: bool = True,
+    use_headgroups: bool = True,
+    fetch_reactions: bool = True,
 ) -> LipidData:
     """
     Import lipid data from a CSV file with flexible column specification.
@@ -582,6 +421,9 @@ def import_data(
         sample_columns=sample_cols,
         group_mapping=group_mapping,
         validate_data=validate,
+        use_refmet=use_refmet,
+        use_headgroups=use_headgroups,
+        fetch_reactions=fetch_reactions,
     )
     dataset = manager.process_csv(filename)
 
@@ -597,12 +439,11 @@ def import_data(
 
     logger.info(
         f"Import complete: {lipid_data.successful_import_count()} lipids, "
-        f"{len(lipid_data.samples())} samples"
     )
 
     return lipid_data
 
-
+#TODO to implement in future
 def import_msdial(filename: Union[str, Path]) -> LipidData:
     """
     Import MS-DIAL formatted lipid data.

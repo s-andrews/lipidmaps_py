@@ -6,7 +6,7 @@ from lipidmaps.data.data_manager import DataManager
 
 class TestDataManager(unittest.TestCase):
     def setUp(self):
-        self.data_manager = DataManager()
+        self.data_manager = DataManager(use_refmet=False, use_headgroups=False, fetch_reactions=False)
 
     def test_process_csv_populates_dataset(self):
         csv_path = Path(__file__).parent / "inputs" / "small_demo.csv"

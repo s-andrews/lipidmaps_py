@@ -3,7 +3,7 @@ import logging
 import requests
 from typing import List, Optional, Union, Dict, Any
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 from .base import LipidmapsBaseModel
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ class CompoundComponent(LipidmapsBaseModel):
     compound_lm_id: Optional[str] = None
     compound_sys_name: Optional[str] = None
     compound_synonyms: Optional[str] = None
-    compound_generic_id: Optional[str] = None
+    compound_generic_lm_id: Optional[str] = None
     compound_abbrev: Optional[str] = None
     compound_abbrev_chains: Optional[str] = None
     compound_headgroup: Optional[str] = None
@@ -27,7 +27,7 @@ class CompoundComponent(LipidmapsBaseModel):
         return (
             self.compound_name
             or self.compound_lm_id
-            or self.compound_generic_id
+            or self.compound_generic_lm_id
             or "Unknown"
         )
 
@@ -41,9 +41,92 @@ class ReactionData(LipidmapsBaseModel):
     proteins: List[Dict[str, Any]] = Field(default_factory=list)
     curations: List[Dict[str, Any]] = Field(default_factory=list)
     pathways: List[Dict[str, Any]] = Field(default_factory=list)
+    rhea_id: Optional[Union[str, List[str]]] = None
     reaction_name: Optional[str] = None
     reaction_id: Optional[int] = None
     reaction_type: Optional[str] = None
+    # Detailed evaluation produced by `ReactionEvaluator.evaluate_reaction()`.
+    # Contains keys like `possible` (bool), `explanation` (str), and any
+    # additional diagnostic `details` the evaluator may include.
+    evaluation: Optional[Dict[str, Any]] = None
+
+    @staticmethod
+    def _coerce_rhea_id(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.lower().startswith("rhea:"):
+            text = text.split(":", 1)[1].strip()
+        return text or None
+
+    @classmethod
+    def _extract_rhea_ids_from_curations(cls, curations: List[Dict[str, Any]]) -> List[str]:
+        ordered: List[str] = []
+        seen = set()
+
+        for curation in curations or []:
+            database_name = str(curation.get("database_name", "") or "").strip().lower()
+            if database_name != "rhea":
+                continue
+
+            rhea_id = cls._coerce_rhea_id(curation.get("database_id"))
+            if rhea_id and rhea_id not in seen:
+                ordered.append(rhea_id)
+                seen.add(rhea_id)
+
+        return ordered
+
+    @field_validator("rhea_id", mode="before")
+    @classmethod
+    def _normalize_rhea_id_field(cls, value: Any) -> Optional[Union[str, List[str]]]:
+        if value is None:
+            return None
+
+        values = value if isinstance(value, list) else [value]
+        ordered: List[str] = []
+        seen = set()
+        for item in values:
+            rhea_id = cls._coerce_rhea_id(item)
+            if rhea_id and rhea_id not in seen:
+                ordered.append(rhea_id)
+                seen.add(rhea_id)
+
+        if not ordered:
+            return None
+        if len(ordered) == 1:
+            return ordered[0]
+        return ordered
+
+    def list_rhea_ids(self) -> List[str]:
+        """Return normalized Rhea identifiers found on this reaction."""
+
+        ordered: List[str] = []
+        seen = set()
+
+        values = self.rhea_id if isinstance(self.rhea_id, list) else [self.rhea_id]
+        for value in values:
+            rhea_id = self._coerce_rhea_id(value)
+            if rhea_id and rhea_id not in seen:
+                ordered.append(rhea_id)
+                seen.add(rhea_id)
+        return ordered
+
+    def model_post_init(self, __context: Any) -> None:
+        """Populate normalized Rhea identifiers from curations when present."""
+
+        if self.list_rhea_ids():
+            return
+
+        curated_rhea_ids = self._extract_rhea_ids_from_curations(self.curations)
+        if not curated_rhea_ids:
+            return
+
+        if len(curated_rhea_ids) == 1:
+            self.rhea_id = curated_rhea_ids[0]
+        else:
+            self.rhea_id = curated_rhea_ids
 
     @property
     def organisms(self) -> List[str]:
@@ -61,7 +144,45 @@ class ReactionData(LipidmapsBaseModel):
         return sorted(list(organisms_set))
     
     # Allow additional fields from API response
-    model_config = {"extra": "allow"}
+    model_config = ConfigDict(extra="allow")
+
+    @staticmethod
+    def _component_identifier(comp: CompoundComponent) -> Optional[str]:
+        return comp.compound_lm_id or comp.compound_generic_lm_id
+
+    def list_generic_lm_ids(self) -> List[str]:
+        """List all generic_lm_ids from reactants and products."""
+        ids = set()
+        for comp in self.reactants + self.products:
+            if comp.compound_generic_lm_id or comp.compound_lm_id:
+                ids.add(comp.compound_generic_lm_id or comp.compound_lm_id)
+        return sorted(ids)
+    
+    def list_lm_ids(self) -> List[str]:
+        """List all lm_ids from reactants and products."""
+        ids = set()
+        for comp in self.reactants + self.products:
+            if comp.compound_lm_id:
+                ids.add(comp.compound_lm_id)
+        return sorted(ids)
+    
+    def list_nonfa_noncoa_reactant_lm_ids(self) -> List[str]:
+        """List all lm_ids from reactants."""
+        ids = set()
+        for component in self.reactants:
+            component_id = self._component_identifier(component)
+            if component_id and not (component_id == "LMFA01010000" or component_id.startswith("LMFA0705")):
+                ids.add(component_id)
+        return sorted(ids)
+    
+    def list_nonfa_noncoa_product_lm_ids(self) -> List[str]:
+        """List all lm_ids from products."""
+        ids = set()
+        for component in self.products:
+            component_id = self._component_identifier(component)
+            if component_id and not (component_id == "LMFA01010000" or component_id.startswith("LMFA0705")):
+                ids.add(component_id)
+        return sorted(ids)
 
     def has_lm_main_components(self) -> bool:
         """Check if reaction has any lm_main compounds."""
@@ -93,6 +214,7 @@ class ReactionData(LipidmapsBaseModel):
             genes=self.genes,
             proteins=self.proteins,
             curations=self.curations,
+            rhea_id=self.rhea_id,
             pathways=self.pathways,
             reaction_type=self.reaction_type
         )
@@ -111,7 +233,7 @@ class ReactionChecker(LipidmapsBaseModel):
     base_url: str = Field(..., description="Base URL for the reaction API")
     endpoint: str = Field(default="/api/reactions", description="API endpoint path")
     timeout: int = Field(
-        default=60, description="Request timeout in seconds", ge=1, le=300
+        default=120, description="Request timeout in seconds", ge=1, le=600
     )
 
     # Computed field for full API URL
@@ -164,19 +286,23 @@ class ReactionChecker(LipidmapsBaseModel):
         logger.debug("Reaction check payload: %s", payload)
         try:
             logger.info(f"Sending reaction check request for {len(lm_ids)} LM IDs to {self.api_url}")
-            response = requests.post(self.api_url, json=payload, timeout=self.timeout)
+            response = requests.post(
+                self.api_url,
+                json=payload,
+                timeout=self.timeout,
+            )
             try:
                 response.raise_for_status()
             except requests.HTTPError:
                 # Log response body where available to help debugging 400/500 errors
-                body = None
                 try:
                     body = response.text
                 except Exception:
                     body = "<unavailable>"
                 logger.error(
-                    "Reaction API returned HTTP %s",
-                    response.status_code
+                    "Reaction API returned HTTP %s: %s",
+                    response.status_code,
+                    body,
                 )
                 raise
 
@@ -222,14 +348,5 @@ class ReactionChecker(LipidmapsBaseModel):
             return ReactionResponse(reactions=reactions)
 
         except requests.RequestException as e:
-            # Try to include response text if present on the exception/response
-            resp = getattr(e, "response", None)
-            body = None
-            if resp is not None:
-                try:
-                    body = resp.text
-                except Exception:
-                    body = "<unavailable>"
             logger.error("Reaction API call failed: %s", e)
             return ReactionResponse(reactions=[], error=str(e))
-

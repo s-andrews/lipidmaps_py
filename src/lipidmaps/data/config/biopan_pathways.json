@@ -1,0 +1,125 @@
+{
+  "pathways": [
+    {
+      "pathway_id": "pc_to_lpa_cascade",
+      "pathway_name": "PC to LPA cascade",
+      "pathway_type": ["Glycerophospholipid remodeling"],
+      "description": "Sequential phosphatidylcholine deacylation through lysophosphatidylcholine to lysophosphatidic acid.",
+      "steps": [
+        {"reactant_class": "PC", "product_class": "LPC"},
+        {"reactant_class": "LPC", "product_class": "LPA"}
+      ]
+    },
+    {
+      "pathway_id": "pe_to_lpa_cascade",
+      "pathway_name": "PE to LPA cascade",
+      "pathway_type": ["Glycerophospholipid remodeling"],
+      "description": "Sequential phosphatidylethanolamine deacylation through lysophosphatidylethanolamine to lysophosphatidic acid.",
+      "steps": [
+        {"reactant_class": "PE", "product_class": "LPE"},
+        {"reactant_class": "LPE", "product_class": "LPA"}
+      ]
+    },
+    {
+      "pathway_id": "ps_to_lpa_cascade",
+      "pathway_name": "PS to LPA cascade",
+      "pathway_type": ["Glycerophospholipid remodeling"],
+      "description": "Sequential phosphatidylserine deacylation through lysophosphatidylserine to lysophosphatidic acid.",
+      "steps": [
+        {"reactant_class": "PS", "product_class": "LPS"},
+        {"reactant_class": "LPS", "product_class": "LPA"}
+      ]
+    },
+    {
+      "pathway_id": "pi_to_lpa_cascade",
+      "pathway_name": "PI to LPA cascade",
+      "pathway_type": ["Glycerophospholipid remodeling"],
+      "description": "Sequential phosphatidylinositol deacylation through lysophosphatidylinositol to lysophosphatidic acid.",
+      "steps": [
+        {"reactant_class": "PI", "product_class": "LPI"},
+        {"reactant_class": "LPI", "product_class": "LPA"}
+      ]
+    },
+    {
+      "pathway_id": "pg_to_lpa_cascade",
+      "pathway_name": "PG to LPA cascade",
+      "pathway_type": ["Glycerophospholipid remodeling"],
+      "description": "Sequential phosphatidylglycerol deacylation through lysophosphatidylglycerol to lysophosphatidic acid.",
+      "steps": [
+        {"reactant_class": "PG", "product_class": "LPG"},
+        {"reactant_class": "LPG", "product_class": "LPA"}
+      ]
+    },
+    {
+      "pathway_id": "lpa_to_mg_cascade",
+      "pathway_name": "LPA to MG cascade",
+      "pathway_type": ["Glycerophospholipid and glycerolipid metabolism"],
+      "description": "Ordered conversion from lysophosphatidic acid to phosphatidic acid, diacylglycerol, and monoacylglycerol.",
+      "steps": [
+        {"reactant_class": "LPA", "product_class": "PA"},
+        {"reactant_class": "PA", "product_class": "1,2-DG"},
+        {"reactant_class": "1,2-DG", "product_class": "MG"}
+      ]
+    },
+    {
+      "pathway_id": "mg_to_tg_cascade",
+      "pathway_name": "MG to TG cascade",
+      "pathway_type": ["Glycerolipid synthesis"],
+      "description": "Stepwise acylation from monoacylglycerol to diacylglycerol to triacylglycerol.",
+      "steps": [
+        {"reactant_class": "MG", "product_class": "1,2-DG"},
+        {"reactant_class": "1,2-DG", "product_class": "TG"}
+      ]
+    },
+    {
+      "pathway_id": "tg_to_mg_cascade",
+      "pathway_name": "TG to MG cascade",
+      "pathway_type": ["Glycerolipid catabolism"],
+      "description": "Stepwise deacylation from triacylglycerol to diacylglycerol to monoacylglycerol.",
+      "steps": [
+        {"reactant_class": "TG", "product_class": "1,2-DG"},
+        {"reactant_class": "1,2-DG", "product_class": "MG"}
+      ]
+    },
+    {
+      "pathway_id": "pip2_to_pa_cascade",
+      "pathway_name": "PIP2 to PA cascade",
+      "pathway_type": ["Phosphoinositide signaling"],
+      "description": "Phosphoinositide hydrolysis to diacylglycerol followed by phosphorylation to phosphatidic acid.",
+      "steps": [
+        {"reactant_class": "PIP2[4',5']", "product_class": "1,2-DG"},
+        {"reactant_class": "1,2-DG", "product_class": "PA"}
+      ]
+    },
+    {
+      "pathway_id": "sphingomyelin_to_sphingosine_cascade",
+      "pathway_name": "Sphingomyelin to sphingosine cascade",
+      "pathway_type": ["Sphingolipid catabolism"],
+      "description": "Sequential degradation from sphingomyelin to ceramide to sphingosine.",
+      "steps": [
+        {"reactant_class": "Sphingomyelin", "product_class": "Ceramide"},
+        {"reactant_class": "Ceramide", "product_class": "Sphingosine"}
+      ]
+    },
+    {
+      "pathway_id": "dihydroceramide_to_glccer_cascade",
+      "pathway_name": "Dihydroceramide to GlcCer cascade",
+      "pathway_type": ["Sphingolipid biosynthesis"],
+      "description": "Sequential conversion from dihydroceramide to ceramide to glucosylceramide.",
+      "steps": [
+        {"reactant_class": "Dihydroceramide", "product_class": "Ceramide"},
+        {"reactant_class": "Ceramide", "product_class": "GlcCer"}
+      ]
+    },
+    {
+      "pathway_id": "dihydroceramide_to_galcer_cascade",
+      "pathway_name": "Dihydroceramide to GalCer cascade",
+      "pathway_type": ["Sphingolipid biosynthesis"],
+      "description": "Sequential conversion from dihydroceramide to ceramide to galactosylceramide.",
+      "steps": [
+        {"reactant_class": "Dihydroceramide", "product_class": "Ceramide"},
+        {"reactant_class": "Ceramide", "product_class": "GalCer"}
+      ]
+    }
+  ]
+}

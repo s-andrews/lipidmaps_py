@@ -7,14 +7,14 @@ functions for lipidomics data.
 
 import logging
 import math
-from typing import Dict, List, Optional, Tuple, Union, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
 from enum import Enum
 
 import numpy as np
 from scipy import stats
 
 from .models.base import LipidmapsBaseModel
-from pydantic import PrivateAttr
+from pydantic import ConfigDict, PrivateAttr
 
 if TYPE_CHECKING:
     from .models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
@@ -70,7 +70,7 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
     """
 
     dataset: Any
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     _config: QuantitationConfig = PrivateAttr(default_factory=QuantitationConfig)
 
     def __init__(self, dataset: Any = None, **data):
@@ -85,6 +85,19 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
 
     def __repr__(self) -> str:
         return f"QuantitationAnalyzer(dataset={getattr(self.dataset, 'name', None)})"
+
+    def _sample_group_name(self, sample: "SampleMetadata") -> str:
+        """Return a normalized group name for a sample, preferring `group`, then `label`, else 'Unknown'."""
+        try:
+            g = getattr(sample, 'group', None)
+            if g:
+                return g
+            lbl = getattr(sample, 'label', None)
+            if lbl:
+                return lbl
+        except Exception:
+            pass
+        return "Unknown"
 
     @property
     def config(self) -> QuantitationConfig:
@@ -356,8 +369,8 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
             Dict mapping lipid input_name -> fold_change
         """
         # Get sample names for each group
-        group1_samples = [s.sample_name for s in self.dataset.samples if s.group == group1]
-        group2_samples = [s.sample_name for s in self.dataset.samples if s.group == group2]
+        group1_samples = [s.sample_name for s in self.dataset.samples if self._sample_group_name(s) == group1]
+        group2_samples = [s.sample_name for s in self.dataset.samples if self._sample_group_name(s) == group2]
 
         if not group1_samples or not group2_samples:
             logger.warning(f"Empty groups: {group1}={len(group1_samples)}, {group2}={len(group2_samples)}")
@@ -406,8 +419,8 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
         Returns:
             Dict mapping lipid input_name -> p_value
         """
-        group1_samples = [s.sample_name for s in self.dataset.samples if s.group == group1]
-        group2_samples = [s.sample_name for s in self.dataset.samples if s.group == group2]
+        group1_samples = [s.sample_name for s in self.dataset.samples if self._sample_group_name(s) == group1]
+        group2_samples = [s.sample_name for s in self.dataset.samples if self._sample_group_name(s) == group2]
 
         if not group1_samples or not group2_samples:
             return {}
@@ -470,10 +483,10 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
 
         # By group
         group_cvs: Dict[str, Dict[str, float]] = {}
-        groups = set(s.group for s in self.dataset.samples)
+        groups = set(self._sample_group_name(s) for s in self.dataset.samples)
 
         for group in groups:
-            group_samples = [s.sample_name for s in self.dataset.samples if s.group == group]
+            group_samples = [s.sample_name for s in self.dataset.samples if self._sample_group_name(s) == group]
             group_cvs[group] = {}
 
             for lipid in self.dataset.lipids:
@@ -561,7 +574,8 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
         """
         groups: Dict[str, List[str]] = {}
         for sample in self.dataset.samples:
-            groups.setdefault(sample.group, []).append(sample.sample_name)
+            g = self._sample_group_name(sample)
+            groups.setdefault(g, []).append(sample.sample_name)
 
         result: Dict[str, Dict[str, float]] = {}
         for group, sample_names in groups.items():
@@ -585,7 +599,8 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
         """
         groups: Dict[str, List[str]] = {}
         for sample in self.dataset.samples:
-            groups.setdefault(sample.group, []).append(sample.sample_name)
+            g = self._sample_group_name(sample)
+            groups.setdefault(g, []).append(sample.sample_name)
 
         result: Dict[str, Dict[str, float]] = {}
         for group, sample_names in groups.items():
@@ -611,7 +626,8 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
         """
         groups: Dict[str, List[str]] = {}
         for sample in self.dataset.samples:
-            groups.setdefault(sample.group, []).append(sample.sample_name)
+            g = self._sample_group_name(sample)
+            groups.setdefault(g, []).append(sample.sample_name)
 
         result: Dict[str, Dict[str, Dict[str, float]]] = {}
         for group, sample_names in groups.items():
@@ -818,6 +834,83 @@ class QuantitationAnalyzer(LipidmapsBaseModel):
             return None
         else:
             raise ValueError(f"Unknown method: {method}")
+
+    def reaction_zscores(
+        self,
+        group1: str,
+        group2: str,
+        method: str = "ratio",
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Compute standardized difference (z-like score) for each reaction between two groups.
+
+        For each reaction in `self.dataset.reactions`, compute per-sample flux estimates
+        (using `get_reaction_flux_estimate`) and then compute group means and pooled
+        standard deviation. The returned value maps reaction_id -> {
+            'group1_mean','group2_mean','zscore','n1','n2'
+        }.
+
+        Note: This is a simple standardized-difference (Cohen-like) metric, not a
+        formal statistical test.
+        """
+        res: Dict[str, Dict[str, Any]] = {}
+        # sample lists by group
+        g1_names = [s.sample_name for s in self.dataset.samples if self._sample_group_name(s) == group1]
+        g2_names = [s.sample_name for s in self.dataset.samples if self._sample_group_name(s) == group2]
+
+        if not g1_names or not g2_names:
+            return {}
+
+        for r in getattr(self.dataset, "reactions", []) or []:
+            # compute per-sample fluxes
+            vals_g1: List[float] = []
+            vals_g2: List[float] = []
+            for sname in g1_names:
+                try:
+                    v = self.get_reaction_flux_estimate(r, sname, method=method)
+                except Exception:
+                    v = None
+                if v is not None:
+                    vals_g1.append(v)
+            for sname in g2_names:
+                try:
+                    v = self.get_reaction_flux_estimate(r, sname, method=method)
+                except Exception:
+                    v = None
+                if v is not None:
+                    vals_g2.append(v)
+
+            n1 = len(vals_g1)
+            n2 = len(vals_g2)
+            mean1 = float(np.mean(vals_g1)) if n1 > 0 else float('nan')
+            mean2 = float(np.mean(vals_g2)) if n2 > 0 else float('nan')
+
+            # pooled std
+            pooled_std = float('nan')
+            if n1 + n2 - 2 > 0 and n1 > 1 and n2 > 1:
+                s1 = float(np.std(vals_g1, ddof=1))
+                s2 = float(np.std(vals_g2, ddof=1))
+                pooled = np.sqrt(((n1 - 1) * s1 ** 2 + (n2 - 1) * s2 ** 2) / (n1 + n2 - 2))
+                pooled_std = float(pooled) if pooled > 0 else float('nan')
+
+            if not math.isnan(pooled_std) and pooled_std != 0:
+                z = (mean1 - mean2) / pooled_std
+            else:
+                # fallback: use difference without scaling
+                z = float('nan')
+
+            rid = getattr(r, "reaction_id", None) or getattr(r, "id", None) or str(r)
+            rname = getattr(r, "reaction_name", None)
+            res[str(rid)] = {
+                "reaction_name": rname,
+                "group1_mean": mean1,
+                "group2_mean": mean2,
+                "zscore": z,
+                "n1": n1,
+                "n2": n2,
+            }
+
+        return res
 
 
 # Ensure forward-referenced models are resolved when possible (pydantic v2)

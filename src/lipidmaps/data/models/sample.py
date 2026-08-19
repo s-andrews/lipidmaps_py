@@ -4,17 +4,45 @@ from typing import Any, List, Dict, Optional, Union, Callable
 import numpy as np
 import re
 from ..utils.headgroups import lipidmaps_headgroups
-from .query import Query, from_callable, attr_eq, attr_in, attr_contains, attr_gt, has_attr
+from ..utils.lipid_reaction_rules import lipid_reaction_rules
+from ..utils.chain_parser import LipidStructure, parse_lipid
+from .query import Query, from_callable
 from .base import LipidmapsBaseModel
-from pydantic import Field
+from pydantic import ConfigDict, Field, PrivateAttr, RootModel, field_validator
 from enum import Enum
 from datetime import datetime
 from .reaction import ReactionData, CompoundComponent, ReactionChecker
 from ...config import LMSD_REACTIONS_BASE_URL
-from ..validation.data_validator import DataValidator, ValidationReport
+from ..validation.data_validator import ValidationReport
+
 
 
 logger = logging.getLogger(__name__)
+
+
+class SampleConditions(RootModel[Dict[str, str]]):
+    """Mapping of sample_name to condition/group name."""
+
+    root: Dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("root")
+    @classmethod
+    def validate_root(cls, value: Dict[str, str]) -> Dict[str, str]:
+        normalized: Dict[str, str] = {}
+        for sample_name, condition_name in value.items():
+            sample_text = str(sample_name).strip() if sample_name is not None else ""
+            condition_text = str(condition_name).strip() if condition_name is not None else ""
+            if not sample_text:
+                raise ValueError("Condition mapping keys must be non-empty sample names")
+            if not condition_text:
+                raise ValueError(
+                    f"Condition name for sample '{sample_text}' must be a non-empty string"
+                )
+            normalized[sample_text] = condition_text
+        return normalized
+
+    def as_dict(self) -> Dict[str, str]:
+        return dict(self.root)
 
 
 class SampleMetadata(LipidmapsBaseModel):
@@ -68,7 +96,7 @@ class MissingInfo(LipidmapsBaseModel):
     note: Optional[str] = None
     imputed: bool = False
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
 
 
 class NormalizedResult(LipidmapsBaseModel):
@@ -83,28 +111,49 @@ class NormalizedResult(LipidmapsBaseModel):
         if self.created_iso is None:
             self.created_iso = datetime.utcnow().isoformat() + "Z"
 
-class QuantifiedLipid(LipidmapsBaseModel):
-    input_name: str
-    values: Dict[str, Optional[float]] = Field(default_factory=dict)
-    missing: Dict[str, MissingInfo] = Field(default_factory=dict)
-    pathway_ids: Optional[List[str]] = None  # e.g., KEGG or Reactome IDs
-    pathway_names: Optional[List[str]] = None  # Human-readable names
-    enzyme_ids: Optional[List[str]] = None  
-    # RefMet annotations
-    standardized_name: Optional[str] = None
-    standardized_by: Optional[str] = None # e.g., "RefMet"
-    lm_id: Optional[str] = None
-    lm_id_found_by: Optional[str] = None  # e.g., "LMSD", "RefMet"
-    matched_field: Optional[str] = None
-    generic_lm_id: Optional[str] = None
-    sub_class: Optional[str] = None
-    super_class: Optional[str] = None
-    main_class: Optional[str] = None
+
+class LipidAnnotation(LipidmapsBaseModel):
+    """External database annotations and classification for a lipid.
+    
+    Contains classification hierarchy and database identifiers from sources
+    like RefMet, CHEBI, KEGG, and LIPID MAPS.
+    """
+    # Classification hierarchy
+    sub_class: Optional[str] = None  # e.g., "PC", "TAG"
+    main_class: Optional[str] = None  # e.g., "Glycerophosphocholines"
+    super_class: Optional[str] = None  # e.g., "Glycerophospholipids"
+    
+    # Database identifiers
     chebi_id: Optional[str] = None
     kegg_id: Optional[str] = None
     refmet_id: Optional[str] = None
+    
+    # Chemical properties
     formula: Optional[str] = None
     mass: Optional[float] = None
+
+
+class QuantifiedLipid(LipidmapsBaseModel):
+    input_name: str
+    #TODO: We should have a headgroup class to refer here rather than duplication of headgroup string
+    #Delegating headgroups to LipidStructure class
+    #headgroup: Optional[str] = None
+    standardized_name: Optional[str] = None # RefMet name if standardized
+    standardized_by: Optional[str] = None # e.g., "RefMet"
+    lm_id: Optional[str] = None
+    lm_id_found_by: Optional[str] = None  # e.g., "LMSD", "RefMet"
+    abbrev: Optional[str] = None  # e.g., "PC 34:1"
+    abbrev_chains: Optional[str] = None  # e.g., "PC 16:0_18:1"
+    values: Dict[str, Optional[float]] = Field(default_factory=dict)
+    missing: Dict[str, MissingInfo] = Field(default_factory=dict) # If lipid value is missing for a sample, store info about the missingness here keyed by sample_name
+    pathway_ids: Optional[List[str]] = None  # e.g., KEGG or Reactome IDs
+    pathway_names: Optional[List[str]] = None  # Human-readable names
+    enzyme_ids: Optional[List[str]] = None  
+
+
+    matched_field: Optional[str] = None
+    generic_lm_id: Optional[str] = None
+
     reactions: Optional[List[ReactionData]] = None # List of associated reactions
     weight: Optional[float] = None  # For species or class-level reaction
     # Quantitation metadata
@@ -113,6 +162,35 @@ class QuantifiedLipid(LipidmapsBaseModel):
     quantitation_notes: Optional[str] = None
     # Store typed normalized results keyed by method_key -> NormalizedResult
     normalized: Dict[str, "NormalizedResult"] = Field(default_factory=dict)
+
+
+    # Composed structural data (parsed lazily or eagerly)
+    _structure: Optional[LipidStructure] = PrivateAttr(default=None)
+    # External annotations (populated from RefMet, LMSD, etc.)
+    _annotation: Optional[LipidAnnotation] = PrivateAttr(default=None)
+    
+    @property
+    def structure(self) -> LipidStructure:
+        if self._structure is not None:
+            return self._structure
+        std = self.standardized_name
+        std_lower = std.lower() if std is not None else ""
+        if std is not None and "FA" not in self.input_name and "-coa" not in std_lower:
+            self._structure = parse_lipid(std)
+        elif "fa" in self.input_name.lower() or "-coa" in std_lower:
+            self._structure = parse_lipid(self.input_name)
+        return self._structure
+    
+    @property
+    def annotation(self) -> Optional[LipidAnnotation]:
+        """External database annotations (classification, IDs, properties)."""
+        return self._annotation
+    
+    @annotation.setter
+    def annotation(self, value: Optional[LipidAnnotation]) -> None:
+        self._annotation = value
+    
+    #### METHODS FOR ACCESSING AND MANIPULATING QUANTITATION DATA ####
 
     def get_value_for_sample(self, sample: SampleMetadata) -> Optional[float]:
         """
@@ -167,17 +245,25 @@ class QuantifiedLipid(LipidmapsBaseModel):
                     self.missing[sid] = MissingInfo(type=MissingType.OTHER, note=f"Imputed ({strategy})", imputed=True)
                 imputed[sid] = fill
         return imputed
-        
+    
+    
     @property
     def recognized(self) -> bool:
         return self.standardized_name is not None
     
     def zscore(self) -> Dict[str, float]:
-        vals = np.array(list(self.values.values()))
-        mean = np.mean(vals)
-        std = np.std(vals)
+        def _present(v: Optional[float]) -> bool:
+            return v is not None and not (isinstance(v, float) and np.isnan(v))
+
+        present = [v for v in self.values.values() if _present(v)]
+        if len(present) < 2:
+            return {k: 0.0 for k in self.values}
+        mean = float(np.mean(present))
+        std = float(np.std(present, ddof=1))
+        if std == 0:
+            return {k: 0.0 for k in self.values}
         return {
-            k: (v - mean) / std if std != 0 else 0.0 for k, v in self.values.items()
+            k: ((v - mean) / std) if _present(v) else 0.0 for k, v in self.values.items()
         }
 
     def set_normalized(self, entry: Union["NormalizedResult", str], vals: Optional[Dict[str, Optional[float]]] = None, meta: Optional[Dict[str, Any]] = None) -> None:
@@ -197,12 +283,15 @@ class QuantifiedLipid(LipidmapsBaseModel):
         """Return a NormalizedResult for `method_key` or None if not present."""
         return self.normalized.get(method_key)
 
+
 class LipidDataset(LipidmapsBaseModel):
     samples: List[SampleMetadata]
     lipids: List[QuantifiedLipid]
     column_info: Optional[Dict[str, Any]] = None  # Metadata about CSV columns
     reactions: List[ReactionData] = Field(default_factory=list)  # All reactions in dataset
     validation_report: Optional[ValidationReport] = Field(default=None)
+    # Status flags for API calls
+    refmet_failed: bool = Field(default=False, description="True if RefMet API call failed during processing")
     # Quantitation metadata for the entire dataset
     quantitation_unit: Optional[str] = None  # e.g., 'pmol', 'ng', 'area'
     quantitation_method: Optional[str] = None  # e.g., 'LC-MS', 'GC-MS'
@@ -241,9 +330,77 @@ class LipidDataset(LipidmapsBaseModel):
     def list_sample_names(self) -> List[str]:
         return [s.sample_name for s in self.samples]
 
+    def get_sample_conditions(self) -> SampleConditions:
+        """Return the current sample_name -> condition mapping."""
+        return SampleConditions.model_validate(
+            {
+                sample.sample_name: sample.group
+                for sample in self.samples
+                if sample.sample_name and sample.group
+            }
+        )
+
+    def set_sample_conditions(
+        self,
+        conditions: Union[SampleConditions, Dict[str, str]],
+        *,
+        strict: bool = True,
+    ) -> SampleConditions:
+        """Update sample conditions from a partial or full sample_name -> condition mapping."""
+        condition_map = (
+            conditions
+            if isinstance(conditions, SampleConditions)
+            else SampleConditions.model_validate(conditions)
+        )
+        sample_lookup = {
+            sample.sample_name: sample
+            for sample in self.samples
+            if sample.sample_name
+        }
+        unknown_samples = sorted(set(condition_map.root) - set(sample_lookup))
+        if strict and unknown_samples:
+            missing_text = ", ".join(unknown_samples)
+            raise ValueError(f"Unknown sample names in condition mapping: {missing_text}")
+
+        for sample_name, condition_name in condition_map.root.items():
+            sample = sample_lookup.get(sample_name)
+            if sample is not None:
+                sample.group = condition_name
+
+        return self.get_sample_conditions()
+
     def list_lipid_names(self) -> List[str]:
         return [l.input_name for l in self.lipids]
 
+    def list_headgroups(self) -> List[str]:
+        headgroups = set()
+        for lipid in self.lipids:
+            hg = None
+            try:
+                if hasattr(lipid, "structure") and lipid.structure and getattr(lipid.structure, "headgroup", None):
+                    hg = lipid.structure.headgroup
+            except Exception:
+                hg = None
+            if hg is not None:
+                headgroups.add(hg)
+        return sorted(headgroups)
+    
+    def list_generic_lm_ids(self) -> List[str]:
+        generic_lm_ids = set()        
+        for lipid in self.lipids:
+            glid = getattr(lipid, "generic_lm_id", None)
+            if glid is not None:
+                generic_lm_ids.add(glid)
+        return list(generic_lm_ids)
+    
+    def generic_lm_ids_exist(self, generic_lm_ids: List[str]) -> bool:
+        existing = self.list_generic_lm_ids()
+        return all(glid in existing for glid in generic_lm_ids)
+    
+    def headgroups_exist(self, headgroups: List[str]) -> bool:
+        existing = self.list_headgroups()
+        return all(hg in existing for hg in headgroups)
+    
     def normalized_dataframe(self, method_key: str):
         """Return a pandas DataFrame of normalized values for `method_key`.
 
@@ -312,6 +469,104 @@ class LipidDataset(LipidmapsBaseModel):
                 unique.append(lid)
         return unique
 
+    def get_structures(self) -> List[LipidStructure]:
+        """Return all parsed LipidStructure objects (triggers lazy parsing).
+        
+        Returns:
+            List of LipidStructure objects for all lipids in the dataset.
+        """
+        structs: List[LipidStructure] = []
+        for lipid in self.lipids:
+            try:
+                s = lipid.structure
+            except Exception:
+                s = None
+            if s is not None:
+                structs.append(s)
+        return structs
+
+    def get_structures_by_headgroup(self, headgroup: Optional[str] = None) -> Dict[str, List[LipidStructure]]:
+        """Group LipidStructure objects by headgroup, or filter by headgroup if supplied."""
+        result: Dict[str, List[LipidStructure]] = {}
+        for lipid in self.lipids:
+            try:
+                s = lipid.structure
+            except Exception:
+                s = None
+            if s is None:
+                continue
+            hg = getattr(s, "headgroup", None) or "Unknown"
+            if headgroup is not None:
+                if hg == headgroup:
+                    result.setdefault(hg, []).append(s)
+            else:
+                result.setdefault(hg, []).append(s)
+        if headgroup is not None:
+            # Only return the dict for the requested headgroup
+            return {headgroup: result.get(headgroup, [])}
+        return result
+
+    def check_structure_exist(self, headgroup: Optional[str] = None, total_carbons: Optional[int] = None, total_double_bonds: Optional[int] = None) -> bool:
+        """LipidStructure object by headgroup, total_carbons, total_double_bonds"""
+        if headgroup is None or total_carbons is None or total_double_bonds is None:
+            return False
+        result = False
+        for lipid in self.lipids:
+            try:
+                s = lipid.structure
+            except Exception:
+                s = None
+            if s is None:
+                continue
+            headgroup_origin = getattr(s, "headgroup", None)
+            total_carbons_origin = getattr(s, "total_carbons", None)
+            total_double_bonds_origin = getattr(s, "total_double_bonds", None)
+            if headgroup_origin == headgroup and total_carbons_origin == total_carbons and total_double_bonds_origin == total_double_bonds:
+                return True
+            else:
+                continue
+
+        return result
+        
+    def fetch_reactions(self, lm_ids: List[str], reaction_type: Optional[str] = None, only_lipid_components: bool = True, taxonomy_group: Optional[str] = "all") -> List[ReactionData]:
+        """
+        Fetch reactions for a list of LM IDs using the ReactionChecker API.
+
+        This is a focused helper which only performs the network call and
+        returns a deduplicated list of ReactionData objects. It does NOT
+        mutate the dataset or annotate lipids.
+        """
+        if not lm_ids:
+            return []
+
+        try:
+            checker = ReactionChecker(base_url=LMSD_REACTIONS_BASE_URL)
+            response = checker.check_reactions(
+                lm_ids=lm_ids,
+                generic_reactions=False,
+                reaction_type=("class-level" if reaction_type is None else reaction_type),
+                only_lipid_components=only_lipid_components,
+                taxonomy_group=taxonomy_group,
+            )
+            reactions = getattr(response, "reactions", []) or []
+
+            # Deduplicate by id
+            reaction_dict = {}
+            for reaction in reactions:
+                rid = getattr(reaction, "reaction_id", None) or getattr(reaction, "id", None)
+                if rid is None:
+                    continue
+                rid = str(rid)
+                if rid not in reaction_dict:
+                    reaction_dict[rid] = reaction
+
+            return list(reaction_dict.values())
+        except Exception:
+            logger.exception("Failed to fetch reactions from ReactionChecker API.")
+            return []
+
+
+
     def list_lipids_with_reactions(self) -> List[str]:
         return [l.input_name for l in self.lipids if l.reactions is not None and len(l.reactions) > 0]
     
@@ -343,7 +598,7 @@ class LipidDataset(LipidmapsBaseModel):
 
         return [l for l in self.lipids if combined.matches(l)]
 
-    def fetch_reactions_by_lm_id(self, reaction_type: Optional[str] = None, only_lipid_components: bool = True, taxonomy_group: Optional[str] = "all") -> List[ReactionData]:
+    def fetch_reactions_by_lm_id(self, reaction_type: Optional[str] = None, only_lipid_components: bool = True, taxonomy_group: Optional[str] = "all", annotate_lipids: bool = True, annotate_using_evaluator: bool = True) -> List[ReactionData]:
         """
         Fetch reactions for LM IDs present in this dataset using the ReactionChecker API.
         Attaches the fetched reactions to `self.reactions` and annotates lipids in-place.
@@ -359,31 +614,15 @@ class LipidDataset(LipidmapsBaseModel):
             self.reactions = []
             return []
 
-        try:
-            checker = ReactionChecker(base_url=LMSD_REACTIONS_BASE_URL)
-            response = checker.check_reactions(
-                lm_ids=lm_ids,
-                generic_reactions=False,
-                reaction_type=("class-level" if reaction_type is None else reaction_type),
-                only_lipid_components=only_lipid_components,
-                taxonomy_group=taxonomy_group
-            )
-            reactions = getattr(response, "reactions", []) or []
-            logger.info(f"Fetched {len(reactions)} reactions from ReactionChecker API.")
-            logger.debug(f"Reaction fetching parameters: lm_ids={lm_ids}, reaction_type={reaction_type}, only_lipid_components={only_lipid_components}, taxonomy_group={taxonomy_group}")
-            # Deduplicate reactions by id and assign to dataset
-            reaction_dict = {}
-            for reaction in reactions:
-                rid = getattr(reaction, "reaction_id", None) or getattr(reaction, "id", None)
-                if rid is None:
-                    continue
-                rid = str(rid)
-                if rid not in reaction_dict:
-                    reaction_dict[rid] = reaction
+        # Use the focused helper to perform the network fetch and deduplication
+        reactions = self.fetch_reactions(lm_ids=lm_ids, reaction_type=reaction_type, only_lipid_components=only_lipid_components, taxonomy_group=taxonomy_group)
+        logger.info(f"Fetched {len(reactions)} reactions from ReactionChecker API.")
 
-            self.reactions = list(reaction_dict.values())
+        # Assign to dataset
+        self.reactions = reactions
 
-            # Annotate lipids with matching reactions
+        if annotate_lipids and reactions:
+            # Annotate lipids with matching reactions (simple LM ID matching)
             for lipid in self.lipids:
                 lipid_ids = set()
                 if getattr(lipid, "lm_id", None):
@@ -416,11 +655,16 @@ class LipidDataset(LipidmapsBaseModel):
 
                 lipid.reactions = matched_reactions if matched_reactions else None
 
-            return self.reactions
-        except Exception:
-            logger.exception("Failed to fetch reactions from ReactionChecker API.")
-            self.reactions = []
-            return []
+        if annotate_using_evaluator and self.reactions:
+            try:
+                from ..utils.reaction_evaluator import ReactionEvaluator
+
+                evaluator = ReactionEvaluator(lipid_reaction_rules)
+                evaluator.annotate_reactions(self.reactions, dataset=self)
+            except Exception:
+                logger.exception("ReactionEvaluator failed; leaving reactions unannotated")
+
+        return self.reactions
 
     def get_lipids_for_component(self, component: CompoundComponent) -> List[QuantifiedLipid]:
         """
@@ -430,6 +674,8 @@ class LipidDataset(LipidmapsBaseModel):
 
         if hasattr(component, "compound_lm_id") and component.compound_lm_id:
             comp_names.add(component.compound_lm_id.lower())
+        if hasattr(component, "compound_generic_lm_id") and component.compound_generic_lm_id:
+            comp_names.add(component.compound_generic_lm_id.lower())
 
         return [
             l for l in self.lipids
@@ -444,29 +690,83 @@ class LipidDataset(LipidmapsBaseModel):
             if q in (l.input_name or "").lower() or (l.standardized_name and q in l.standardized_name.lower())
         ]
 
-    def _find_generic_lm_id_from_headgroup(self, name: str) -> Optional[str]:
+    def _find_headgroup_from_name(self, name: str) -> Optional[str]:
+        """
+        Find headgroup string using headgroup mapping.
+        Returns:
+           Headgroup string if a match is found, otherwise None.
+        """
+        if name.lower().startswith("fa ") or name.lower().startswith("fa("):
+            return "FA"
+        elif " O-" in name or " P-" in name:
+            dash_index = name.index("-")
+            return name[:dash_index+1]
+        else:
+            match = re.match(r"^([A-Za-z0-9\-]+)", name)
+            if match:
+                return match.group(1)
+        return None
+    
+    def _find_generic_lm_id_from_name(self, name: str) -> Optional[str]:
         """
         Find Generic LM_ID string using headgroup mapping.
         Returns:
            Generic LM_ID string if a headgroup match is found, otherwise None.
         """
-        headgroup = None
-        if name.lower().startswith("fa ") or name.lower().startswith("fa("):
-            headgroup = "FA"
-        elif " O-" in name or " P-" in name:
-            dash_index = name.index("-")
-            headgroup = name[:dash_index+1]
-        else:
-            match = re.match(r"^([A-Za-z0-9\-]+)", name)
-            if match:
-                headgroup = match.group(1)
+        headgroup = self._find_headgroup_from_name(name)
+        
         if headgroup:
             lm_ids = lipidmaps_headgroups.get(headgroup)
             if lm_ids and lm_ids[0]:
                 return lm_ids[0]
         return None
+
+    def _find_linkage_from_name(self, name: str) -> Optional[str]:
+        """
+        Detect linkage type from lipid name patterns.
+        Returns one of: 'ester', 'ether_alkyl', 'ether_vinyl', 'amide', or None.
+        """
+        if not name:
+            return None
+        n = name.strip()
+        # plasmalogen marker (P-)
+        if " P-" in n or n.startswith("P-"):
+            return "ether_vinyl"
+        # alkyl ether marker (O-)
+        if " O-" in n or n.startswith("O-"):
+            return "ether_alkyl"
+        # sphingolipids often have 'Cer' or 'SM' in name
+        if n.startswith("Cer") or n.startswith("SM") or n.lower().startswith("dhcer"):
+            return "amide"
+        # default: assume ester for glycerophospholipids
+        return "ester"
+
+    def _get_headgroup_from_compound(self, comp: CompoundComponent) -> Optional[str]:
+        if not comp:
+            return None
+        # Prefer explicit field
+        if getattr(comp, "compound_headgroup", None):
+            return comp.compound_headgroup
+        # Fall back to generic id or name parsing
+        if getattr(comp, "compound_generic_lm_id", None):
+            return comp.compound_generic_lm_id
+        if getattr(comp, "compound_name", None):
+            return self._find_headgroup_from_name(comp.compound_name)
+        return None
+
+    def _get_linkage_from_compound(self, comp: CompoundComponent) -> Optional[str]:
+        # Prefer explicit abbrev markers
+        if not comp:
+            return None
+        if getattr(comp, "compound_abbrev", None):
+            return self._find_linkage_from_name(comp.compound_abbrev)
+        if getattr(comp, "compound_headgroup", None):
+            return self._find_linkage_from_name(comp.compound_headgroup)
+        if getattr(comp, "compound_name", None):
+            return self._find_linkage_from_name(comp.compound_name)
+        return None
     
-    def fill_missing_lm_ids_from_headgroups(self) -> int:
+    def fill_generic_lm_ids_from_headgroups(self) -> int:
         """
         Fill missing lm_id fields on QuantifiedLipid objects using headgroup mapping from headgroups.py.
         Returns:
@@ -477,9 +777,9 @@ class LipidDataset(LipidmapsBaseModel):
             if not getattr(lipid, "generic_lm_id", None):
                 generic_lm_id = None
                 if lipid.standardized_name:
-                    generic_lm_id = self._find_generic_lm_id_from_headgroup(lipid.standardized_name)
+                    generic_lm_id = self._find_generic_lm_id_from_name(lipid.standardized_name)
                 if not generic_lm_id and (lipid.input_name.lower().startswith("fa ") or lipid.input_name.lower().startswith("fa(")):
-                    generic_lm_id = self._find_generic_lm_id_from_headgroup(lipid.input_name)
+                    generic_lm_id = self._find_generic_lm_id_from_name(lipid.input_name)
                 if generic_lm_id:
                     lipid.generic_lm_id = generic_lm_id
                     lipid.lm_id_found_by = "headgroup"
@@ -489,6 +789,84 @@ class LipidDataset(LipidmapsBaseModel):
         logger.info(f"Updated {updated} generic_lm_id fields using headgroup mapping (via LipidDataset)")
         return updated
 
+    def fill_headgroups_from_names(self) -> int:
+        """
+        Count lipids that have a headgroup parsed from their structure.
+        
+        Note: headgroup is now a computed property from LipidStructure,
+        parsed automatically from input_name. This method counts lipids
+        with successfully parsed headgroups rather than setting them.
+        
+        Returns:
+            Number of lipids with a parsed headgroup.
+        """
+        count = 0
+        for lipid in self.lipids:
+            # Access structure.headgroup to check parsing
+            if lipid.structure.headgroup:
+                count += 1
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"Found {count} lipids with parsed headgroup (via LipidDataset)")
+        return count
+
+    def fill_compound_headgroups_from_lipids(self) -> int:
+        """
+        Fill missing `compound_headgroup` fields on `CompoundComponent` objects
+        inside `self.reactions` by matching `compound_lm_id` (or
+        `compound_generic_lm_id`) against `QuantifiedLipid.lm_id` /
+        `QuantifiedLipid.generic_lm_id` and copying `QuantifiedLipid.headgroup`.
+
+        Only updates components where `compound_type == 'lm_main'` and
+        `compound_headgroup` is not already set.
+
+        Returns:
+            Number of components updated.
+        """
+        updated = 0
+        if not getattr(self, 'reactions', None):
+            return 0
+
+        # build quick lookup by lm_id and generic_lm_id
+        lookup = {}
+        for l in self.lipids:
+            if getattr(l, 'lm_id', None):
+                lookup.setdefault(str(l.lm_id), []).append(l)
+            if getattr(l, 'generic_lm_id', None):
+                lookup.setdefault(str(l.generic_lm_id), []).append(l)
+
+        for rx in self.reactions:
+            for comp in (getattr(rx, 'reactants', []) or []) + (getattr(rx, 'products', []) or []):
+                try:
+                    ctype = getattr(comp, 'compound_type', None)
+                    if ctype != 'lm_main':
+                        continue
+                    if getattr(comp, 'compound_headgroup', None):
+                        continue
+                    lm = getattr(comp, 'compound_lm_id', None) or getattr(comp, 'compound_generic_lm_id', None)
+                    if not lm:
+                        continue
+                    # exact-string lookup (use str keys)
+                    matches = lookup.get(str(lm)) or []
+                    if not matches:
+                        continue
+                    # prefer first match with headgroup set
+                    for ml in matches:
+                        try:
+                            structure = getattr(ml, 'structure', None)
+                            headgroup = getattr(structure, 'headgroup', None)
+                        except Exception:
+                            headgroup = None
+                        if headgroup:
+                            comp.compound_headgroup = headgroup
+                            updated += 1
+                            break
+                except Exception:
+                    continue
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"Updated {updated} compound headgroups from quantified lipids")
+        return updated
     def get_value(self, sample: "SampleMetadata", lipid: "QuantifiedLipid") -> Optional[float]:
         """
         Retrieve the quantitation value for a given sample and lipid object.
@@ -621,19 +999,17 @@ class LipidDataset(LipidmapsBaseModel):
         return [l for l in self.lipids if l.lm_id in lm_ids]
 
     def possible_reactions(self, reactions: Optional[List[Any]] = None) -> List[Any]:
-        """Return reactions from `reactions` that are plausible for this dataset.
-
-        Wraps the rule-based `reactions_possible_in_dataset` helper which inspects
-        headgroups present in this dataset and filters based on known headgroup
-        conversion rules.
-        """
+        """Return reactions from `reactions` that are plausible for this dataset."""
         try:
             if reactions is None:
                 reactions = getattr(self, 'reactions', []) or []
-            # local import to avoid top-level dependency cycles
-            from ..utils.lipid_reaction_rules import reactions_possible_in_dataset
 
-            return reactions_possible_in_dataset(self, reactions)
+            return [
+                reaction
+                for reaction in reactions
+                if getattr(reaction, 'evaluation', None)
+                and reaction.evaluation.get('possible') is True
+            ]
         except Exception:
             logger.exception("Failed to compute plausible reactions for dataset.")
             return []
@@ -649,8 +1025,6 @@ class LipidDataset(LipidmapsBaseModel):
             if imputed:
                 summary[lipid.input_name] = imputed
         return summary
-
-
 
 class Quantitation(LipidmapsBaseModel):
     lipid: Union["QuantifiedLipid", str]  # Reference to a QuantifiedLipid object or its input_name
@@ -674,7 +1048,6 @@ class Quantitation(LipidmapsBaseModel):
         if hasattr(self.lipid, "values"):
             return getattr(self.lipid, "values").get(sample_name)  # type: ignore
         return self.sample_values.get(sample_name)
-    
 if __name__ == "__main__":
 
     lipid = QuantifiedLipid(

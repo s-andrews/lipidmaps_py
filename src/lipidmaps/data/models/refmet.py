@@ -1,4 +1,6 @@
 import logging
+import os
+from time import perf_counter
 from typing import List, Dict, Optional, Union, Any
 import requests
 from .base import LipidmapsBaseModel
@@ -24,29 +26,81 @@ class RefMetResult(LipidmapsBaseModel):
 
 
 class RefMet:
-    MWBaseURL = "https://www.metabolomicsworkbench.org/databases/refmet/name_to_refmet_new_minID.php"
+    MWBaseURL = "https://dev.lipidmaps.org/api/refmet/names"  # Updated to local proxy endpoint
+    DEFAULT_TIMEOUT_SECONDS = 30.0
+    DEFAULT_BATCH_SIZE = 100
 
     @staticmethod
-    def validate_metabolite_names(metabolite_names: List[str]) -> Union[List[RefMetResult], Dict[str, Any]]:
-        """Validate metabolite names using RefMet API and return RefMetResult objects.
-
-        Args:
-            metabolite_names: List of metabolite name strings to validate
-
-        Returns:
-            List of RefMetResult objects, one per input name
-        """
-        data = {"metabolite_name": "\n".join(metabolite_names)}
+    def _get_timeout_seconds() -> float:
+        raw = os.getenv("REFMET_TIMEOUT_SECONDS")
+        if not raw:
+            return RefMet.DEFAULT_TIMEOUT_SECONDS
         try:
-            logger.info("Sending request to RefMet API")
+            timeout = float(raw)
+            if timeout <= 0:
+                raise ValueError
+            return timeout
+        except ValueError:
+            logger.warning(
+                "Invalid REFMET_TIMEOUT_SECONDS=%r; using default %.1fs",
+                raw,
+                RefMet.DEFAULT_TIMEOUT_SECONDS,
+            )
+            return RefMet.DEFAULT_TIMEOUT_SECONDS
+
+    @staticmethod
+    def _get_batch_size() -> int:
+        raw = os.getenv("REFMET_BATCH_SIZE")
+        if not raw:
+            return RefMet.DEFAULT_BATCH_SIZE
+        try:
+            batch_size = int(raw)
+            if batch_size <= 0:
+                raise ValueError
+            return batch_size
+        except ValueError:
+            logger.warning(
+                "Invalid REFMET_BATCH_SIZE=%r; using default %d",
+                raw,
+                RefMet.DEFAULT_BATCH_SIZE,
+            )
+            return RefMet.DEFAULT_BATCH_SIZE
+
+    @staticmethod
+    def _validate_metabolite_names_batch(
+        metabolite_names: List[str], timeout_seconds: float
+    ) -> Union[List[RefMetResult], Dict[str, Any]]:
+        data = {"metabolite_name": "\n".join(metabolite_names)}
+        started_at = perf_counter()
+        try:
+            logger.info(
+                "Fetching RefMet annotations for %s metabolites from API",
+                len(metabolite_names),
+            )
             response = requests.post(
-                RefMet.MWBaseURL, data=data, verify=True, timeout=20
+                RefMet.MWBaseURL,
+                data=data,
+                timeout=timeout_seconds,
             )
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.error(f"RefMet API call failed: {e}")
+            elapsed = perf_counter() - started_at
+            logger.error(
+                "RefMet API call failed after %.3fs: %s",
+                elapsed,
+                e,
+            )
             # Return empty list on failure
             return {"error": str(e)}
+
+        elapsed = perf_counter() - started_at
+        content_length = len(response.content or b"")
+        logger.info(
+            "RefMet API fetched %s bytes in %.3fs for %s metabolites",
+            content_length,
+            elapsed,
+            len(metabolite_names),
+        )
 
         lines = [ln for ln in response.text.splitlines() if ln.strip()]
         if not lines or len(lines) < 2:
@@ -174,6 +228,57 @@ class RefMet:
 
         logger.info(f"Annotated {len(refmet_results)} metabolites via RefMet")
         return refmet_results
+
+    @staticmethod
+    def validate_metabolite_names(metabolite_names: List[str]) -> Union[List[RefMetResult], Dict[str, Any]]:
+        """Validate metabolite names using RefMet API and return RefMetResult objects.
+
+        Args:
+            metabolite_names: List of metabolite name strings to validate
+
+        Returns:
+            List of RefMetResult objects, one per input name
+        """
+        if not metabolite_names:
+            return []
+
+        timeout_seconds = RefMet._get_timeout_seconds()
+        batch_size = RefMet._get_batch_size()
+
+        if len(metabolite_names) <= batch_size:
+            return RefMet._validate_metabolite_names_batch(
+                metabolite_names,
+                timeout_seconds,
+            )
+
+        logger.info(
+            "RefMet processing %s metabolites in batches of %s (timeout=%.1fs)",
+            len(metabolite_names),
+            batch_size,
+            timeout_seconds,
+        )
+        all_results: List[RefMetResult] = []
+        for start in range(0, len(metabolite_names), batch_size):
+            batch = metabolite_names[start : start + batch_size]
+            batch_results = RefMet._validate_metabolite_names_batch(
+                batch,
+                timeout_seconds,
+            )
+            if isinstance(batch_results, dict):
+                logger.error(
+                    "RefMet batch failed at items %s-%s",
+                    start,
+                    start + len(batch) - 1,
+                )
+                return batch_results
+            all_results.extend(batch_results)
+
+        logger.info(
+            "Annotated %s metabolites via RefMet across %s batches",
+            len(all_results),
+            (len(metabolite_names) + batch_size - 1) // batch_size,
+        )
+        return all_results
 
     @staticmethod
     def attach_results_to_samples(

@@ -3,7 +3,7 @@ import pandas as pd
 from math import ceil
 
 
-from lipidmaps.data.models.reaction import ReactionChecker, ReactionData, CompoundComponent
+from lipidmaps.data.models.reaction import ReactionChecker, ReactionData
 from lipidmaps.config import LMSD_REACTIONS_BASE_URL
 
 
@@ -40,7 +40,7 @@ def display_compound_card(compound):
         # Additional details in expander
         with st.expander("Details", expanded=False):
             details = {}
-            for key in ["compound_synonyms", "compound_generic_id", "compound_abbrev",
+            for key in ["compound_synonyms", "compound_generic_lm_id", "compound_abbrev",
                         "compound_abbrev_chains", "compound_headgroup", "compound_full_struct", "compound_smiles"]:
                 value = getattr(compound, key, None)
                 if value:
@@ -192,7 +192,7 @@ if search_q:
             # components (reactants/products)
             try:
                 for comp in (r.reactants or []) + (r.products or []):
-                    for attr in ("compound_name", "compound_lm_id", "compound_generic_id", "compound_sys_name"):
+                    for attr in ("compound_name", "compound_lm_id", "compound_generic_lm_id", "compound_sys_name"):
                         val = getattr(comp, attr, None) or ""
                         if q_lower in str(val).lower():
                             return True
