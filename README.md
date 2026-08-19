@@ -20,7 +20,7 @@ This project is intended for researchers and developers working with mass-spectr
 - **Quality Control**: Data validation and issue reporting
 - **Data Management**: DataManager for handling quantified lipid datasets
 - **LIPID MAPS API Integration**: LM ID lookup and validation via RefMet/LMSD
-- **Reaction Analysis**: Reaction fetching, species-level matching, and pathway (BioPAN) scoring
+- **Reaction Analysis**: Reaction fetching, species-level matching, and pathway scoring
 - **Sample Metadata**: Experimental metadata, groups, and condition handling
 
 ### 🚧 In Progress
@@ -143,63 +143,6 @@ print(f"Samples: {dataset.list_sample_names()[:5]}")
 print(f"Lipids: {dataset.list_lipid_names()[:5]}")
 ```
 
-### Export BioPAN Display Files
-
-If you already have a populated `LipidDataset`, use `BioPANExporter` to write the JSON files that the BioPAN PHP frontend expects for summary and pathway display:
-
-```python
-from lipidmaps.data import BioPANExporter
-
-written = BioPANExporter(dataset=dataset).export_display_files(
-   "/lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ"
-)
-print(written)
-```
-
-If you are already working through `DataManager`, the compatibility wrapper still works:
-
-```python
-from lipidmaps.data import DataManager
-
-manager = DataManager(dataset=dataset)
-written = manager.export_biopan_display_files("/lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ")
-print(written)
-```
-
-This writes `msg1.json`, `summary.json`, and `msg2.json` into the session's `biopan` folder.
-
-### Regenerate BioPAN Session Assets
-
-To regenerate BioPAN-compatible session files directly from `lipidmaps_py`, run:
-
-```bash
-PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan /lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ
-```
-
-You can also export the reaction assets for a specific group comparison:
-
-```bash
-PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan \
-   /lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ \
-   --disease-group aldr_old \
-   --control-group al_young \
-   --threshold 0.05
-```
-
-This writes the summary assets plus the current reaction subset assets consumed by BioPAN, such as `lp_class_reaction.json`, the graph payloads, table payloads, and edge detail JSON files.
-
-If you need to override sample-to-group assignments before exporting, repeat `--sample-group`:
-
-```bash
-PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan \
-   /lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ \
-   --sample-group SB001=control \
-   --sample-group SB002=control \
-   --sample-group SB003=treated
-```
-
-This is the compatibility path used by the BioPAN summary page when users edit condition names before opening pathway analysis.
-
 ## Logging
 
 Runtime logs are written into a dedicated `logs/` directory.
@@ -212,13 +155,6 @@ The package creates two rotating log files:
 
 - `logs/lipidmaps_py.log` for info, warning, and error messages.
 - `logs/lipidmaps_py.error.log` for error messages only.
-
-Example:
-
-```bash
-LIPIDMAPS_LOG_DIR=/tmp/lipidmaps-logs \
-PYTHONPATH=/lipidmaps/lipidmaps_py/src lipidmaps-biopan /lipidmaps/temp/biopan/WSMhyRzAGt5IoYEJ
-```
 
 ## Refmet Name Standardization
 - [Refmet](https://www.metabolomicsworkbench.org/databases/refmet/index.php) standardization is used by default and it can be dectivated with ```use_refmet=False``` option. 
