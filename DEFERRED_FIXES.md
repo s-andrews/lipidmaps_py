@@ -52,3 +52,32 @@ pending a closer look. Each entry has enough detail to pick it back up.
 2. Re-run the BioPAN parity/scoring tests and compare FACoA-addition reactions:
    `pytest tests/test_biopan_fa_pool_and_scoring.py tests/test_biopan_zscore_parity.py`.
 3. Confirm whether `EXTENDED_FATTY_ACIDS` is meant to seed acyl-CoA or acylcarnitine names.
+
+---
+
+## 2. Documented deviations from legacy R z-score semantics (keep, not bugs)
+
+Found during the 2026-08-20 paired-data parity review against
+`lib_pathway_analysis.r` (legacy BioPAN). Both are deliberate; recorded here so
+future parity comparisons don't mistake them for regressions. Reference:
+`BioPANPathwayExporter._select_ratio_vectors` (`src/lipidmaps/data/biopan_pathway_exporter.py`).
+
+### 2a. Unpaired + unequal groups: zero-reactant drop is per-group, not cross-group
+- Legacy R removes the *union* of zero-reactant sample positions from **both**
+  groups via `[-ind]` — positional cross-indexing that is meaningless when the
+  groups are different sizes (position i in each group is an unrelated sample).
+- Python reproduces the union-drop only for equal-size groups and otherwise
+  filters each group's zero-reactant samples independently (already noted in the
+  method docstring). z-scores can differ from legacy only for unpaired,
+  unequal-size comparisons that contain zero reactant sums.
+
+### 2b. Missing-value guard applies at every level, not just class level
+- Legacy R checks `na_values == 0` only in the class-level scorer
+  (`get_lipid_pathway_zscore`); the species/FA path (`get_zscore`) lets NAs flow
+  into `t.test`, which silently `na.omit`s them.
+- Python treats any missing/NaN/Inf per-sample sum as unscorable (z = 0) at
+  **all** levels. Stricter and safer, but species/FA reactions containing NaNs
+  score 0 here where legacy produced a real z from the remaining samples.
+- If bit-parity on NA-containing species/FA data is ever required, relax the
+  guard in `_select_ratio_vectors` to drop NA positions instead of returning
+  `None` — but only for the species/FA callers.

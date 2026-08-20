@@ -671,6 +671,28 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     def _group_samples(self, dataset: LipidDataset, group: str) -> List[str]:
         return [sample.sample_name for sample in dataset.samples if sample.group == group and sample.sample_name]
 
+    def _validate_paired_groups(
+        self, dataset: LipidDataset, disease_group: str, control_group: str, paired: bool
+    ) -> None:
+        """Reject paired analysis of unequal-size groups.
+
+        The paired t-test pairs samples by position within each group, so the
+        groups must be the same size. Legacy R BioPAN silently produced an
+        empty graph here (t.test(paired=TRUE) errored and every edge was
+        dropped); an explicit error is more useful than either that or
+        truncating to the shorter group, which would invent sample pairings.
+        """
+        if not paired:
+            return
+        disease_samples = self._group_samples(dataset, disease_group)
+        control_samples = self._group_samples(dataset, control_group)
+        if len(disease_samples) != len(control_samples):
+            raise ValueError(
+                "Paired analysis requires equal-size, positionally-aligned groups; "
+                f"got {len(disease_samples)} '{disease_group}' samples vs "
+                f"{len(control_samples)} '{control_group}' samples"
+            )
+
     @staticmethod
     def _round_zscore(z_score: float) -> float:
         if z_score == 0:
@@ -786,7 +808,13 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
             return disease_ratios, control_ratios
 
         if paired:
-            size = min(len(disease_reactants), len(control_reactants))
+            if len(disease_reactants) != len(control_reactants):
+                # Legacy R's t.test(paired=TRUE) errors on unequal lengths and the
+                # edge is dropped; treat the reaction as unscorable rather than
+                # truncating to the shorter group, which would invent pairings.
+                # Entry points reject this earlier via _validate_paired_groups.
+                return None
+            size = len(disease_reactants)
             indices = [
                 index for index in range(size)
                 if disease_reactants[index] != 0 and control_reactants[index] != 0
@@ -2257,6 +2285,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         """Lazily build one view's payloads (reusing the cached match set) and
         merge them into the comparison bundle."""
         resolved_dataset = self._get_dataset(dataset)
+        self._validate_paired_groups(resolved_dataset, disease_group, control_group, paired)
         output_dir = self._get_output_dir(output_path)
         result_set, reaction_lookup = self._load_or_build_match_set(output_dir, resolved_dataset)
         items = self.build_view_payloads(
@@ -2330,6 +2359,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         full 40-payload bundle by default.
         """
         resolved_dataset = self._get_dataset(dataset)
+        self._validate_paired_groups(resolved_dataset, disease_group, control_group, paired)
         output_dir = self._get_output_dir(output_path)
         result_set, reaction_lookup = self._load_or_build_match_set(output_dir, resolved_dataset)
         written_files: Dict[str, str] = {}

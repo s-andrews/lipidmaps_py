@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from lipidmaps.data import BioPANPathwayExporter
 from lipidmaps.data.models.reaction import CompoundComponent, ReactionData
 from lipidmaps.data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
@@ -588,3 +590,78 @@ def test_non_shunt_edge_not_flagged():
     for edge in edges:
         assert edge["is_shunt"] is False
         assert "[shunt]" not in edge["pathway_label"]
+
+
+def test_paired_export_produces_paired_bundle_with_paired_scores(tmp_path):
+    def export(session, paired):
+        exporter = BioPANPathwayExporter(
+            dataset=make_reaction_dataset(),
+            class_reactions=[ClassReaction(reactant_class="PC", product_class="PA", genes=["PLA2G15"])],
+        )
+        exporter.export_reaction_files(
+            tmp_path / session,
+            disease_group="case",
+            control_group="control",
+            threshold=0.05,
+            paired=paired,
+        )
+
+    export("paired_session", paired=True)
+    export("notpaired_session", paired=False)
+
+    paired_graph = load_comparison_payload(
+        tmp_path / "paired_session",
+        "lp_class_reaction_case_control_active_paired.json",
+    )
+    notpaired_graph = load_comparison_payload(
+        tmp_path / "notpaired_session",
+        "lp_class_reaction_case_control_active_notpaired.json",
+    )
+
+    paired_score = paired_graph["edges"][0]["data"]["weight"]
+    notpaired_score = notpaired_graph["edges"][0]["data"]["weight"]
+    assert paired_score > 0
+    assert notpaired_score > 0
+    # Paired t-test and Welch's t-test give different z-scores on this data.
+    assert paired_score != notpaired_score
+
+
+def test_paired_export_rejects_unequal_groups(tmp_path):
+    dataset = make_reaction_dataset()
+    # Drop one case sample so the groups are 3 control vs 2 case.
+    dataset.samples = [s for s in dataset.samples if s.sample_name != "case_3"]
+    exporter = BioPANPathwayExporter(
+        dataset=dataset,
+        class_reactions=[ClassReaction(reactant_class="PC", product_class="PA", genes=["PLA2G15"])],
+    )
+
+    with pytest.raises(ValueError, match="equal-size"):
+        exporter.export_reaction_files(
+            tmp_path / "session",
+            disease_group="case",
+            control_group="control",
+            threshold=0.05,
+            paired=True,
+        )
+
+    with pytest.raises(ValueError, match="equal-size"):
+        exporter.build_and_merge_view(
+            tmp_path / "session",
+            "case",
+            "control",
+            0.05,
+            True,
+            scope="graph",
+            family="Glycerolipids and Glycerophospholipids",
+            level="class",
+        )
+
+    # The same data is fine unpaired.
+    written = exporter.export_reaction_files(
+        tmp_path / "session",
+        disease_group="case",
+        control_group="control",
+        threshold=0.05,
+        paired=False,
+    )
+    assert "comparison_bundle.json" in written
