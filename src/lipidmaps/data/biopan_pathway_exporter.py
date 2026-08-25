@@ -16,7 +16,7 @@ from .matching import match_pathway_reactions
 from .models.base import LipidmapsBaseModel
 from .models.reaction import ReactionData
 from .models.sample import LipidDataset, QuantifiedLipid
-from .models.species_reaction import ClassReaction, CompoundRequirement, PathwayReactionSet, ReactionMatchResult, SpeciesReactionPair
+from .models.species_reaction import ClassReaction, CompoundRequirement, PathwayReactionSet, ReactionMatchResult, ReactionType, SpeciesReactionPair
 from .models.uniprot import UniProtRheaClient
 from .utils.chain_parser import (
     extract_facoa_from_reactions,
@@ -387,6 +387,18 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                     return match.group(1).strip()
         return None
 
+    def _component_node(self, component: Any, measured_by_lm_id: Dict[str, str]) -> Tuple[Optional[str], Optional[str]]:
+        """Resolve a reaction component to its pathway-node class and lm_id.
+
+        A specific measured compound with no generic form is keyed by its
+        measured display name (so it joins the measured species) and carries its
+        lm_id for node shape/links; everything else keeps its generic headgroup.
+        """
+        lm_id = getattr(component, "compound_lm_id", None)
+        if lm_id and lm_id in measured_by_lm_id:
+            return measured_by_lm_id[lm_id], lm_id
+        return self._component_headgroup(component), None
+
     def _infer_compound_requirement(self, reaction: ReactionData) -> Tuple[CompoundRequirement, bool]:
         reactant_headgroups = {self._component_headgroup(component) for component in reaction.reactants}
         product_headgroups = {self._component_headgroup(component) for component in reaction.products}
@@ -404,7 +416,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
         reaction_lookup: Dict[str, List[ReactionData]] = {}
         reaction_map: Dict[str, ClassReaction] = {}
 
-        def register(reaction, reactant_class, product_class, compound_require, acyl_add):
+        def register(reaction, reactant_class, product_class, compound_require, acyl_add,
+                     named_compound=False, reactant_lm_id=None, product_lm_id=None):
             key = f"{reactant_class},{product_class}".lower()
             if key not in reaction_map:
                 reaction_map[key] = ClassReaction(
@@ -414,24 +427,78 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                     compound_require=compound_require,
                     acyl_add=acyl_add,
                     genes=self._get_reaction_gene_symbols(reaction),
+                    named_compound=named_compound,
+                    reactant_lm_id=reactant_lm_id,
+                    product_lm_id=product_lm_id,
                 )
             else:
                 merged = reaction_map[key].genes + self._get_reaction_gene_symbols(reaction)
                 seen = set()
                 reaction_map[key].genes = [gene for gene in merged if gene and not (gene in seen or seen.add(gene))]
+            # Named-compound (sterol) reactions are described at the molecular-
+            # species level; mirror that in the flag for downstream use.
+            reaction_map[key].is_molspecies = (
+                reaction_map[key].reaction_type == ReactionType.NAMED_COMPOUND
+            )
             reaction_lookup.setdefault(key, []).append(reaction)
 
+        # Specific measured compounds that have no generic (class) form: sterol
+        # intermediates, oxylipins, etc. Their reactions are described purely at
+        # the molecular-species level, so they must be paired by compound
+        # identity (lm_id), not by the generic headgroup ("ST"/"FA") that would
+        # collapse distinct sterols into a single self-loop -- or, for FA-class
+        # oxylipins, be dropped entirely by the FA/acyl-CoA cofactor filter below.
+        measured_by_lm_id: Dict[str, str] = {}
+        for lipid in getattr(dataset, "lipids", []) or []:
+            lm_id = getattr(lipid, "lm_id", None)
+            if not lm_id or getattr(lipid, "generic_lm_id", None):
+                continue
+            display_name = self._get_lipid_display_name(lipid)
+            if display_name:
+                measured_by_lm_id.setdefault(lm_id, display_name)
+
         for reaction in getattr(dataset, "reactions", []) or []:
+            # Named-compound pass: when a reaction connects exactly one measured
+            # specific reactant to one measured specific product (joined by lm_id,
+            # the only reliable key -- compound_name does not match the RefMet
+            # standardized name), emit an identity-based edge keyed by the
+            # measured display names and bypass the generic class logic.
+            named_reactants = [c for c in reaction.reactants
+                               if getattr(c, "compound_lm_id", None) in measured_by_lm_id]
+            named_products = [c for c in reaction.products
+                              if getattr(c, "compound_lm_id", None) in measured_by_lm_id]
+            if (len(named_reactants) == 1 and len(named_products) == 1
+                    and named_reactants[0].compound_lm_id != named_products[0].compound_lm_id):
+                r_lm = named_reactants[0].compound_lm_id
+                p_lm = named_products[0].compound_lm_id
+                register(
+                    reaction,
+                    measured_by_lm_id[r_lm],
+                    measured_by_lm_id[p_lm],
+                    CompoundRequirement.NONE,
+                    False,
+                    named_compound=True,
+                    reactant_lm_id=r_lm,
+                    product_lm_id=p_lm,
+                )
+                continue
+
             reactants = [component for component in reaction.reactants if self._component_headgroup(component) not in {None, "FA", "acyl CoA"}]
             products = [component for component in reaction.products if self._component_headgroup(component) not in {None, "FA", "acyl CoA"}]
 
             if len(reactants) == 1 and len(products) == 1:
-                reactant_class = self._component_headgroup(reactants[0])
-                product_class = self._component_headgroup(products[0])
+                # Prefer the measured compound identity for a specific endpoint
+                # that has no generic form (e.g. cholesterol esterification,
+                # cholesterol <-> CE via acyl-CoA/FA): keying that side by "ST"
+                # would strand it, since measured cholesterol is not a "ST"
+                # species. The other (chain-bearing) side stays a normal class.
+                reactant_class, reactant_lm_id = self._component_node(reactants[0], measured_by_lm_id)
+                product_class, product_lm_id = self._component_node(products[0], measured_by_lm_id)
                 if not reactant_class or not product_class:
                     continue
                 compound_require, acyl_add = self._infer_compound_requirement(reaction)
-                register(reaction, reactant_class, product_class, compound_require, acyl_add)
+                register(reaction, reactant_class, product_class, compound_require, acyl_add,
+                         reactant_lm_id=reactant_lm_id, product_lm_id=product_lm_id)
                 continue
 
             # Multi-substrate reactions such as sphingomyelin synthase
@@ -1242,8 +1309,8 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                     "target_label": product,
                     "source_id": self._safe_node_id(reactant),
                     "target_id": self._safe_node_id(product),
-                    "source_lm_id": lipidmaps_headgroups.get(reactant, [""])[0] if reactant in lipidmaps_headgroups else "",
-                    "target_lm_id": lipidmaps_headgroups.get(product, [""])[0] if product in lipidmaps_headgroups else "",
+                    "source_lm_id": result.class_reaction.reactant_lm_id or (lipidmaps_headgroups.get(reactant, [""])[0] if reactant in lipidmaps_headgroups else ""),
+                    "target_lm_id": result.class_reaction.product_lm_id or (lipidmaps_headgroups.get(product, [""])[0] if product in lipidmaps_headgroups else ""),
                     "edge_id": self._safe_edge_id(reactant, product),
                     "score": score,
                     "genes": edge_genes,

@@ -22,6 +22,7 @@ from .sphingolipid import (
     SphingoFAReleaseMatcher,
 )
 from .cardiolipin import CardiolipinMatcher
+from .named_compound import NamedCompoundMatcher
 
 
 class MatcherRegistry:
@@ -62,7 +63,10 @@ class MatcherRegistry:
         
         # Cardiolipin
         self.register(ReactionType.CARDIOLIPIN, CardiolipinMatcher())
-    
+
+        # Named-compound (sterol / shunt) reactions
+        self.register(ReactionType.NAMED_COMPOUND, NamedCompoundMatcher())
+
     def register(self, reaction_type: ReactionType, matcher: ReactionMatcher) -> None:
         """Register a matcher for a reaction type.
         

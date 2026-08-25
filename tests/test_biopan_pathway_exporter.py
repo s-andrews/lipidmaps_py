@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from lipidmaps.data import BioPANPathwayExporter
 from lipidmaps.data.models.reaction import CompoundComponent, ReactionData
 from lipidmaps.data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata
-from lipidmaps.data.models.species_reaction import ClassReaction
+from lipidmaps.data.models.species_reaction import ClassReaction, ReactionType
 
 
 def load_comparison_payload(output_root, key):
@@ -509,3 +509,164 @@ def test_reaction_data_preserves_explicit_rhea_id():
     )
 
     assert reaction.list_rhea_ids() == ["18766"]
+
+
+def make_named_compound_dataset() -> LipidDataset:
+    """Dataset of specific compounds that have no generic (class) form.
+
+    Two sterols (cholesterol, 27-hydroxycholesterol) and two FA-class oxylipins
+    (arachidonic acid, PGG2) -- each measured with a distinct lm_id and no
+    generic_lm_id -- plus reactions connecting them. The reaction components
+    carry the generic headgroup ("ST"/"FA") that previously collapsed sterols
+    into a single ST->ST self-loop and dropped FA->FA oxylipin edges entirely.
+    """
+    samples = [
+        SampleMetadata(sample_name="ctrl_1", group="control"),
+        SampleMetadata(sample_name="ctrl_2", group="control"),
+        SampleMetadata(sample_name="ctrl_3", group="control"),
+        SampleMetadata(sample_name="case_1", group="case"),
+        SampleMetadata(sample_name="case_2", group="case"),
+        SampleMetadata(sample_name="case_3", group="case"),
+    ]
+    vals_hi = {"ctrl_1": 12.0, "ctrl_2": 11.0, "ctrl_3": 10.0, "case_1": 6.0, "case_2": 6.5, "case_3": 7.0}
+    vals_lo = {"ctrl_1": 3.0, "ctrl_2": 2.5, "ctrl_3": 2.0, "case_1": 12.0, "case_2": 11.0, "case_3": 10.0}
+    lipids = [
+        QuantifiedLipid(input_name="Cholesterol", lm_id="LMST01010001", values=dict(vals_hi)),
+        QuantifiedLipid(input_name="27-Hydroxycholesterol", lm_id="LMST01010057", values=dict(vals_lo)),
+        QuantifiedLipid(input_name="Arachidonic acid", lm_id="LMFA01030001", values=dict(vals_hi)),
+        QuantifiedLipid(input_name="PGG2", lm_id="LMFA03010009", values=dict(vals_lo)),
+    ]
+    dataset = LipidDataset(samples=samples, lipids=lipids)
+    dataset.reactions = [
+        # Sterol oxidation: both components report the generic "ST" headgroup.
+        ReactionData(
+            reactants=[CompoundComponent(compound_name="Cholesterol", compound_lm_id="LMST01010001", compound_headgroup="ST")],
+            products=[CompoundComponent(compound_name="27-hydroxy-cholesterol", compound_lm_id="LMST01010057", compound_headgroup="ST")],
+        ),
+        # FA-class oxylipin: both components report the "FA" headgroup, which the
+        # generic path excludes as a release/addition cofactor.
+        ReactionData(
+            reactants=[CompoundComponent(compound_name="FA 20:4", compound_lm_id="LMFA01030001", compound_headgroup="FA")],
+            products=[CompoundComponent(compound_name="FA 20:4;O4", compound_lm_id="LMFA03010009", compound_headgroup="FA")],
+        ),
+    ]
+    return dataset
+
+
+def test_named_compounds_extract_by_lm_id_not_generic_headgroup():
+    dataset = make_named_compound_dataset()
+    exporter = BioPANPathwayExporter(dataset=dataset)
+    class_reactions, _ = exporter._extract_class_reactions(dataset)
+
+    keys = {(cr.reactant_class, cr.product_class) for cr in class_reactions}
+    # Specific measured identities, not the collapsed generic classes.
+    assert ("Cholesterol", "27-Hydroxycholesterol") in keys
+    assert ("Arachidonic acid", "PGG2") in keys
+    # The old failure modes must be gone.
+    assert ("ST", "ST") not in keys
+    assert ("FA", "FA") not in keys
+
+    by_key = {(cr.reactant_class, cr.product_class): cr for cr in class_reactions}
+    sterol = by_key[("Cholesterol", "27-Hydroxycholesterol")]
+    assert sterol.named_compound is True
+    assert sterol.reaction_type == ReactionType.NAMED_COMPOUND
+    assert sterol.is_molspecies is True
+    assert sterol.reactant_lm_id == "LMST01010001"
+    assert sterol.product_lm_id == "LMST01010057"
+
+
+def test_named_compound_reactions_match_and_produce_edges():
+    dataset = make_named_compound_dataset()
+    exporter = BioPANPathwayExporter(dataset=dataset)
+    result_set, reaction_lookup = exporter.build_reaction_match_set(dataset)
+
+    matched = {
+        (res.class_reaction.reactant_class, res.class_reaction.product_class): res.pairs_matched
+        for res in result_set.results.values()
+    }
+    assert matched.get(("Cholesterol", "27-Hydroxycholesterol")) == 1
+    assert matched.get(("Arachidonic acid", "PGG2")) == 1
+
+    edges = exporter._build_reaction_edges(
+        disease_group="case",
+        control_group="control",
+        level="class",
+        dataset=dataset,
+        result_set=result_set,
+        reaction_lookup=reaction_lookup,
+        paired=False,
+        mode="active",
+    )
+    edge_map = {(e["source_label"], e["target_label"]): e for e in edges}
+    assert ("Cholesterol", "27-Hydroxycholesterol") in edge_map
+    # Named-compound edges carry the specific lm_ids for node shape/links.
+    sterol_edge = edge_map[("Cholesterol", "27-Hydroxycholesterol")]
+    assert sterol_edge["source_lm_id"] == "LMST01010001"
+    assert sterol_edge["target_lm_id"] == "LMST01010057"
+
+
+def make_cholesterol_ce_dataset() -> LipidDataset:
+    """Cholesterol esterification: a named compound (cholesterol) linked to a
+    chain-bearing class (CE) via an acyl-CoA/FA cofactor. The sterol side must
+    be keyed by its measured identity, not the generic "ST" headgroup, or it
+    strands (measured cholesterol is not a "ST" species)."""
+    samples = [
+        SampleMetadata(sample_name="ctrl_1", group="control"),
+        SampleMetadata(sample_name="ctrl_2", group="control"),
+        SampleMetadata(sample_name="ctrl_3", group="control"),
+        SampleMetadata(sample_name="case_1", group="case"),
+        SampleMetadata(sample_name="case_2", group="case"),
+        SampleMetadata(sample_name="case_3", group="case"),
+    ]
+    vals_hi = {"ctrl_1": 12.0, "ctrl_2": 11.0, "ctrl_3": 10.0, "case_1": 6.0, "case_2": 6.5, "case_3": 7.0}
+    vals_lo = {"ctrl_1": 3.0, "ctrl_2": 2.5, "ctrl_3": 2.0, "case_1": 12.0, "case_2": 11.0, "case_3": 10.0}
+    lipids = [
+        QuantifiedLipid(input_name="Cholesterol", lm_id="LMST01010001", values=dict(vals_hi)),
+        QuantifiedLipid(input_name="CE 20:4", lm_id="LMST01020005", generic_lm_id="LMST01020000", values=dict(vals_lo)),
+        QuantifiedLipid(input_name="Arachidonic acid", lm_id="LMFA01030001", values=dict(vals_hi)),
+    ]
+    dataset = LipidDataset(samples=samples, lipids=lipids)
+    dataset.reactions = [
+        ReactionData(  # cholesterol + acyl-CoA -> CE
+            reactants=[
+                CompoundComponent(compound_name="acyl CoA", compound_headgroup="acyl CoA"),
+                CompoundComponent(compound_name="Cholesterol", compound_lm_id="LMST01010001", compound_headgroup="ST"),
+            ],
+            products=[CompoundComponent(compound_name="Cholesterol ester", compound_lm_id="LMST01020000", compound_headgroup="CE")],
+        ),
+        ReactionData(  # CE -> cholesterol + FA
+            reactants=[CompoundComponent(compound_name="Cholesterol ester", compound_lm_id="LMST01020000", compound_headgroup="CE")],
+            products=[
+                CompoundComponent(compound_name="fatty acid", compound_headgroup="FA"),
+                CompoundComponent(compound_name="Cholesterol", compound_lm_id="LMST01010001", compound_headgroup="ST"),
+            ],
+        ),
+    ]
+    return dataset
+
+
+def test_named_compound_to_class_cofactor_reaction_links_by_identity():
+    dataset = make_cholesterol_ce_dataset()
+    exporter = BioPANPathwayExporter(dataset=dataset)
+    class_reactions, _ = exporter._extract_class_reactions(dataset)
+
+    by_key = {(cr.reactant_class, cr.product_class): cr for cr in class_reactions}
+    # Sterol side keyed by its measured identity; CE stays a normal class.
+    assert ("Cholesterol", "CE") in by_key
+    assert ("CE", "Cholesterol") in by_key
+    assert ("ST", "CE") not in by_key
+    assert ("CE", "ST") not in by_key
+
+    esterify = by_key[("Cholesterol", "CE")]
+    assert esterify.reaction_type == ReactionType.FACOA_ADDITION
+    assert esterify.reactant_lm_id == "LMST01010001"
+    assert esterify.product_lm_id is None  # CE resolves via headgroup lookup
+
+    result_set, _ = exporter.build_reaction_match_set(dataset)
+    matched = {
+        (res.class_reaction.reactant_class, res.class_reaction.product_class): res.pairs_matched
+        for res in result_set.results.values()
+    }
+    # cholesterol <-> CE 20:4 pairs by the arachidonoyl (20:4) chain difference.
+    assert matched.get(("Cholesterol", "CE"), 0) >= 1
+    assert matched.get(("CE", "Cholesterol"), 0) >= 1

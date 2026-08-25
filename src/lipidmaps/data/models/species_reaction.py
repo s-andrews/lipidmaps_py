@@ -30,6 +30,7 @@ class ReactionType(str, Enum):
     SPHINGO_FACOA_ADD = "sphingo_facoa_addition"  # Sphingolipid FACoA add (SPB -> Cer)
     CARDIOLIPIN = "cardiolipin"             # Special CL handling (all-to-all)
     DESATURATION = "desaturation"           # dhCer -> Cer type reactions
+    NAMED_COMPOUND = "named_compound"        # Pair by compound identity, not composition
 
 
 class ClassReaction(LipidmapsBaseModel):
@@ -49,7 +50,21 @@ class ClassReaction(LipidmapsBaseModel):
     compound_require: CompoundRequirement = Field(default=CompoundRequirement.NONE)
     acyl_add: bool = Field(default=False, description="True if reaction adds acyl chain")
     is_molspecies: bool = Field(default=False, description="True if described at molecular species level")
-    
+
+    # Explicit override: when set, force NAMED_COMPOUND routing regardless of the
+    # class names. Used when extraction has already established (by lm_id) that
+    # both endpoints are specific measured compounds with no generic form -- e.g.
+    # sterol intermediates or oxylipins whose measured names ("27-Hydroxy-
+    # cholesterol") are not in NAMED_COMPOUND_CLASSES and would otherwise fall
+    # through to composition-based matching and mis-pair at the degenerate level.
+    named_compound: bool = Field(default=False, description="Force identity-based (named-compound) matching")
+
+    # Specific LIPID MAPS IDs of the endpoints for named-compound reactions. These
+    # drive node shape/coloring and structure links, which the class-headgroup
+    # lookup cannot supply for specific compounds.
+    reactant_lm_id: Optional[str] = Field(default=None, description="Reactant LM ID (named-compound reactions)")
+    product_lm_id: Optional[str] = Field(default=None, description="Product LM ID (named-compound reactions)")
+
     # Associated genes
     genes: List[str] = Field(default_factory=list)
     
@@ -63,6 +78,12 @@ class ClassReaction(LipidmapsBaseModel):
     @property
     def reaction_type(self) -> ReactionType:
         """Determine the reaction type for matcher selection."""
+        # Extraction may have already proven (by lm_id) that both endpoints are
+        # specific measured named compounds; honour that first so routing does
+        # not depend on the endpoint names appearing in NAMED_COMPOUND_CLASSES.
+        if self.named_compound:
+            return ReactionType.NAMED_COMPOUND
+
         # Check for cardiolipin
         if "CL" in self.reactant_class or "CL" in self.product_class:
             return ReactionType.CARDIOLIPIN

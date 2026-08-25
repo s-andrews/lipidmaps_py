@@ -15,6 +15,7 @@ from .sphingolipid import (
     SphingoFACoAAdditionMatcher,
 )
 from .cardiolipin import CardiolipinMatcher, CardiolipinCompositionMatcher
+from .named_compound import NamedCompoundMatcher
 from .registry import (
     MatcherRegistry,
     create_default_registry,
@@ -42,6 +43,8 @@ __all__ = [
     # Cardiolipin
     "CardiolipinMatcher",
     "CardiolipinCompositionMatcher",
+    # Named compound (sterol / shunt)
+    "NamedCompoundMatcher",
     # Registry
     "MatcherRegistry",
     "create_default_registry",
