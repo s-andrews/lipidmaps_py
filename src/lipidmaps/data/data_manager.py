@@ -189,6 +189,14 @@ class DataManager(LipidmapsBaseModel):
             headgroup_updates = self.dataset.fill_generic_lm_ids_from_headgroups()
             logger.info(f"Filled missing LM IDs using headgroup mapping: {headgroup_updates} updated")
 
+        # Fill specific lm_ids for named compounds that RefMet could not resolve
+        # but LMSD can (e.g. oxylipins/sterols keyed by compound name). Must run
+        # before reaction fetching so the newly-filled ids participate. LMSD
+        # returns not-found for chain-varying species (DG/LPS/CE), so this only
+        # touches named molecular species and never overwrites an existing lm_id.
+        lmsd_name_updates = self.fill_missing_lm_ids_from_lmsd(quantified=self.dataset.lipids)
+        logger.info(f"Filled missing LM IDs using LMSD name lookup: {lmsd_name_updates} updated")
+
         if self.fetch_reactions:
             reaction_updates = self.dataset.fetch_reactions_by_lm_id(taxonomy_group=self.taxonomy_group)
             try:

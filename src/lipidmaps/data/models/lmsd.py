@@ -60,7 +60,18 @@ class LMSD:
             if isinstance(json_data, dict):
                 if 'error' in json_data and len(json_data) == 1:
                     return json_data
-                json_list = [json_data]
+                # /api/reactions/names returns {input_name: record}. Re-order the
+                # records to match the request so callers can rely on positional
+                # alignment; a plain single-record dict is wrapped as before.
+                if json_data and all(isinstance(v, dict) for v in json_data.values()):
+                    norm = {str(k).strip().lower(): v for k, v in json_data.items()}
+                    json_list = []
+                    for nm in lipid_names:
+                        rec = dict(norm.get(str(nm).strip().lower(), {}))
+                        rec.setdefault('input_name', nm)
+                        json_list.append(rec)
+                else:
+                    json_list = [json_data]
             elif isinstance(json_data, list):
                 json_list = json_data
             else:
@@ -69,7 +80,7 @@ class LMSD:
             if json_list is not None:
                 results: List[Dict[str, Any]] = []
 
-                for item in json_list:  
+                for item in json_list:
 
                     res = LMSDResult(
                         input_name=item.get('input_name'),

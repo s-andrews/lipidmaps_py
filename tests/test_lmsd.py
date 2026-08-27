@@ -61,6 +61,33 @@ def test_get_lm_ids_by_name_json(monkeypatch):
     assert res[1]['lm_id'] == 'LMST01010001'
 
 
+def test_get_lm_ids_by_name_keyed_dict_response(monkeypatch):
+    """/api/reactions/names returns {input_name: record}; results must come back
+    per-name, in request order, with not-found names preserved as null lm_id."""
+    keyed = {
+        # Note: server key trimmed vs. our trailing-space query, and out of order.
+        "12S-HETE": {"input_name": "12S-HETE", "lm_id": None, "found": False},
+        "15S-hydroperoxy-PGE2": {
+            "input_name": "15S-hydroperoxy-PGE2",
+            "lm_id": "LMFA03010217",
+            "matched_field": "compound_name",
+            "found": True,
+        },
+    }
+
+    def fake_post(*args, **kwargs):
+        return FakeResponse(status_code=200, text=json.dumps(keyed), json_data=keyed)
+
+    monkeypatch.setattr(requests, 'post', fake_post)
+
+    res = LMSD.get_lm_ids_by_name(["15S-hydroperoxy-PGE2 ", "12S-HETE"])
+    assert isinstance(res, list)
+    assert len(res) == 2
+    # Order follows the request, not the response dict; trailing space tolerated.
+    assert res[0]['lm_id'] == 'LMFA03010217'
+    assert res[1]['lm_id'] is None
+
+
 def test_get_lm_ids_by_name_tsv_fallback(monkeypatch):
     header = '\t'.join(['input_name', 'matched_field', 'name', 'sys_name', 'abbrev', 'abbrev_chains', 'lm_id'])
     row1 = '\t'.join(['Butyrylcarnitine', 'name', 'Butyrylcarnitine', '3-(butanoyloxy)-4-(trimethylazaniumyl)butanoate', 'CAR 4:0', '', 'LMFA07070054'])
