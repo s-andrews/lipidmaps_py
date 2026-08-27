@@ -5,6 +5,7 @@ from typing import List, Optional, Union, Dict, Any
 
 from pydantic import ConfigDict, Field, field_validator
 from .base import LipidmapsBaseModel
+from ...http_utils import post_with_retry
 logger = logging.getLogger(__name__)
 
 
@@ -286,7 +287,7 @@ class ReactionChecker(LipidmapsBaseModel):
         logger.debug("Reaction check payload: %s", payload)
         try:
             logger.info(f"Sending reaction check request for {len(lm_ids)} LM IDs to {self.api_url}")
-            response = requests.post(
+            response = post_with_retry(
                 self.api_url,
                 json=payload,
                 timeout=self.timeout,

@@ -7,10 +7,10 @@ import io
 import logging
 from typing import Dict, List
 
-import requests
 from pydantic import Field
 
 from .base import LipidmapsBaseModel
+from ...http_utils import get_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class UniProtRheaClient(LipidmapsBaseModel):
     def fetch_gene_records(self, rhea_id: str) -> List[UniProtGeneRecord]:
         """Return reviewed UniProt records for a Rhea identifier."""
 
-        response = requests.get(
+        response = get_with_retry(
             self.base_url,
             params={
                 "query": f"rhea:{rhea_id} AND reviewed:true",

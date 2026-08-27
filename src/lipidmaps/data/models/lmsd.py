@@ -2,6 +2,7 @@ import logging
 from typing import List, Dict, Optional, Union, Any
 import requests
 from .base import LipidmapsBaseModel
+from ...http_utils import post_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class LMSD:
         data = {"names": lipid_names}
         try:
             logger.info("Sending request to LMSD API")
-            response = requests.post(
+            response = post_with_retry(
                 LMSD.LMSDNameUrl,
                 json=data,
                 timeout=40,
@@ -162,7 +163,7 @@ class LMSD:
         data = {"lmids": lm_ids}
         try:
             logger.info("Sending request to LMSD API for LM IDs")
-            response = requests.post(
+            response = post_with_retry(
                 LMSD.LMSDLmidUrl,
                 json=data,
                 timeout=40,

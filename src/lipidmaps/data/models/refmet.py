@@ -4,6 +4,7 @@ from time import perf_counter
 from typing import List, Dict, Optional, Union, Any
 import requests
 from .base import LipidmapsBaseModel
+from ...http_utils import post_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ class RefMet:
                 "Fetching RefMet annotations for %s metabolites from API",
                 len(metabolite_names),
             )
-            response = requests.post(
+            response = post_with_retry(
                 RefMet.MWBaseURL,
                 data=data,
                 timeout=timeout_seconds,

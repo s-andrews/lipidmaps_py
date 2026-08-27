@@ -71,10 +71,11 @@ def test_check_reactions_preserves_genes_for_generic_reactions(monkeypatch):
         }
     ]
 
-    def fake_post(url, json, timeout):
+    def fake_post(url, json, timeout, headers=None):
         assert json["generic_reactions"] is True
         assert json["search_type"] == "all"
         assert json["lmsd_ids"] == ["LMSP03010000"]
+        assert headers["User-Agent"] == "lipidmaps_py"
         return PayloadResponse(payload)
 
     monkeypatch.setattr(requests, "post", fake_post)
