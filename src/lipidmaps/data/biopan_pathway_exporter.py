@@ -27,6 +27,7 @@ from .utils.chain_parser import (
     infer_fa_from_lipids,
 )
 from .utils.fa_reactions import get_fa_reactions
+from .utils.lipid_categories import category_for, category_sort_key
 from .utils.headgroups import lipidmaps_headgroups, lm_id_to_headgroup
 
 
@@ -423,7 +424,7 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
                 reaction_map[key] = ClassReaction(
                     reactant_class=reactant_class,
                     product_class=product_class,
-                    reaction_class="Matched reactions",
+                    reaction_class=category_for(reactant_class),
                     compound_require=compound_require,
                     acyl_add=acyl_add,
                     genes=self._get_reaction_gene_symbols(reaction),
@@ -1554,36 +1555,52 @@ class BioPANPathwayExporter(LipidmapsBaseModel):
     ) -> List[Dict[str, Any]]:
         resolved_dataset = self._get_dataset(dataset)
         resolved_result_set = result_set or self.build_reaction_match_set(resolved_dataset)[0]
-        category = {"text": "Matched reactions", "children": []}
+
+        # Top level of the filter tree is the LIPID MAPS category, as it was when
+        # BioPAN read biopan_reaction.class; see lipidmaps.data.utils.lipid_categories.
+        by_category: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+
+        def bucket(class_name: str) -> Dict[str, Any]:
+            return by_category.setdefault(category_for(class_name), {})
 
         if level == "class":
-            seen_classes = set()
             for result in resolved_result_set.results.values():
                 if not result.has_pairs:
                     continue
                 for class_name in (result.class_reaction.reactant_class, result.class_reaction.product_class):
-                    if class_name not in seen_classes:
-                        category["children"].append({"text": class_name})
-                        seen_classes.add(class_name)
-            category["children"].sort(key=lambda item: item["text"])
-            return [category]
+                    bucket(class_name).setdefault(class_name, None)
+
+            return [
+                {
+                    "text": category,
+                    "children": [{"text": name} for name in sorted(classes)],
+                }
+                for category, classes in sorted(by_category.items(), key=lambda kv: category_sort_key(kv[0]))
+            ]
 
         lipid_lookup = self._build_lipid_lookup(resolved_dataset)
-        grouped_species: Dict[str, List[str]] = {}
         for result in resolved_result_set.results.values():
             if not result.has_pairs:
                 continue
             for pair in result.pairs:
-                grouped_species.setdefault(pair.reactant.headgroup, []).append(self._display_name_for_structure(pair.reactant, lipid_lookup))
-                grouped_species.setdefault(pair.product.headgroup, []).append(self._display_name_for_structure(pair.product, lipid_lookup))
+                for structure in (pair.reactant, pair.product):
+                    classes = bucket(structure.headgroup)
+                    species = classes.setdefault(structure.headgroup, set())
+                    species.add(self._display_name_for_structure(structure, lipid_lookup))
 
-        for class_name in sorted(grouped_species):
-            unique_species = sorted(set(grouped_species[class_name]))
-            category["children"].append({
-                "text": class_name,
-                "children": [{"text": species} for species in unique_species],
-            })
-        return [category]
+        return [
+            {
+                "text": category,
+                "children": [
+                    {
+                        "text": class_name,
+                        "children": [{"text": species} for species in sorted(classes[class_name])],
+                    }
+                    for class_name in sorted(classes)
+                ],
+            }
+            for category, classes in sorted(by_category.items(), key=lambda kv: category_sort_key(kv[0]))
+        ]
 
     def build_pathway_tree(
         self,

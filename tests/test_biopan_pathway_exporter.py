@@ -174,7 +174,11 @@ def test_reaction_exporter_builds_initial_reaction_assets(tmp_path):
         "pc,pa.json",
     )
 
-    assert tree == [{"text": "Matched reactions", "children": [{"text": "PA"}, {"text": "PC"}]}]
+    # top level is the LIPID MAPS category heading; PC and PA both sit under it
+    assert tree == [
+        {"text": "Glycerolipids and Glycerophospholipids",
+         "children": [{"text": "PA"}, {"text": "PC"}]}
+    ]
     assert {node["data"]["label"] for node in graph["nodes"]} == {"PC", "PA"}
     assert len(graph["edges"]) == 1
     assert graph["edges"][0]["data"]["weight"] > 1.645

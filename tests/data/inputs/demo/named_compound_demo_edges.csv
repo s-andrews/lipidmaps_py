@@ -1,0 +1,258 @@
+reaction_id,reactant_name,reactant_lm_id,product_name,product_lm_id,category
+201,5-dehydroepisterol,LMST01030135,"Ergosta-5,7,22E,24(28)-tetraenol",LMST01031002,Sterol Lipids
+202,"Ergosta-5,7,22E,24(28)-tetraenol",LMST01031002,Ergosterol,LMST01030093,Sterol Lipids
+203,"3S-squalene-2,3-epoxide",LMPR0106010010,cycloartenol,LMST01100008,Prenol Lipids
+204,Squalene,LMPR0106010002,Tetrahymanol,LMPR0106220001,Prenol Lipids
+218,Squalene,LMPR0106010002,"3S-squalene-2,3-epoxide",LMPR0106010010,Prenol Lipids
+222,"3S-squalene-2,3-epoxide",LMPR0106010010,Lanosterol,LMST01010017,Prenol Lipids
+223,Lanosterol,LMST01010017,"24,25-dihydrolanosterol",LMST01010087,Sterol Lipids
+224,"7alpha,27-dihydroxycholesterol",LMST04030081,"3beta,7alpha-Dihydroxy-5-cholestenoic acid",LMST04030241,Sterol Lipids
+226,7alpha-hydroxy-cholesterol,LMST01010013,"7alpha,25-dihydroxycholesterol",LMST04030166,Sterol Lipids
+227,7alpha-Hydroxy-4-cholesten-3-one,LMST04030123,"7alpha,12alpha-dihydroxy-3-oxo-4-cholestenoic acid",LMST04030243,Sterol Lipids
+228,Cholesterol,LMST01010001,"5,6alpha-epoxy-cholesterol",LMST01010011,Sterol Lipids
+229,7alpha-hydroxy-cholesterol,LMST01010013,7alpha-Hydroxy-4-cholesten-3-one,LMST04030123,Sterol Lipids
+231,"(25R)-5beta-cholestane-3alpha,7alpha,12alpha,26-tetrol",LMST04030160,"(25R)-3alpha,7alpha,12alpha-trihydroxy-5beta-cholestan-26-oic acid",LMST04030151,Sterol Lipids
+232,"7alpha,25-dihydroxycholesterol",LMST04030166,"7alpha,25-dihydroxycholestenone",LMST04030107,Sterol Lipids
+233,"5,6alpha-epoxy-cholesterol",LMST01010011,"5alpha,6beta-dihydroxycholestanol",LMST01010052,Sterol Lipids
+234,Cholesterol,LMST01010001,24S-hydroxy-cholesterol,LMST01010019,Sterol Lipids
+235,25-hydroxy-cholesterol,LMST01010018,"7alpha,25-dihydroxycholesterol",LMST04030166,Sterol Lipids
+236,27-hydroxy-cholesterol(25R),LMST01010088,"7alpha,27-dihydroxycholesterol",LMST04030081,Sterol Lipids
+237,7alpha-hydroxy-cholesterol,LMST01010013,"7alpha,27-dihydroxycholesterol",LMST04030081,Sterol Lipids
+238,Cholesterol,LMST01010001,7alpha-hydroxy-cholesterol,LMST01010013,Sterol Lipids
+239,Cholesterol,LMST01010001,7beta-hydroxycholesterol,LMST01010047,Sterol Lipids
+240,7beta-hydroxycholesterol,LMST01010047,"7beta,27-dihydroxycholesterol",LMST04030178,Sterol Lipids
+241,7alpha-hydroxy-cholesterol,LMST01010013,"7alpha,25(S)26-dihydroxycholesterol",LMST01010466,Sterol Lipids
+242,"7alpha,25(S)26-dihydroxycholesterol",LMST01010466,"7alpha,(25S)26-Dihydroxycholest-4-en-3-one",LMST01010465,Sterol Lipids
+243,27-hydroxy-cholesterol(25R),LMST01010088,Cholestenoic acid,LMST04030072,Sterol Lipids
+244,Cholestenoic acid,LMST04030072,"3beta,7alpha-Dihydroxy-5-cholestenoic acid",LMST04030241,Sterol Lipids
+245,"7alpha,27-dihydroxycholesterol",LMST04030081,"7alpha,(25R)26-Dihydroxycholest-4-en-3-one",LMST01010463,Sterol Lipids
+246,7alpha-Hydroxy-4-cholesten-3-one,LMST04030123,"7alpha,(25R)26-Dihydroxycholest-4-en-3-one",LMST01010463,Sterol Lipids
+247,"7alpha,(25R)26-Dihydroxycholest-4-en-3-one",LMST01010463,7alpha-hydroxy-3-oxo-4-cholestenoic acid,LMST04030242,Sterol Lipids
+248,"7alpha,(25R)26-Dihydroxycholest-4-en-3-one",LMST01010463,"7alpha,12alpha,(25R)26-Trihydroxycholest-4-en-3-one",LMST01010464,Sterol Lipids
+249,7alpha-Hydroxy-4-cholesten-3-one,LMST04030123,"7alpha,12alpha,(25R)26-Trihydroxycholest-4-en-3-one",LMST01010464,Sterol Lipids
+251,"7alpha,12alpha,(25R)26-Trihydroxycholest-4-en-3-one",LMST01010464,"7alpha,12alpha,(25R)26-Trihydroxy-5beta-cholestan-3-one",LMST04030246,Sterol Lipids
+252,"7alpha,12alpha,(25R)26-Trihydroxy-5beta-cholestan-3-one",LMST04030246,"(25R)-5beta-cholestane-3alpha,7alpha,12alpha,26-tetrol",LMST04030160,Sterol Lipids
+253,24S-hydroxy-cholesterol,LMST01010019,"7alpha,24S-dihydroxycholesterol",LMST04030168,Sterol Lipids
+254,"7alpha,24S-dihydroxycholesterol",LMST04030168,"7alpha,24S-dihydroxycholest-4-en-3-one",LMST04030216,Sterol Lipids
+255,"7alpha,24S-dihydroxycholest-4-en-3-one",LMST04030216,"7alpha,24S-Dihydroxy-3-oxocholest-4-en-(25R)26-oic acid",LMST04030250,Sterol Lipids
+258,"7alpha,12alpha,24,25-Tetrahydroxycholest-4-en-3-one",LMST04030248,"7a,12a,25-Trihydroxycholest-4-en-3,24-dione",LMST04030249,Sterol Lipids
+261,7alpha-hydroxy-3-oxo-4-cholestenoic acid,LMST04030242,(25R)-7alpha-hydroxy-3-oxo-4-cholestenoyl CoA,LMST04030252,Sterol Lipids
+262,(25R)-7alpha-hydroxy-3-oxo-4-cholestenoyl CoA,LMST04030252,(25S)-7alpha-hydroxy-3-oxo-4-cholestenoyl CoA,LMST04030253,Sterol Lipids
+267,3-Oxo-delta4-chenodeoxycholyl-CoA,LMST04010462,N-(7alpha-Hydroxy-3-oxochol-4-en-24-oyl)-glycine,LMST05030020,Sterol Lipids
+269,3-Oxo-delta4-chenodeoxycholyl-CoA,LMST04010462,N-(7alpha-Hydroxy-3-oxochol-4-en-24-oyl)-taurine,LMST05040022,Sterol Lipids
+270,"7alpha,24S-Dihydroxy-3-oxocholest-4-en-(25R)26-oic acid",LMST04030250,"7alpha,24S-Dihydroxy-3-oxocholest-4-en-(25R)26-oyl CoA",LMST04030251,Sterol Lipids
+275,"NAPE(16:0/18:1(9Z)/20:4(5Z,8Z,11Z,14Z)",LMGP02011263,"Anandamide (20:4, n-6)",LMFA08040001,Glycerophospholipids
+276,7-dehydrocholesterol,LMST01010069,previtamin D3,LMST03020222,Sterol Lipids
+277,previtamin D3,LMST03020222,Vitamin D3,LMST03020001,Sterol Lipids
+279,3-ketosphinganine,LMSP01020002,Sphinganine,LMSP01020001,Sphingolipids
+280,Sphingosine,LMSP01010001,Sphingosine-1-phosphate,LMSP01050001,Sphingolipids
+281,Sphinganine,LMSP01020001,Sphinganine-phosphate,LMSP01050002,Sphingolipids
+290,Mevalonic acid,LMFA01050352,Mevalonate-P,LMFA01050415,Fatty Acyls
+291,Mevalonate-P,LMFA01050415,Mevalonate-PP,LMFA01050416,Fatty Acyls
+292,Mevalonate-PP,LMFA01050416,Mevalonate-P,LMFA01050415,Fatty Acyls
+293,Mevalonate-PP,LMFA01050416,Isopentenyl pyrophosphate,LMPR01010008,Fatty Acyls
+294,Isopentenyl pyrophosphate,LMPR01010008,Dimethylallyl pyrophosphate,LMPR01010001,Prenol Lipids
+311,4-hydroxyestradiol,LMST02010028,4-Methoxyestradiol-17beta,LMST02010055,Sterol Lipids
+312,2-hydroxyestradiol,LMST02010027,2-Methoxyestradiol-17beta,LMST02010035,Sterol Lipids
+313,4-hydroxyestrone,LMST02010056,4-Methoxyestrone,LMST02010057,Sterol Lipids
+314,2-Hydroxyestrone,LMST02010032,2-Methoxyestrone,LMST02010033,Sterol Lipids
+315,Beta-estradiol,LMST02010001,4-hydroxyestradiol,LMST02010028,Sterol Lipids
+316,Beta-estradiol,LMST02010001,2-hydroxyestradiol,LMST02010027,Sterol Lipids
+317,Beta-estradiol,LMST02010001,Estriol,LMST02010003,Sterol Lipids
+318,Estriol,LMST02010003,16alpha-hydroxyestrone,LMST02010041,Sterol Lipids
+319,16alpha-hydroxyestrone,LMST02010041,Estriol,LMST02010003,Sterol Lipids
+320,Estrone,LMST02010004,16alpha-hydroxyestrone,LMST02010041,Sterol Lipids
+321,Estrone,LMST02010004,4-hydroxyestrone,LMST02010056,Sterol Lipids
+322,Estrone,LMST02010004,2-Hydroxyestrone,LMST02010032,Sterol Lipids
+323,Estrone,LMST02010004,estrone 3-sulfate,LMST02010043,Sterol Lipids
+324,estrone 3-sulfate,LMST02010043,Estrone,LMST02010004,Sterol Lipids
+325,Beta-estradiol,LMST02010001,Estrone,LMST02010004,Sterol Lipids
+326,Beta-estradiol,LMST02010001,Estrone,LMST02010004,Sterol Lipids
+327,Estrone,LMST02010004,Beta-estradiol,LMST02010001,Sterol Lipids
+328,Estrone,LMST02010004,Beta-estradiol,LMST02010001,Sterol Lipids
+329,Testosterone,LMST02020002,Beta-estradiol,LMST02010001,Sterol Lipids
+330,Androstenedione,LMST02020007,Estrone,LMST02010004,Sterol Lipids
+331,Testosterone,LMST02020002,Androstenedione,LMST02020007,Sterol Lipids
+332,Androstenedione,LMST02020007,Testosterone,LMST02020002,Sterol Lipids
+333,Cholesterol,LMST01010001,22R-hydroxycholesterol,LMST01010086,Sterol Lipids
+334,22R-hydroxycholesterol,LMST01010086,"(20R,22R)-20,22-dihydroxycholesterol",LMST01010200,Sterol Lipids
+335,"(20R,22R)-20,22-dihydroxycholesterol",LMST01010200,Pregnenolone,LMST02030088,Sterol Lipids
+336,Pregnenolone,LMST02030088,"Pregn-5-ene-3beta,20alpha-diol",LMST02030205,Sterol Lipids
+337,Pregnenolone,LMST02030088,progesterone,LMST02030159,Sterol Lipids
+338,Pregnenolone,LMST02030088,17alpha-hydroxypregnenolone,LMST02030089,Sterol Lipids
+339,17alpha-hydroxypregnenolone,LMST02030089,"Pregn-5-ene-3beta,17alpha,20alpha-triol",LMST02030263,Sterol Lipids
+340,17alpha-hydroxypregnenolone,LMST02030089,17alpha-hydroxyprogesterone,LMST02030161,Sterol Lipids
+341,progesterone,LMST02030159,17alpha-hydroxyprogesterone,LMST02030161,Sterol Lipids
+342,progesterone,LMST02030159,"5alpha-pregnane-3,20-dione",LMST02030170,Sterol Lipids
+343,"5alpha-pregnane-3,20-dione",LMST02030170,Allopregnanolone,LMST02030130,Sterol Lipids
+344,17alpha-hydroxyprogesterone,LMST02030161,11-deoxycortisol,LMST02030086,Sterol Lipids
+345,progesterone,LMST02030159,11-deoxycorticosterone,LMST02030087,Sterol Lipids
+346,progesterone,LMST02030159,(20S)-20-hydroxypregn-4-en-3-one,LMST02030169,Sterol Lipids
+347,progesterone,LMST02030159,"5beta-pregnane-3,20-dione",LMST02030146,Sterol Lipids
+348,"5beta-pregnane-3,20-dione",LMST02030146,3alpha-hydroxy-5beta-pregnan-20-one,LMST02030175,Sterol Lipids
+349,3alpha-hydroxy-5beta-pregnan-20-one,LMST02030175,20alpha-Pregnanediol,LMST02030264,Sterol Lipids
+351,11-deoxycorticosterone,LMST02030087,5beta-dihydrodeoxycorticosterone,LMST02030282,Sterol Lipids
+353,corticosterone,LMST02030186,18-Hydroxycorticosterone,LMST02030091,Sterol Lipids
+355,11-deoxycorticosterone,LMST02030087,corticosterone,LMST02030186,Sterol Lipids
+356,18-Hydroxycorticosterone,LMST02030091,Aldosterone,LMST02030026,Sterol Lipids
+357,5beta-Dihydrocorticosterone,LMST02030280,Tetrahydrocorticosterone,LMST02030100,Sterol Lipids
+358,5alpha-Dihydrocorticosterone,LMST02030281,5alpha-Tetrahydrocorticosterone,LMST02030142,Sterol Lipids
+360,5beta-dihydrodeoxycorticosterone,LMST02030282,Tetrahydrodeoxycorticosterone,LMST02030283,Sterol Lipids
+361,11-Dehydrocorticosterone,LMST02030284,corticosterone,LMST02030186,Sterol Lipids
+362,Aldosterone,LMST02030026,5beta-Dihydroaldosterone,LMST02030276,Sterol Lipids
+365,corticosterone,LMST02030186,5beta-Dihydrocorticosterone,LMST02030280,Sterol Lipids
+366,5beta-Dihydroaldosterone,LMST02030276,Tetrahydroaldosterone,LMST02030275,Sterol Lipids
+367,corticosterone,LMST02030186,11-Dehydrocorticosterone,LMST02030284,Sterol Lipids
+368,Aldosterone,LMST02030026,Aldosterone 18-glucuronide,LMST05010062,Sterol Lipids
+369,corticosterone,LMST02030186,5alpha-Dihydrocorticosterone,LMST02030281,Sterol Lipids
+371,progesterone,LMST02030159,11-deoxycorticosterone,LMST02030087,Sterol Lipids
+375,Cortisone,LMST02030090,"4,5beta-Dihydrocortisone",LMST02030095,Sterol Lipids
+376,11-deoxycortisol,LMST02030086,Cortisol,LMST02030001,Sterol Lipids
+377,18-hydroxycortisol,LMST02030295,18-oxo-cortisol,LMST02030296,Sterol Lipids
+378,17alpha-hydroxyprogesterone,LMST02030161,21-Deoxycortisol,LMST02030195,Sterol Lipids
+379,Cortisone,LMST02030090,20beta-Dihydrocortisone,LMST02030266,Sterol Lipids
+380,"4,5beta-Dihydrocortisone",LMST02030095,Urocortisone,LMST02030098,Sterol Lipids
+381,5alpha-Dihydrocortisol,LMST02030272,5a-Tetrahydrocortisol,LMST02030200,Sterol Lipids
+382,Tetrahydrocortisol,LMST02030143,alpha-Cortol,LMST02030228,Sterol Lipids
+383,18-oxo-cortisol,LMST02030296,18-oxo-dihydrocortisol,LMST02030297,Sterol Lipids
+384,Cortisone,LMST02030090,20alpha-Dihydrocortisone,LMST02030265,Sterol Lipids
+385,Cortisol,LMST02030001,6beta-Hydroxycortisol,LMST02030269,Sterol Lipids
+386,21-Deoxycortisone,LMST02030289,21-Deoxycortisol,LMST02030195,Sterol Lipids
+387,Cortisol,LMST02030001,18-hydroxycortisol,LMST02030295,Sterol Lipids
+388,Cortisol,LMST02030001,5alpha-Dihydrocortisol,LMST02030272,Sterol Lipids
+390,5beta-Dihydrocortisol,LMST02030204,Tetrahydrocortisol,LMST02030143,Sterol Lipids
+394,Cortisone,LMST02030090,Cortisol,LMST02030001,Sterol Lipids
+399,Cortisol,LMST02030001,5beta-Dihydrocortisol,LMST02030204,Sterol Lipids
+400,18-oxo-dihydrocortisol,LMST02030297,18-oxo-tetrahydrocortisol,LMST02030298,Sterol Lipids
+402,21-Deoxycortisol,LMST02030195,21-Deoxycortisone,LMST02030289,Sterol Lipids
+404,Cortisol,LMST02030001,20alpha-Hydroxycortisol,LMST02030271,Sterol Lipids
+405,Cortisol,LMST02030001,20beta-Hydroxycortisol,LMST02030270,Sterol Lipids
+410,Pregnenolone,LMST02030088,isoprogesterone,LMST02030299,Sterol Lipids
+411,isoprogesterone,LMST02030299,progesterone,LMST02030159,Sterol Lipids
+431,9S-HpODE,LMFA02000012,Colneleic acid,LMFA10000001,Fatty Acyls
+435,5S-HODE,LMFA02000394,"5S,18-diHODE",LMFA02000397,Fatty Acyls
+436,5-KODE,LMFA02000395,5-oxo-18-ODE,LMFA02000396,Fatty Acyls
+437,5S-HODE,LMFA02000394,5-KODE,LMFA02000395,Fatty Acyls
+438,Psychosine,LMSP07000001,Sphingosine,LMSP01010001,Sphingolipids
+439,"4,4-dimethylcholesta-8,14,24-trienol",LMST01010149,"4,4-dimethylcholesta-8,14-dienol",LMST01010277,Sterol Lipids
+441,Isopentenyl pyrophosphate,LMPR01010008,Farnesyl diphosphate,LMPR0103010002,Prenol Lipids
+445,Lanosterol,LMST01010017,32-hydroxylanosterol,LMST01010124,Sterol Lipids
+446,Cholesterol,LMST01010001,27-hydroxy-cholesterol,LMST01010057,Sterol Lipids
+447,Farnesyl diphosphate,LMPR0103010002,Presqualene diphosphate,LMPR0106010003,Prenol Lipids
+449,Dimethylallyl pyrophosphate,LMPR01010001,Geranyl diphosphate,LMPR0102010001,Prenol Lipids
+450,32-oxolanosterol,LMST01010222,"4,4-dimethylcholesta-8,14,24-trienol",LMST01010149,Sterol Lipids
+451,Cholesterol,LMST01010001,4beta-hydroxy-cholesterol,LMST01010014,Sterol Lipids
+453,7alpha-hydroxy-cholesterol,LMST01010013,7-oxo-cholesterol,LMST01010049,Sterol Lipids
+454,Cholesterol,LMST01010001,Cholestenone,LMST01010015,Sterol Lipids
+455,"3S-squalene-2,3-epoxide",LMPR0106010010,Diepoxysqualene,LMPR0106010038,Prenol Lipids
+457,Zymosterone,LMST01010168,Zymosterol,LMST01010066,Sterol Lipids
+459,7-dehydro-desmosterol,LMST01010121,Desmosterol,LMST01010016,Sterol Lipids
+461,4alpha-carboxy-zymosterol,LMST01010522,Zymosterone,LMST01010168,Sterol Lipids
+462,3-keto-4alpha-methyl-zymosterol,LMST01010237,4alpha-methylzymosterol,LMST01010202,Sterol Lipids
+463,"5alpha-cholesta-7,24-dien-3beta-ol",LMST01010206,7-dehydro-desmosterol,LMST01010121,Sterol Lipids
+464,Geranyl diphosphate,LMPR0102010001,Farnesyl diphosphate,LMPR0103010002,Prenol Lipids
+468,4beta-methyl-zymosterol-4alpha-carboxylic acid,LMST01010388,3-keto-4alpha-methyl-zymosterol,LMST01010237,Sterol Lipids
+473,"4,4-dimethylcholesta-8,14,24-trienol",LMST01010149,14-demethyllanosterol,LMST01010176,Sterol Lipids
+475,Desmosterol,LMST01010016,Cholesterol,LMST01010001,Sterol Lipids
+476,Cholesterol,LMST01010001,25-hydroxy-cholesterol,LMST01010018,Sterol Lipids
+477,7-dehydrocholesterol,LMST01010069,Cholesterol,LMST01010001,Sterol Lipids
+478,Lathosterol,LMST01010089,7-dehydrocholesterol,LMST01010069,Sterol Lipids
+479,32-hydroxylanosterol,LMST01010124,32-oxolanosterol,LMST01010222,Sterol Lipids
+481,Isopentenyl pyrophosphate,LMPR01010008,Geranyl diphosphate,LMPR0102010001,Prenol Lipids
+483,Zymosterol,LMST01010066,"5alpha-cholesta-7,24-dien-3beta-ol",LMST01010206,Sterol Lipids
+485,Presqualene diphosphate,LMPR0106010003,Squalene,LMPR0106010002,Prenol Lipids
+488,"4,4-dimethylcholesta-8,14-dienol",LMST01010277,"4,4-Dimethylcholest-8-enol",LMST01010225,Sterol Lipids
+489,14-demethyllanosterol,LMST01010176,"4,4-Dimethylcholest-8-enol",LMST01010225,Sterol Lipids
+492,4alpha-methylzymosterol,LMST01010202,4alpha-methylcholest-8-en-3beta-ol,LMST01010197,Sterol Lipids
+493,Zymosterol,LMST01010066,Zymostenol,LMST01010096,Sterol Lipids
+494,"5alpha-cholesta-7,24-dien-3beta-ol",LMST01010206,Lathosterol,LMST01010089,Sterol Lipids
+495,7-dehydro-desmosterol,LMST01010121,7-dehydrocholesterol,LMST01010069,Sterol Lipids
+568,Geranylgeranyl diphosphate,LMPR0104010001,terpentedienyl diphosphate,LMPR0104040003,Prenol Lipids
+571,20alpha-Pregnanediol,LMST02030264,Pregnanediol-3-glucuronide,LMST05010073,Sterol Lipids
+572,Cortisol,LMST02030001,Cortisone,LMST02030090,Sterol Lipids
+573,Tetrahydrocortisol,LMST02030143,beta-Cortol,LMST02030229,Sterol Lipids
+574,Beta-estradiol,LMST02010001,17beta-Estradiol 3-(beta-D-glucuronide),LMST05010007,Sterol Lipids
+575,4-Methoxyestradiol-17beta,LMST02010055,4-methoxy-17beta-estradiol 3-O-(beta-D-glucuronide),LMST05010072,Sterol Lipids
+577,2-Methoxyestradiol-17beta,LMST02010035,2-Methoxy-estradiol-17beta 3-glucuronide,LMST05010009,Sterol Lipids
+578,Estrone,LMST02010004,Estrone 3-glucuronide,LMST05010011,Sterol Lipids
+580,2-Methoxyestrone,LMST02010033,2-Methoxyestrone 3-glucuronide,LMST05010010,Sterol Lipids
+586,5alpha-dihydrotesosterone,LMST02020042,5-alpha-Dihydrotestosterone glucuronide,LMST05010041,Sterol Lipids
+587,5-alpha-Dihydrotestosterone glucuronide,LMST05010041,5alpha-dihydrotestosterone 17-O-[beta-D-glucuronosyl-(1->2)-glucuronate],LMST05010077,Sterol Lipids
+589,Squalene,LMPR0106010002,"dammara-20,24-diene",LMPR0106080022,Prenol Lipids
+591,"CDP-2,3-bis-O-(geranylgeranyl)-sn-glycerol",LMGP13040001,"PS dO-16:4(3E,6E,10E,14E)(3Me,7Me,11Me,15Me)/16:4(3E,6E,10E,14E)(3Me,7Me,11Me,15Me)",LMGP03040002,Glycerophospholipids
+592,Testosterone,LMST02020002,Dihydro-sitosterol,LMST01040128,Sterol Lipids
+593,19-hydroxy-testosterone,LMST02020070,Dihydro-sitosterol,LMST01040128,Sterol Lipids
+595,Geranylgeranyl diphosphate,LMPR0104010001,Copalyl diphosphate,LMPR0104030002,Prenol Lipids
+596,Geranylgeranyl diphosphate,LMPR0104010001,syn-Copalyl diphosphate,LMPR0104030003,Prenol Lipids
+597,Geranylgeranyl diphosphate,LMPR0104010001,ent-Copalyl diphosphate,LMPR0104030001,Prenol Lipids
+598,Sphinganine-phosphate,LMSP01050002,Sphinganine,LMSP01020001,Sphingolipids
+599,Sphingosine-1-phosphate,LMSP01050001,Sphingosine,LMSP01010001,Sphingolipids
+613,"3S-squalene-2,3-epoxide",LMPR0106010010,thalianol,LMPR0106240002,Prenol Lipids
+614,Testosterone,LMST02020002,Testosterone glucuronide,LMST05010012,Sterol Lipids
+616,PGH2,LMFA03010010,TXA2,LMFA03030001,Fatty Acyls
+617,Testosterone,LMST02020002,2beta-hydroxy-testosterone,LMST02020144,Sterol Lipids
+618,Cortisone,LMST02030090,6beta-hydroxycortisone,LMST02030308,Sterol Lipids
+620,19-hydroxy-testosterone,LMST02020070,19-oxo-testosterone,LMST02020145,Sterol Lipids
+621,19-oxo-testosterone,LMST02020145,Beta-estradiol,LMST02010001,Sterol Lipids
+623,PGH2,LMFA03010010,PGI2,LMFA03010087,Fatty Acyls
+624,PGH2,LMFA03010010,PGD2,LMFA03010004,Fatty Acyls
+625,TXA2,LMFA03030001,TXB2,LMFA03030002,Fatty Acyls
+626,TXB2,LMFA03030002,11-dehydro-TXB2,LMFA03030004,Fatty Acyls
+628,PGD2,LMFA03010004,PGJ2,LMFA03010019,Fatty Acyls
+629,PGJ2,LMFA03010019,delta-12-PGJ2,LMFA03010020,Fatty Acyls
+630,PGF2alpha,LMFA03010002,15-keto-PGF2alpha,LMFA03010026,Fatty Acyls
+632,PGH2,LMFA03010010,PGE2,LMFA03010003,Fatty Acyls
+633,5S-HpETE,LMFA03060012,LTA4,LMFA03020023,Fatty Acyls
+635,LTA4,LMFA03020023,LTB4,LMFA03020001,Fatty Acyls
+636,LTA4,LMFA03020023,LTC4,LMFA03020003,Fatty Acyls
+637,LTC4,LMFA03020003,LTD4,LMFA03020006,Fatty Acyls
+638,LTD4,LMFA03020006,LTE4,LMFA03020002,Fatty Acyls
+639,PGI2,LMFA03010087,15-dehydro-prostaglandin I2,LMFA03010205,Fatty Acyls
+641,19-oxo-testosterone,LMST02020145,Beta-estradiol,LMST02010001,Sterol Lipids
+642,"PA dO-16:4(3E,6E,10E,14E)(3Me,7Me,11Me,15Me)/16:4(3E,6E,10E,14E)(3Me,7Me,11Me,15Me)",LMGP10040005,"CDP-2,3-bis-O-(geranylgeranyl)-sn-glycerol",LMGP13040001,Glycerophospholipids
+643,Testosterone,LMST02020002,19-hydroxy-testosterone,LMST02020070,Sterol Lipids
+645,PGG2,LMFA03010009,15S-hydroperoxy-PGE2,LMFA03010217,Fatty Acyls
+646,gamma-Carotene,LMPR01070260,Beta-carotene,LMPR01070001,Prenol Lipids
+647,Lycopene,LMPR01070257,gamma-Carotene,LMPR01070260,Prenol Lipids
+648,Beta-carotene,LMPR01070001,Retinal,LMPR01090002,Prenol Lipids
+649,Retinal,LMPR01090002,Retinoic Acid,LMPR01090019,Prenol Lipids
+650,Retinoic Acid,LMPR01090019,1-O-all-trans-retinoyl-beta-glucuronic acid,LMPR01090051,Prenol Lipids
+652,cis-Phytoene,LMPR01070255,"9,9',15-tri-cis-zeta-carotene",LMPR01070296,Prenol Lipids
+653,Prolycopene,LMPR01070403,Lycopene,LMPR01070257,Prenol Lipids
+654,Lycopene,LMPR01070257,delta-Carotene,LMPR01070266,Prenol Lipids
+655,"9,9',15-tri-cis-zeta-carotene",LMPR01070296,"9,9'-di-cis-zeta-carotene",LMPR01070295,Prenol Lipids
+656,11-cis-Retinol,LMPR01090005,13-cis-retinol,LMPR01090011,Prenol Lipids
+657,13-cis-retinol,LMPR01090011,13-cis-retinal,LMPR01090018,Prenol Lipids
+658,Retinol,LMPR01090001,Retinal,LMPR01090002,Prenol Lipids
+659,Retinol,LMPR01090001,"All-Trans-3,4-Didehydro Retinol",LMPR01090008,Prenol Lipids
+660,Retinol,LMPR01090001,Retinal,LMPR01090002,Prenol Lipids
+661,Retinol,LMPR01090001,11-cis-Retinol,LMPR01090005,Prenol Lipids
+662,Retinol,LMPR01090001,9-cis-retinol,LMPR01090009,Prenol Lipids
+663,Retinol,LMPR01090001,13-cis-retinol,LMPR01090011,Prenol Lipids
+666,PGE2,LMFA03010003,15-keto-PGE2,LMFA03010030,Fatty Acyls
+667,15-keto-PGE2,LMFA03010030,"13,14-dihydro-15-keto-PGE2",LMFA03010031,Fatty Acyls
+668,15-keto-PGE2,LMFA03010030,"13,14-dihydro-15-keto-PGE2",LMFA03010031,Fatty Acyls
+669,PGE2,LMFA03010003,PGA2,LMFA03010035,Fatty Acyls
+670,PGA2,LMFA03010035,PGC2,LMFA03010133,Fatty Acyls
+671,PGC2,LMFA03010133,PGB2,LMFA03010018,Fatty Acyls
+672,Squalene,LMPR0106010002,Diploptene,LMPR04000001,Prenol Lipids
+677,17-Epiestriol,LMST02010049,17-epiestriol 16-O-(beta-D-glucuronide),LMST05010078,Sterol Lipids
+678,17-Epiestriol,LMST02010049,17-epiestriol 17-O-(beta-D-glucuronide),LMST05010080,Sterol Lipids
+679,17-Epiestriol,LMST02010049,17-epiestriol 3-O-(beta-D-glucuronide),LMST05010079,Sterol Lipids
+680,Estriol,LMST02010003,"16alpha,17beta-Estriol 3-(beta-D-glucuronide)",LMST05010017,Sterol Lipids
+681,Estriol,LMST02010003,"16alpha,17beta-Estriol 16-(beta-D-glucuronide)",LMST05010008,Sterol Lipids
+683,Beta-estradiol,LMST02010001,17-beta-estradiol glucuronide,LMST05050028,Sterol Lipids
+684,Castasterone,LMST01030129,Brassinolide,LMST01140001,Sterol Lipids
+685,4beta-hydroxy-cholesterol,LMST01010014,"4beta,7alpha-dihydroxy-cholesterol",LMST01010602,Sterol Lipids
+691,24-Methylenelophenol,LMST01030100,24-ethylidene Iophenol,LMST01040144,Sterol Lipids
+692,cycloartenol,LMST01100008,24-methylene-cycloartanol,LMST01100001,Sterol Lipids
+693,"3S-squalene-2,3-epoxide",LMPR0106010010,beta-Amyrin,LMPR0106150015,Prenol Lipids
+694,Glycocholic Acid,LMST05030001,Cholic acid,LMST04010001,Sterol Lipids
+696,Cholyl-CoA,LMST04010475,Cholic acid,LMST04010001,Sterol Lipids
+697,Cholyl-CoA,LMST04010475,Taurocholic acid,LMST05040001,Sterol Lipids
+698,Cholyl-CoA,LMST04010475,Glycocholic Acid,LMST05030001,Sterol Lipids
+699,Cholic acid,LMST04010001,Cholyl-CoA,LMST04010475,Sterol Lipids
+700,Lithocholic acid,LMST04010003,Lithocholic acid 3-O-glucuronide,LMST05010066,Sterol Lipids
+701,corticosterone,LMST02030186,20beta-dihydro-corticosterone,LMST02030340,Sterol Lipids
+702,Loganin,LMPR0102070001,Secologanin,LMPR0102070002,Prenol Lipids
+705,1-Deoxy-3-dehydrosphinganine,LMSP01080093,Spisulosine,LMSP01080032,Sphingolipids
