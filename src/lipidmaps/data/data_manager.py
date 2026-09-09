@@ -172,43 +172,19 @@ class DataManager(LipidmapsBaseModel):
         # Extract quantified lipids
         quantified = self.extract_quantified_lipids(raw_df.rows, name_col, sample_names, column_info)
 
-        # If refmet is enabled, annotate lipids with refmet results before creating the dataset, so that standardized names and lm_ids are available on the QuantifiedLipid objects within the dataset from the start
-        # Default is true since it provides standardized names and can improve LMSD matching downstream, but can be disabled if users want to skip that step or handle annotation separately
-        refmet_failed = False
-        if self.use_refmet:
-            refmet_success = self.annotate_lipids_with_refmet(quantified)
-            refmet_failed = not refmet_success
-
-        dataset = LipidDataset(samples=samples_meta, lipids=quantified, column_info=column_info, refmet_failed=refmet_failed)
+        dataset = LipidDataset(samples=samples_meta, lipids=quantified, column_info=column_info)
         self.dataset = dataset
         logger.info(
             f"Created LipidDataset: {len(samples_meta)} samples, {len(quantified)} lipids"
         )
 
-        if self.use_headgroups:
-            headgroup_updates = self.dataset.fill_generic_lm_ids_from_headgroups()
-            logger.info(f"Filled missing LM IDs using headgroup mapping: {headgroup_updates} updated")
-
-        # Fill specific lm_ids for named compounds that RefMet could not resolve
-        # but LMSD can (e.g. oxylipins/sterols keyed by compound name). Must run
-        # before reaction fetching so the newly-filled ids participate. LMSD
-        # returns not-found for chain-varying species (DG/LPS/CE), so this only
-        # touches named molecular species and never overwrites an existing lm_id.
-        lmsd_name_updates = self.fill_missing_lm_ids_from_lmsd(quantified=self.dataset.lipids)
-        logger.info(f"Filled missing LM IDs using LMSD name lookup: {lmsd_name_updates} updated")
-
-        if self.fetch_reactions:
-            reaction_updates = self.dataset.fetch_reactions_by_lm_id(taxonomy_group=self.taxonomy_group)
-            try:
-                count = len(reaction_updates) if reaction_updates is not None else 0
-            except Exception:
-                count = 0
-            logger.info(f"Fetched reactions for lipids: {count} reactions")
+        # Standardize names and annotate reactions (shared with import_imzml).
+        self._annotate_and_react(dataset)
 
         if self.validate_data:
             validator = DataValidator()
             self.validation_report = validator.validate(raw_df)
-            
+
             if not self.validation_report.passed:
                 logger.warning(
                     f"Validation found {len(self.validation_report.issues)} issues"
@@ -216,9 +192,47 @@ class DataManager(LipidmapsBaseModel):
             # After processing, attach the validation report to the dataset for downstream use
             self.dataset.validation_report = self.validation_report
 
-        # Below we'll fetch lmid details for all lipids with an lm_id and annotate them, which will be used by downstream analysis and reporting
+        return dataset
+
+    def _annotate_and_react(self, dataset: LipidDataset) -> LipidDataset:
+        """Standardize names and annotate reactions on an assembled dataset.
+
+        Shared by process_csv and import_imzml. Runs, honoring the manager flags:
+        RefMet standardization -> headgroup generic-LM-ID fill -> LMSD name
+        fallback -> reaction fetch -> LMSD molecule-detail annotation. Operates on
+        ``dataset.lipids`` in place and returns the same dataset.
+        """
+        self.dataset = dataset
+
+        # RefMet first so standardized names/lm_ids are available downstream.
+        if self.use_refmet:
+            refmet_success = self.annotate_lipids_with_refmet(dataset.lipids)
+            dataset.refmet_failed = not refmet_success
+
+        if self.use_headgroups:
+            headgroup_updates = dataset.fill_generic_lm_ids_from_headgroups()
+            logger.info(f"Filled missing LM IDs using headgroup mapping: {headgroup_updates} updated")
+
+        # Fill specific lm_ids for named compounds that RefMet could not resolve
+        # but LMSD can (e.g. oxylipins/sterols keyed by compound name). Must run
+        # before reaction fetching so the newly-filled ids participate. LMSD
+        # returns not-found for chain-varying species (DG/LPS/CE), so this only
+        # touches named molecular species and never overwrites an existing lm_id.
+        lmsd_name_updates = self.fill_missing_lm_ids_from_lmsd(quantified=dataset.lipids)
+        logger.info(f"Filled missing LM IDs using LMSD name lookup: {lmsd_name_updates} updated")
+
+        if self.fetch_reactions:
+            reaction_updates = dataset.fetch_reactions_by_lm_id(taxonomy_group=self.taxonomy_group)
+            try:
+                count = len(reaction_updates) if reaction_updates is not None else 0
+            except Exception:
+                count = 0
+            logger.info(f"Fetched reactions for lipids: {count} reactions")
+
+        # Fetch lmid details for all lipids with an lm_id and annotate them, used
+        # by downstream analysis and reporting.
         lm_ids = dataset.list_lm_ids()
-        molecules = LMSD.get_molecules_by_lm_id(lm_ids)  # Fetch details for first 5 LM IDs as a check
+        molecules = LMSD.get_molecules_by_lm_id(lm_ids)
         logger.info(f"LMSD molecules fetched: {molecules[:5] if isinstance(molecules, list) else molecules}")
         self.annotate_lipids_with_lmsd_details(dataset=dataset, molecules=molecules)
         return dataset

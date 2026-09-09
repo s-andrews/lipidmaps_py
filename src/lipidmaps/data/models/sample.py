@@ -45,11 +45,26 @@ class SampleConditions(RootModel[Dict[str, str]]):
         return dict(self.root)
 
 
+class PixelCoordinate(LipidmapsBaseModel):
+    """Spatial coordinate of a mass-spectrometry-imaging pixel.
+
+    imzML coordinates are always 3-dimensional; ``z`` is 0 for 2D acquisitions.
+    Only MSI (spatial) samples carry one of these -- tabular datasets leave
+    ``SampleMetadata.coordinates`` as ``None``.
+    """
+
+    x: int
+    y: int
+    z: int = 0
+
+
 class SampleMetadata(LipidmapsBaseModel):
     sample_name: str
     group: str  # e.g., "Control", "WT"
     label: Optional[str] = None  # e.g., "Fasted", "Fed"
     values: Optional[Dict[str, float]] = None  # lipid input_name -> value (optional cache)
+    # Set only for MSI pixels; None for ordinary tabular samples.
+    coordinates: Optional[PixelCoordinate] = None
 
     def get_value_for_lipid(self, lipid: "QuantifiedLipid") -> Optional[float]:
         """
@@ -329,6 +344,15 @@ class LipidDataset(LipidmapsBaseModel):
 
     def list_sample_names(self) -> List[str]:
         return [s.sample_name for s in self.samples]
+
+    @property
+    def is_spatial(self) -> bool:
+        """True if any sample carries a pixel coordinate (i.e. an MSI dataset)."""
+        return any(s.coordinates is not None for s in self.samples)
+
+    def spatial_samples(self) -> List[SampleMetadata]:
+        """Return only the samples that have pixel coordinates (MSI pixels)."""
+        return [s for s in self.samples if s.coordinates is not None]
 
     def get_sample_conditions(self) -> SampleConditions:
         """Return the current sample_name -> condition mapping."""

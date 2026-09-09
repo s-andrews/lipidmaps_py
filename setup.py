@@ -28,6 +28,12 @@ setup(
             "streamlit",
             "plotly",
         ],
+        # Mass-spectrometry-imaging (imzML) support: reading spatial datasets and
+        # fetching a real open-data demo slice from METASPACE.
+        "msi": [
+            "pyimzml",
+            "metaspace2020",
+        ],
     },
     classifiers=[
         "Programming Language :: Python :: 3",

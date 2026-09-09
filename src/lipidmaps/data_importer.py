@@ -12,7 +12,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field, PrivateAttr, computed_field, ConfigDict
 
 from .data.data_manager import DataManager
-from .data.models.sample import LipidDataset
+from .data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata, PixelCoordinate
+from .data.ingestion.imzml_reader import ImzMLIngestion, IonAnnotation
 from .data.quantitation import (
     QuantitationAnalyzer,
     QuantitationConfig,
@@ -442,6 +443,91 @@ def import_data(
     )
 
     return lipid_data
+
+
+def import_imzml(
+    imzml_path: Union[str, Path],
+    annotation_path: Union[str, Path, List[IonAnnotation]],
+    mz_tolerance_ppm: float = 10.0,
+    bbox: Optional[tuple] = None,
+    group: str = "tissue",
+    use_refmet: bool = True,
+    use_headgroups: bool = True,
+    fetch_reactions: bool = True,
+) -> LipidData:
+    """Import a mass-spectrometry-imaging (MSI) ``.imzML`` dataset.
+
+    Each pixel becomes a sample (``SampleMetadata`` with ``coordinates``); each
+    annotated ion becomes a ``QuantifiedLipid`` whose ``values`` hold that ion's
+    per-pixel intensity. Names come from ``annotation_path`` (a companion table of
+    lipid name + target m/z, e.g. a METASPACE export); the resulting names are then
+    standardized and reaction-annotated through the SAME pipeline as
+    :func:`import_data` (RefMet -> headgroups -> LMSD -> reactions).
+
+    imzML holds only m/z + intensity, so lipid names must be supplied via
+    ``annotation_path``; the m/z itself is never looked up against a database here.
+
+    Args:
+        imzml_path: Path to the ``.imzML`` file (its ``.ibd`` must sit alongside).
+        annotation_path: Path to an annotation CSV (``name``, ``mz`` columns, plus
+            optional ``adduct``/``formula``/``lm_id``) or a list of ``IonAnnotation``.
+        mz_tolerance_ppm: Peak-match window when locating an ion in each pixel.
+        bbox: Optional ``(x_min, y_min, x_max, y_max)`` inclusive crop to subsample.
+        group: Group label assigned to every pixel sample (region grouping is a
+            future extension).
+        use_refmet, use_headgroups, fetch_reactions: Forwarded to the shared
+            standardization/reaction pipeline.
+
+    Returns:
+        LipidData wrapping a spatial ``LipidDataset`` (``dataset.is_spatial`` True).
+
+    Examples:
+        >>> data = import_imzml("brain.imzML", "brain_annotations.csv")
+        >>> data.dataset.is_spatial
+        True
+    """
+    logger.info(f"Importing imzML data from {imzml_path}")
+
+    ingestion = ImzMLIngestion()
+    result = ingestion.read(
+        imzml_path,
+        annotations=annotation_path,
+        mz_tolerance_ppm=mz_tolerance_ppm,
+        bbox=bbox,
+    )
+
+    # Pixel -> SampleMetadata (carrying spatial coordinates).
+    samples = [
+        SampleMetadata(
+            sample_name=name,
+            group=group,
+            coordinates=PixelCoordinate(x=x, y=y, z=z),
+        )
+        for (name, x, y, z) in result.pixels
+    ]
+
+    # Annotated ion -> QuantifiedLipid (per-pixel intensities keyed by pixel name).
+    lipids = [
+        QuantifiedLipid(input_name=ann.name, values=result.ion_values.get(ann.name, {}))
+        for ann in result.annotations
+    ]
+
+    dataset = LipidDataset(samples=samples, lipids=lipids)
+
+    # Reuse the standardization + reaction annotation pipeline used by process_csv.
+    manager = DataManager(
+        use_refmet=use_refmet,
+        use_headgroups=use_headgroups,
+        fetch_reactions=fetch_reactions,
+    )
+    manager._annotate_and_react(dataset)
+
+    lipid_data = LipidData(dataset=dataset, manager=manager)
+    logger.info(
+        f"imzML import complete: {len(lipids)} ions across {len(samples)} pixels"
+    )
+    return lipid_data
+
 
 #TODO to implement in future
 def import_msdial(filename: Union[str, Path]) -> LipidData:

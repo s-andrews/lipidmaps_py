@@ -37,7 +37,7 @@ def process_csv(csv_path, **kwargs):
     manager = DataManager(**kwargs)
     return manager.process_csv(csv_path)
 
-from .data_importer import import_data, import_msdial, LipidData
+from .data_importer import import_data, import_msdial, import_imzml, LipidData
 
 # Quantitation analysis exports
 from .data.quantitation import (
@@ -54,6 +54,7 @@ from . import data
 __version__ = "0.1.0"
 __all__ = [
     "import_data",
+    "import_imzml",
     "process_csv",
     "DataManager",
     "BioPANExporter",

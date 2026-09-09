@@ -20,6 +20,7 @@ from lipidmaps.logging_utils import configure_logging  # type: ignore[reportMiss
 from lipidmaps.data.biopan_pathway_exporter import BioPANPathwayExporter
 from lipidmaps.data.quantitation import QuantitationAnalyzer, NormalizationMethod
 from scripts.biopan_ui import render_biopan_explorer
+from scripts.spatial_ui import render_spatial_explorer
 
 
 logger = logging.getLogger(__name__)
@@ -178,6 +179,11 @@ def main():
             try:
                 test_files = [f for f in os.listdir(test_data_dir)
                             if f.endswith((".tsv", ".csv"))]
+                # Include MSI imzML demo files (may live in subdirs like msi/).
+                for _root, _dirs, _fs in os.walk(test_data_dir):
+                    for _f in _fs:
+                        if _f.lower().endswith(".imzml"):
+                            test_files.append(os.path.relpath(os.path.join(_root, _f), test_data_dir))
             except:
                 test_files = []
                 st.warning(f"Test data directory not found: {test_data_dir}")
@@ -338,7 +344,7 @@ def main():
             st.error(f"Failed to load All Reactions page: {e}")
             logger.exception("Failed to load All Reactions page")
         return
-    tab_labels = ["Preview", "Processed", "BioPAN", "Reactions", "Validation", "Parser"]
+    tab_labels = ["Preview", "Processed", "Spatial", "BioPAN", "Reactions", "Validation", "Parser"]
     tabs = st.tabs(tab_labels)
 
     tab_index = {name.lower(): i for i, name in enumerate(tab_labels)}
@@ -410,17 +416,32 @@ def main():
                 state="running",
             )
 
-            from lipidmaps import process_csv
-            dataset = process_csv(
-                fp,
-                validate_data=validate_data,
-                use_refmet=use_refmet,
-                use_headgroups=use_headgroups,
-                fetch_reactions=fetch_reactions,
-                taxonomy_group=taxonomy_group,
-                transpose_file=transpose_file,
-                has_labels=has_labels,
-            )
+            if os.path.splitext(fp)[1].lower() == ".imzml":
+                # MSI path: names come from a companion annotations.csv beside the
+                # imzML; the shared standardization/reaction pipeline runs after.
+                from lipidmaps import import_imzml
+
+                annotation_fp = os.path.join(os.path.dirname(fp), "annotations.csv")
+                status.update(label="Reading imzML pixels and extracting ion images...", state="running")
+                dataset = import_imzml(
+                    fp,
+                    annotation_fp,
+                    use_refmet=use_refmet,
+                    use_headgroups=use_headgroups,
+                    fetch_reactions=fetch_reactions,
+                ).dataset
+            else:
+                from lipidmaps import process_csv
+                dataset = process_csv(
+                    fp,
+                    validate_data=validate_data,
+                    use_refmet=use_refmet,
+                    use_headgroups=use_headgroups,
+                    fetch_reactions=fetch_reactions,
+                    taxonomy_group=taxonomy_group,
+                    transpose_file=transpose_file,
+                    has_labels=has_labels,
+                )
             status.update(label="Dataset is generated ...", state="running")
             metadata_df = None
             if metadata_fp:
@@ -1024,6 +1045,18 @@ def main():
                                 color_discrete_map=color_map)
                     st.plotly_chart(fig, use_container_width=True, key="neither_lm_id_found_distribution")
 
+
+    with tabs[tab_index["spatial"]]:
+        dataset = st.session_state.get("dataset")
+        if dataset is None:
+            st.info("Process an MSI (imzML) dataset first to open the spatial explorer.")
+        elif not getattr(dataset, "is_spatial", False):
+            st.info(
+                "This dataset has no pixel coordinates. Select the imzML demo file "
+                "(e.g. msi/demo_brain.imzML) to explore spatial ion maps."
+            )
+        else:
+            render_spatial_explorer(dataset, tab_key_prefix="spatial_tab")
 
     with tabs[tab_index["biopan"]]:
         dataset = st.session_state.get("dataset")
