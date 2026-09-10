@@ -33,6 +33,8 @@ setup(
         "msi": [
             "pyimzml",
             "metaspace2020",
+            "matplotlib",
+            "plotly",
         ],
     },
     classifiers=[
@@ -44,6 +46,7 @@ setup(
     entry_points={
         "console_scripts": [
             "lipidmaps-biopan=lipidmaps.biopan_cli:main",
+            "lipidmaps-msi=lipidmaps.msi_cli:main",
         ],
     },
 )

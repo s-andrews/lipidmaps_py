@@ -1,6 +1,6 @@
 
 import logging
-from typing import Any, List, Dict, Optional, Union, Callable
+from typing import Any, List, Dict, Optional, Tuple, Union, Callable
 import numpy as np
 import re
 from ..utils.headgroups import lipidmaps_headgroups
@@ -168,6 +168,10 @@ class QuantifiedLipid(LipidmapsBaseModel):
 
     matched_field: Optional[str] = None
     generic_lm_id: Optional[str] = None
+    # For MSI ions auto-annotated at (formula, adduct) level: the candidate molecule
+    # names/ids (isomers sharing the formula) from the reference database. Used to
+    # resolve an lm_id by name. None for tabular/named data.
+    annotation_candidates: Optional[List[Dict[str, str]]] = None
 
     reactions: Optional[List[ReactionData]] = None # List of associated reactions
     weight: Optional[float] = None  # For species or class-level reaction
@@ -311,6 +315,8 @@ class LipidDataset(LipidmapsBaseModel):
     quantitation_unit: Optional[str] = None  # e.g., 'pmol', 'ng', 'area'
     quantitation_method: Optional[str] = None  # e.g., 'LC-MS', 'GC-MS'
     quantitation_notes: Optional[str] = None
+    # MSI pixel size in micrometres (x, y), from imzML metadata when available.
+    pixel_size_um: Optional[Tuple[float, float]] = None
 
     def set_quantitation_info(
         self,

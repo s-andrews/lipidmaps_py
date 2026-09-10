@@ -44,8 +44,8 @@ def test_parse_annotation_csv_fixture():
     anns = parse_annotation_csv(DEMO_ANNOTATIONS)
     assert len(anns) >= 5
     by_name = {a.name: a for a in anns}
-    assert "PC 34:1" in by_name
-    assert by_name["PC 34:1"].mz > 0
+    assert "PC(34:1)" in by_name
+    assert by_name["PC(34:1)"].mz > 0
 
 
 def test_parse_annotation_csv_requires_name_and_mz(tmp_path):
@@ -107,5 +107,93 @@ def test_import_imzml_builds_spatial_dataset():
     assert sample.coordinates is not None
     assert isinstance(sample.coordinates.x, int)
     # A known ion has per-pixel intensities.
-    pc = next(lp for lp in ds.lipids if lp.input_name == "PC 34:1")
+    pc = next(lp for lp in ds.lipids if lp.input_name == "PC(34:1)")
     assert any(v is not None and v > 0 for v in pc.values.values())
+
+
+def test_reader_auto_annotates_from_database(tmp_path):
+    """With no annotation file, match observed peaks against a molecule database."""
+    from lipidmaps.data.annotation.mz_annotator import (
+        MetaboliteDatabase,
+        POSITIVE_ADDUCTS,
+        formula_monoisotopic_mass,
+    )
+
+    glucose_mz = POSITIVE_ADDUCTS[0].mz(formula_monoisotopic_mass("C6H12O6"))
+    path = _write_imzml(tmp_path, [glucose_mz], [([100.0], (1, 1, 1)), ([50.0], (2, 1, 1))])
+
+    db = MetaboliteDatabase(
+        {"C6H12O6": {"mass": formula_monoisotopic_mass("C6H12O6"),
+                     "candidates": [{"name": "Glucose", "id": "HMDB1"}]}}
+    )
+    result = ImzMLIngestion().read(path, annotations=None, database=db, mz_tolerance_ppm=5)
+
+    assert len(result.annotations) == 1
+    ann = result.annotations[0]
+    assert ann.name == "C6H12O6 [M+H]+"
+    assert ann.formula == "C6H12O6"
+    assert {c["name"] for c in ann.candidates} == {"Glucose"}
+    assert result.ion_values[ann.name][pixel_name(1, 1, 1)] == 100.0
+
+
+def test_reader_without_annotation_or_database_errors(tmp_path):
+    path = _write_imzml(tmp_path, [700.5], [([1.0], (1, 1, 1))])
+    with pytest.raises(ValueError):
+        ImzMLIngestion().read(path)  # no annotations, no database
+
+
+def test_import_imzml_auto_annotation_end_to_end():
+    from lipidmaps import import_imzml
+
+    data = import_imzml(
+        DEMO_IMZML,
+        annotation_path=None,
+        database=str(FIXTURE_DIR.parents[2] / "core_metabolome_v3.csv"),
+        mz_tolerance_ppm=5,
+        use_refmet=False,
+        use_headgroups=False,
+        fetch_reactions=False,
+    )
+    ds = data.dataset
+    assert ds.is_spatial
+    # Ions are labeled formula [adduct] and carry candidate molecule names.
+    assert all(" [" in lp.input_name and "]" in lp.input_name for lp in ds.lipids)
+    assert any(lp.annotation_candidates for lp in ds.lipids)
+
+
+def test_resolve_candidate_lm_ids(monkeypatch):
+    """Candidate molecule names are standardized via RefMet to set lm_id/std name."""
+    from lipidmaps.data.data_manager import DataManager
+    from lipidmaps.data.models.refmet import RefMet
+    from lipidmaps.data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata, PixelCoordinate
+
+    lipid = QuantifiedLipid(
+        input_name="C42H82NO8P [M+H]+",
+        values={"px_x0001_y0001_z01": 5.0},
+        annotation_candidates=[
+            {"name": "PC(20:1/14:0)", "id": "HMDB8"},        # -> std name only
+            {"name": "PC(16:0/18:1(11Z))", "id": "HMDB9"},   # -> specific lm_id
+        ],
+    )
+    ds = LipidDataset(
+        samples=[SampleMetadata(sample_name="px_x0001_y0001_z01", group="t",
+                                coordinates=PixelCoordinate(x=1, y=1, z=1))],
+        lipids=[lipid],
+    )
+
+    def fake_refmet(names):
+        assert "PC(16:0/18:1(11Z))" in names
+        return [
+            {"input_name": "PC(20:1/14:0)", "standardized_name": "PC 34:1", "lm_id": None},
+            {"input_name": "PC(16:0/18:1(11Z))", "standardized_name": "PC 16:0/18:1(11Z)",
+             "lm_id": "LMGP01010576"},
+        ]
+
+    monkeypatch.setattr(RefMet, "validate_metabolite_names", staticmethod(fake_refmet))
+
+    n = DataManager()._resolve_candidate_lm_ids(ds)
+    assert n == 1
+    # Prefers the candidate that yields a specific lm_id.
+    assert lipid.lm_id == "LMGP01010576"
+    assert lipid.lm_id_found_by == "candidate"
+    assert lipid.standardized_name == "PC 16:0/18:1(11Z)"

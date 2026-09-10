@@ -190,13 +190,55 @@ def main():
 
             selected_file = st.selectbox("Select test data", ["(none)"] + test_files)
             uploaded_file = st.file_uploader("Or upload CSV", type=["csv", "tsv"])
+            uploaded_imzml_files = st.file_uploader(
+                "Or upload imzML (select the .imzML, its .ibd, and an annotations .csv together)",
+                type=["imzml", "ibd", "csv"],
+                accept_multiple_files=True,
+                key="imzml_uploader",
+                help="imzML needs its matching .ibd. A CSV is optional: without one, "
+                     "ions are auto-annotated from CoreMetabolome. If given, columns: "
+                     "name, mz, optional adduct/formula/lm_id.",
+            )
+            st.session_state["msi_ppm_tol"] = st.number_input(
+                "MSI m/z tolerance (ppm)", min_value=1.0, max_value=50.0,
+                value=float(st.session_state.get("msi_ppm_tol", 5.0)), step=1.0,
+                help="Peak-match window for imzML annotation / auto-annotation.",
+            )
             uploaded_metadata_file = st.file_uploader("Optional metadata file", type=["csv", "tsv"], key="metadata_uploader")
 
             file_to_use = None
             file_name = None
             metadata_file_to_use = None
             metadata_file_name = None
-            if uploaded_file:
+            annotation_file_to_use = None
+            if uploaded_imzml_files:
+                # imzML is a pair (.imzML + .ibd), optionally with an annotation CSV:
+                # write them into one temp dir preserving names so the parser finds the
+                # .ibd (and any annotation sits beside the imzML). Without a CSV, ions
+                # are auto-annotated against the CoreMetabolome database.
+                imzml_dir = tempfile.mkdtemp()
+                imzml_path = None
+                for uf in uploaded_imzml_files:
+                    dest = os.path.join(imzml_dir, uf.name)
+                    with open(dest, "wb") as fh:
+                        fh.write(uf.read())
+                    low = uf.name.lower()
+                    if low.endswith(".imzml"):
+                        imzml_path = dest
+                    elif low.endswith(".csv"):
+                        annotation_file_to_use = dest
+                if imzml_path is None:
+                    st.warning("imzML upload must include a .imzML file (with its .ibd).")
+                elif not os.path.exists(os.path.splitext(imzml_path)[0] + ".ibd"):
+                    st.warning("Missing the .ibd file for this imzML; upload both together.")
+                    imzml_path = None
+                if imzml_path:
+                    file_to_use = imzml_path
+                    file_name = os.path.basename(imzml_path)
+                    selected_file = "(none)"
+                    if annotation_file_to_use is None:
+                        st.caption("No annotation CSV — ions will be auto-annotated from CoreMetabolome.")
+            elif uploaded_file:
                 with tempfile.NamedTemporaryFile(delete=False) as tmp:
                     tmp.write(uploaded_file.read())
                     file_to_use = tmp.name
@@ -218,6 +260,7 @@ def main():
             prev_metadata_name = st.session_state.get("_last_metadata_file_used")
             st.session_state["file_to_use"] = file_to_use
             st.session_state["metadata_file_to_use"] = metadata_file_to_use
+            st.session_state["annotation_file_to_use"] = annotation_file_to_use
 
             # If the chosen file changed, reset dependent session state to sensible defaults
             if file_name != prev_file_name or metadata_file_name != prev_metadata_name:
@@ -417,19 +460,35 @@ def main():
             )
 
             if os.path.splitext(fp)[1].lower() == ".imzml":
-                # MSI path: names come from a companion annotations.csv beside the
-                # imzML; the shared standardization/reaction pipeline runs after.
+                # MSI path. If the user uploaded an annotation CSV, use it; otherwise
+                # auto-annotate observed peaks against the CoreMetabolome database.
+                # The shared standardization/reaction pipeline runs after either way.
                 from lipidmaps import import_imzml
 
-                annotation_fp = os.path.join(os.path.dirname(fp), "annotations.csv")
-                status.update(label="Reading imzML pixels and extracting ion images...", state="running")
-                dataset = import_imzml(
-                    fp,
-                    annotation_fp,
-                    use_refmet=use_refmet,
-                    use_headgroups=use_headgroups,
-                    fetch_reactions=fetch_reactions,
-                ).dataset
+                annotation_fp = st.session_state.get("annotation_file_to_use")
+                db_path = os.path.abspath(os.path.join(dir_path, "../tests/data/core_metabolome_v3.csv"))
+                ppm = float(st.session_state.get("msi_ppm_tol", 5.0))
+                if annotation_fp:
+                    status.update(label="Reading imzML + supplied annotations...", state="running")
+                    dataset = import_imzml(
+                        fp, annotation_fp, mz_tolerance_ppm=ppm,
+                        use_refmet=use_refmet, use_headgroups=use_headgroups,
+                        fetch_reactions=fetch_reactions,
+                    ).dataset
+                else:
+                    status.update(
+                        label=f"Reading imzML and auto-annotating from CoreMetabolome (±{ppm:.0f} ppm)...",
+                        state="running",
+                    )
+                    dataset = import_imzml(
+                        fp, annotation_path=None, database=db_path, mz_tolerance_ppm=ppm,
+                        use_headgroups=use_headgroups, fetch_reactions=fetch_reactions,
+                    ).dataset
+                resolved = sum(1 for lp in dataset.lipids if lp.lm_id)
+                status.write(
+                    f"MSI: {len(dataset.lipids)} ions across {len(dataset.spatial_samples())} "
+                    f"pixels; {resolved} resolved to LM IDs."
+                )
             else:
                 from lipidmaps import process_csv
                 dataset = process_csv(

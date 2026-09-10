@@ -63,6 +63,15 @@ def test_voronoi_regions_too_few_points():
     assert voronoi_regions([(0, 0, 0), (1, 1, 0)]) == []
 
 
+def test_voronoi_regions_include_z():
+    regions = voronoi_regions(_grid_coords(3), list(range(9)), z=0)
+    assert all(r["z"] == 0 for r in regions)
+    # z filtering + reported z stay consistent for a non-zero slice.
+    coords = [(x, y, 2) for y in range(3) for x in range(3)]
+    regions2 = voronoi_regions(coords, list(range(9)), z=2)
+    assert regions2 and all(r["z"] == 2 for r in regions2)
+
+
 def test_z_slices():
     coords = [(0, 0, 0), (1, 0, 2), (0, 1, 0)]
     assert z_slices(coords) == [0, 2]

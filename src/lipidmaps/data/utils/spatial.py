@@ -25,6 +25,18 @@ logger = logging.getLogger(__name__)
 Coord = Tuple[int, int, int]
 
 
+def nice_length(value: float) -> float:
+    """Round a length up to a 1/2/5×10ⁿ 'nice' value (for scale bars)."""
+    import math
+
+    if value <= 0:
+        return 1.0
+    exp = math.floor(math.log10(value))
+    base = value / (10 ** exp)
+    nice = 1 if base < 1.5 else 2 if base < 3 else 5 if base < 7 else 10
+    return nice * (10 ** exp)
+
+
 def lipid_spatial_series(
     dataset, lipid, z: Optional[int] = None
 ) -> Tuple[List[Coord], List[Optional[float]]]:
@@ -234,8 +246,69 @@ def voronoi_regions(
     for (px, py, val), region in zip(pts, regions):
         poly = vertices[region]
         clipped = _clip_polygon(poly, bbox)
-        out.append({"x": px, "y": py, "value": val, "polygon": clipped})
+        out.append({"x": px, "y": py, "z": z, "value": val, "polygon": clipped})
     return out
+
+
+def ion_names_for_component_ids(dataset, lm_ids: set) -> List[str]:
+    """Measured ion names whose lm_id/generic_lm_id is in ``lm_ids``."""
+    if not lm_ids:
+        return []
+    names = []
+    for lp in dataset.lipids:
+        if lp.lm_id in lm_ids or lp.generic_lm_id in lm_ids:
+            if any(v is not None for v in lp.values.values()):
+                names.append(lp.input_name)
+    return names
+
+
+def component_ids(components) -> set:
+    """Collect lm_id/generic_lm_id from a reaction's reactant/product components."""
+    ids = set()
+    for comp in components or []:
+        for attr in ("compound_lm_id", "compound_generic_lm_id"):
+            val = getattr(comp, attr, None)
+            if val:
+                ids.add(val)
+    return ids
+
+
+def spatial_reactions(dataset):
+    """Reactions (deduped by name) with a measured reactant AND product ion.
+
+    Returns ``(reaction, reactant_ion_names, product_ion_names)`` tuples — the
+    reactions meaningful to map over tissue. Shared by the Streamlit UI and the CLI.
+    """
+    out = []
+    seen = set()
+    for rx in getattr(dataset, "reactions", None) or []:
+        react = ion_names_for_component_ids(dataset, component_ids(rx.reactants))
+        prod = ion_names_for_component_ids(dataset, component_ids(rx.products))
+        if not (react and prod):
+            continue
+        label = rx.reaction_name or f"reaction {getattr(rx, 'reaction_id', '')}"
+        if label in seen:
+            continue
+        seen.add(label)
+        out.append((rx, react, prod))
+    return out
+
+
+def ratio_series(dataset, reactant_name, product_name, z: Optional[int] = None):
+    """Per-pixel ``log2(product / reactant)`` series (None where undefined)."""
+    rc, rv = lipid_spatial_series(dataset, reactant_name, z=z)
+    pc, pv = lipid_spatial_series(dataset, product_name, z=z)
+    r_by_coord = {c: v for c, v in zip(rc, rv)}
+    coords: List[Coord] = []
+    vals: List[Optional[float]] = []
+    for c, p in zip(pc, pv):
+        r = r_by_coord.get(c)
+        coords.append(c)
+        if r and r > 0 and p is not None and p > 0:
+            vals.append(float(np.log2(p / r)))
+        else:
+            vals.append(None)
+    return coords, vals
 
 
 def aggregate_by_region(dataset, lipid, regions) -> dict:

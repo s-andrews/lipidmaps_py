@@ -14,25 +14,33 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import sys
+
 import numpy as np
 from pyimzml.ImzMLWriter import ImzMLWriter
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from lipidmaps.data.annotation.mz_annotator import formula_monoisotopic_mass  # noqa: E402
+
 OUT_DIR = Path(__file__).resolve().parents[1] / "tests" / "data" / "inputs" / "demo" / "msi"
 WIDTH, HEIGHT = 40, 30
+_PROTON = 1.0072764666
 
-# Real lipid names + plausible [M+H]+ m/z. Chosen so several participate in BioPAN
-# reactions (PC/PE/PA/DG/LPC cascade) for the reaction-overlay demo.
+# Real lipid names + formulas confirmed present in CoreMetabolome v3, so the
+# annotation-free demo (matching against that DB) produces near-0-ppm hits. Several
+# are PC/LPC/PA (reaction-bearing) for the reaction-overlay demo. Peaks are [M+H]+.
 LIPIDS = [
-    # name, m/z, spatial-pattern kind
-    ("PC 34:1", 760.585, "left_gradient"),
-    ("PC 36:2", 786.601, "right_gradient"),
-    ("PE 34:1", 718.538, "top_blob"),
-    ("PA 34:1", 675.498, "center_blob"),
-    ("DG 34:1", 595.516, "ring"),
-    ("LPC 16:0", 496.340, "bottom_blob"),
-    ("SM 34:1;O2", 703.575, "left_gradient"),
-    ("Cholesterol", 369.352, "uniform"),
+    # name, formula, spatial-pattern kind
+    ("LysoPC(16:0)", "C24H50NO7P", "left_gradient"),
+    ("PA(20:0/14:1)", "C37H71O8P", "center_blob"),
+    ("SM(d18:1/16:0)", "C39H79N2O6P", "top_blob"),
+    ("PC(31:1)", "C39H76NO8P", "ring"),
+    ("PC(34:1)", "C42H82NO8P", "right_gradient"),
+    ("PC(36:1)", "C44H84NO8P", "bottom_blob"),
 ]
+# Attach [M+H]+ m/z computed from the formula.
+LIPIDS = [(name, formula_monoisotopic_mass(formula) + _PROTON, kind, formula)
+          for (name, formula, kind) in LIPIDS]
 
 
 def _tissue_mask() -> np.ndarray:
@@ -72,8 +80,8 @@ def main() -> None:
     # imzML m/z arrays are always sorted ascending; write peaks in that order so
     # the reader's nearest-peak search behaves like it does on real data.
     lipids_sorted = sorted(LIPIDS, key=lambda item: item[1])
-    mz_axis = np.array([mz for _, mz, _ in lipids_sorted], dtype=float)
-    fields = [_pattern(kind) for _, _, kind in lipids_sorted]
+    mz_axis = np.array([mz for _, mz, _, _ in lipids_sorted], dtype=float)
+    fields = [_pattern(kind) for _, _, kind, _ in lipids_sorted]
 
     with ImzMLWriter(str(imzml_path)) as writer:
         for y in range(HEIGHT):
@@ -88,9 +96,9 @@ def main() -> None:
 
     ann_path = OUT_DIR / "annotations.csv"
     with ann_path.open("w", encoding="utf-8") as handle:
-        handle.write("name,mz,adduct\n")
-        for name, mz, _ in LIPIDS:
-            handle.write(f"{name},{mz:.4f},[M+H]+\n")
+        handle.write("name,mz,adduct,formula\n")
+        for name, mz, _, formula in LIPIDS:
+            handle.write(f"{name},{mz:.4f},[M+H]+,{formula}\n")
 
     n_pixels = int(mask.sum())
     print(f"Wrote {imzml_path} ({n_pixels} pixels), {ann_path} ({len(LIPIDS)} ions)")

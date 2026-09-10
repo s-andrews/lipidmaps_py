@@ -209,6 +209,13 @@ class DataManager(LipidmapsBaseModel):
             refmet_success = self.annotate_lipids_with_refmet(dataset.lipids)
             dataset.refmet_failed = not refmet_success
 
+        # MSI auto-annotated ions: standardize via candidate molecule names (RefMet)
+        # before the generic fills so headgroup/LMSD can assign generic ids from the
+        # resolved standardized_name. No-op when no annotation_candidates are present.
+        candidate_updates = self._resolve_candidate_lm_ids(dataset)
+        if candidate_updates:
+            logger.info(f"Standardized {candidate_updates} MSI ions from candidate names")
+
         if self.use_headgroups:
             headgroup_updates = dataset.fill_generic_lm_ids_from_headgroups()
             logger.info(f"Filled missing LM IDs using headgroup mapping: {headgroup_updates} updated")
@@ -236,6 +243,82 @@ class DataManager(LipidmapsBaseModel):
         logger.info(f"LMSD molecules fetched: {molecules[:5] if isinstance(molecules, list) else molecules}")
         self.annotate_lipids_with_lmsd_details(dataset=dataset, molecules=molecules)
         return dataset
+
+    def _resolve_candidate_lm_ids(self, dataset: LipidDataset) -> int:
+        """Standardize MSI formula-level ions using their candidate molecule names.
+
+        MSI auto-annotated ions are labeled ``formula [adduct]`` and carry
+        ``annotation_candidates`` (isomeric molecule names). RefMet standardizes those
+        names better than LMSD's exact-name lookup, so for each such ion we run its
+        candidates through RefMet (batched across all ions) and adopt the best hit:
+        preferring a candidate that yields a specific ``lm_id``, else one that yields a
+        ``standardized_name`` (so the downstream headgroup/LMSD fills can assign a
+        generic id). Sets ``standardized_name`` and, when available, ``lm_id``
+        (``lm_id_found_by="candidate"``). Runs before the headgroup/LMSD fills.
+        Returns the number of ions updated. No-op for non-MSI (no candidates) data.
+        """
+        targets = [
+            lp for lp in dataset.lipids
+            if getattr(lp, "annotation_candidates", None) and not lp.lm_id and not lp.standardized_name
+        ]
+        if not targets:
+            return 0
+
+        # Unique candidate names across all target ions, standardized in one RefMet call.
+        names: List[str] = []
+        seen = set()
+        for lp in targets:
+            for cand in lp.annotation_candidates:
+                nm = (cand.get("name") or "").strip()
+                if nm and nm.lower() not in seen:
+                    seen.add(nm.lower())
+                    names.append(nm)
+        if not names:
+            return 0
+
+        results = RefMet.validate_metabolite_names(names)
+        if not isinstance(results, list):
+            logger.info("Candidate resolution skipped (RefMet response: %s)", type(results))
+            return 0
+        by_name: Dict[str, Dict[str, Any]] = {}
+        for res in results:
+            d = res.to_dict() if hasattr(res, "to_dict") else res
+            inp = (d.get("input_name") or "").strip().lower()
+            if inp:
+                by_name[inp] = d
+
+        def _pick(lp, require_lm_id: bool):
+            for cand in lp.annotation_candidates:
+                nm = (cand.get("name") or "").strip()
+                d = by_name.get(nm.lower())
+                if not d:
+                    continue
+                if require_lm_id and not d.get("lm_id"):
+                    continue
+                if not require_lm_id and not d.get("standardized_name"):
+                    continue
+                return d
+            return None
+
+        updated = 0
+        for lp in targets:
+            chosen = _pick(lp, require_lm_id=True) or _pick(lp, require_lm_id=False)
+            if not chosen:
+                continue
+            if chosen.get("lm_id"):
+                lp.lm_id = chosen["lm_id"]
+                try:
+                    lp.lm_id_found_by = "candidate"
+                except Exception:
+                    pass
+            lp.standardized_name = chosen.get("standardized_name") or lp.standardized_name
+            lp.standardized_by = "RefMet-candidate"
+            updated += 1
+        logger.info(
+            "Standardized %d/%d MSI ions from candidate names (%d with specific lm_id)",
+            updated, len(targets), sum(1 for lp in targets if lp.lm_id),
+        )
+        return updated
 
     def _resolve_lipid_column(self, fieldnames: List[str]) -> str:
         """Resolve the lipid name column from user specification or default.

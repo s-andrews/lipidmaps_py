@@ -447,11 +447,16 @@ def import_data(
 
 def import_imzml(
     imzml_path: Union[str, Path],
-    annotation_path: Union[str, Path, List[IonAnnotation]],
-    mz_tolerance_ppm: float = 10.0,
+    annotation_path: Optional[Union[str, Path, List[IonAnnotation]]] = None,
+    database: Optional[Union[str, Path, Any]] = None,
+    mz_tolerance_ppm: float = 5.0,
     bbox: Optional[tuple] = None,
+    adducts: Optional[list] = None,
+    top_n_peaks: Optional[int] = None,
+    stride: int = 1,
+    progress=None,
     group: str = "tissue",
-    use_refmet: bool = True,
+    use_refmet: Optional[bool] = None,
     use_headgroups: bool = True,
     fetch_reactions: bool = True,
 ) -> LipidData:
@@ -494,6 +499,11 @@ def import_imzml(
         annotations=annotation_path,
         mz_tolerance_ppm=mz_tolerance_ppm,
         bbox=bbox,
+        database=database,
+        adducts=adducts,
+        top_n_peaks=top_n_peaks,
+        stride=stride,
+        progress=progress,
     )
 
     # Pixel -> SampleMetadata (carrying spatial coordinates).
@@ -507,12 +517,24 @@ def import_imzml(
     ]
 
     # Annotated ion -> QuantifiedLipid (per-pixel intensities keyed by pixel name).
+    # Auto-annotated ions carry candidate molecule names for lm_id resolution.
     lipids = [
-        QuantifiedLipid(input_name=ann.name, values=result.ion_values.get(ann.name, {}))
+        QuantifiedLipid(
+            input_name=ann.name,
+            values=result.ion_values.get(ann.name, {}),
+            annotation_candidates=(list(ann.candidates) if ann.candidates else None),
+        )
         for ann in result.annotations
     ]
 
     dataset = LipidDataset(samples=samples, lipids=lipids)
+    if result.pixel_size is not None:
+        dataset.pixel_size_um = result.pixel_size
+
+    # RefMet on formula-labeled auto-annotated ions is pointless (no names to match);
+    # default it off in auto mode and rely on candidate-name resolution instead.
+    if use_refmet is None:
+        use_refmet = annotation_path is not None
 
     # Reuse the standardization + reaction annotation pipeline used by process_csv.
     manager = DataManager(
