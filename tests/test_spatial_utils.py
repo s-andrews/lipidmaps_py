@@ -1,6 +1,7 @@
 """Unit tests for spatial helpers (no network, no pyimzml required)."""
 
 import numpy as np
+import pytest
 
 from lipidmaps.data.models.sample import (
     LipidDataset,
@@ -117,6 +118,184 @@ def test_multi_layer_is_3d():
     assert ds.z_layers() == [0, 1, 2]
     assert ds.z_slice_count == 3
     assert ds.is_3d is True
+
+
+def test_reaction_effect_sizes_between_groups():
+    from lipidmaps.data.utils.spatial import reaction_effect_sizes
+    from lipidmaps.data.models.reaction import ReactionData, CompoundComponent
+
+    def sm(name, group, x):
+        return SampleMetadata(sample_name=name, group=group, coordinates=PixelCoordinate(x=x, y=0))
+
+    samples = [sm("a1", "ctrl", 0), sm("a2", "ctrl", 1), sm("b1", "dis", 0), sm("b2", "dis", 1)]
+    react = QuantifiedLipid(input_name="R", lm_id="LM_R",
+                            values={"a1": 10.0, "a2": 10.0, "b1": 10.0, "b2": 10.0})
+    prod = QuantifiedLipid(input_name="P", lm_id="LM_P",
+                           values={"a1": 10.0, "a2": 10.0, "b1": 40.0, "b2": 40.0})
+    rx = ReactionData(reaction_name="R -> P",
+                      reactants=[CompoundComponent(compound_lm_id="LM_R")],
+                      products=[CompoundComponent(compound_lm_id="LM_P")])
+    ds = LipidDataset(samples=samples, lipids=[react, prod], reactions=[rx])
+
+    rows = reaction_effect_sizes(ds, "ctrl", "dis")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["mean_log2ratio_ctrl"] == 0.0          # log2(10/10)
+    assert row["mean_log2ratio_dis"] == 2.0            # log2(40/10)
+    assert row["effect_size_delta"] == 2.0
+
+
+def test_aggregate_replicates_section_and_tile():
+    from lipidmaps.data.utils.spatial import aggregate_replicates
+
+    # Two groups, each two z-sections, two pixels per section.
+    samples, values = [], {}
+    for g in ("ctrl", "dis"):
+        for z in (0, 1):
+            for x in (0, 1):
+                sn = f"{g}:{z}:{x}"
+                samples.append(SampleMetadata(sample_name=sn, group=g,
+                                              coordinates=PixelCoordinate(x=x, y=0, z=z)))
+                values[sn] = 10.0 if g == "ctrl" else 20.0
+    lipid = QuantifiedLipid(input_name="R", lm_id="LM_R", values=values)
+    ds = LipidDataset(samples=samples, lipids=[lipid])
+
+    # pixel → unchanged
+    assert aggregate_replicates(ds, "pixel") is ds
+
+    # section → one unit per (group, z): 2 per group = 4 units, values = mean (unchanged here)
+    sec = aggregate_replicates(ds, "section")
+    assert len(sec.samples) == 4
+    counts = {}
+    for s in sec.samples:
+        counts[s.group] = counts.get(s.group, 0) + 1
+    assert counts == {"ctrl": 2, "dis": 2}
+    r = sec.lipids[0]
+    assert all(v == 10.0 for k, v in r.values.items() if k.startswith("ctrl"))
+
+    # tile with 4 tiles: units are a subset (few distinct x,y here) but grouped correctly
+    tile = aggregate_replicates(ds, "tile", tiles=4)
+    assert {s.group for s in tile.samples} == {"ctrl", "dis"}
+    assert tile.reactions == ds.reactions  # reactions carried over
+
+
+def test_reaction_gene_labels():
+    from lipidmaps.data.utils.spatial import reaction_gene_labels
+    from lipidmaps.data.models.reaction import ReactionData
+
+    rx = ReactionData(
+        reaction_name="R -> P",
+        genes=[{"gene_name": "COMT", "uniprot_id": "P21964"}, {"uniprot_id": "Q9Y2"}],
+        proteins=[{"ec_number": "2.7.8.27"}],
+    )
+    labels = reaction_gene_labels(rx)
+    assert "COMT" in labels
+    assert "Q9Y2" in labels          # falls back to uniprot when no gene_name
+    assert "EC 2.7.8.27" in labels
+
+
+def test_prominent_reactions_and_cloud():
+    from lipidmaps.data.utils.spatial import prominent_reactions, reaction_ratio_cloud
+    from lipidmaps.data.models.reaction import ReactionData, CompoundComponent
+
+    samples = [SampleMetadata(sample_name=f"px{i}", group="t", coordinates=PixelCoordinate(x=i, y=0))
+               for i in range(3)]
+    react = QuantifiedLipid(input_name="R", lm_id="LM_R", values={"px0": 10.0, "px1": 10.0, "px2": 10.0})
+    prod = QuantifiedLipid(input_name="P", lm_id="LM_P", values={"px0": 20.0, "px1": 40.0, "px2": 0.0})
+    rx = ReactionData(reaction_name="R -> P",
+                      reactants=[CompoundComponent(compound_lm_id="LM_R")],
+                      products=[CompoundComponent(compound_lm_id="LM_P")])
+    ds = LipidDataset(samples=samples, lipids=[react, prod], reactions=[rx])
+
+    ranked = prominent_reactions(ds)
+    assert ranked and ranked[0][0] is rx
+    assert ranked[0][3] == 30.0 + 60.0  # sum reactant + product signal
+
+    coords, vals = reaction_ratio_cloud(ds, "R", "P")
+    assert len(coords) == 3
+    assert vals[0] == 1.0            # log2(20/10)
+    assert vals[2] is None           # product 0 -> undefined
+
+
+def test_normalize_per_section():
+    from lipidmaps.data.utils.spatial import normalize_per_section
+
+    coords = [(0, 0, 0), (1, 0, 0), (0, 0, 1), (1, 0, 1)]
+    values = [10.0, 20.0, 100.0, 300.0]
+    norm = normalize_per_section(coords, values)
+    # z=0: 10..20 → 0,1 ; z=1: 100..300 → 0,1  (each section scaled to itself)
+    assert norm == [0.0, 1.0, 0.0, 1.0]
+    # None preserved
+    assert normalize_per_section([(0, 0, 0)], [None]) == [None]
+
+
+def test_tile_aligned_delta():
+    from lipidmaps.data.utils.spatial import tile_aligned_delta
+    from lipidmaps.data.models.reaction import ReactionData
+
+    # Independent 2x1 grids per group; tile grid n=1 → whole slice is one tile.
+    samples, rvals, pvals = [], {}, {}
+    for g, pfac in (("ctrl", 1.0), ("dis", 4.0)):
+        for x in (0, 1):
+            sn = f"{g}:{x}"
+            samples.append(SampleMetadata(sample_name=sn, group=g, coordinates=PixelCoordinate(x=x, y=0, z=0)))
+            rvals[sn] = 10.0
+            pvals[sn] = 10.0 * pfac
+    react = QuantifiedLipid(input_name="R", lm_id="LM_R", values=rvals)
+    prod = QuantifiedLipid(input_name="P", lm_id="LM_P", values=pvals)
+    ds = LipidDataset(samples=samples, lipids=[react, prod],
+                      reactions=[ReactionData(reaction_name="R->P")])
+
+    res = tile_aligned_delta(ds, "R", "P", "ctrl", "dis", n=1)
+    # ctrl log2(1)=0, dis log2(4)=2 → Δ=2 for the single aligned tile (z0,row0,col0)
+    assert res["delta"][(0, 0, 0)] == 2.0
+
+
+def test_tile_delta_figure_single_cube():
+    pytest.importorskip("plotly")
+    from lipidmaps.data.utils.spatial_html import tile_delta_figure
+
+    fig = tile_delta_figure({"delta": {(0, 0, 0): 2.0, (0, 0, 1): -1.0}, "n": 2},
+                            "R -> P Δ", gene_text="COMT")
+    assert fig is not None
+    assert len(fig.data) == 1        # one cube of aligned tiles
+
+
+def test_reaction_volume_figure_tiled():
+    pytest.importorskip("plotly")
+    from lipidmaps.data.utils.spatial_html import reaction_volume_figure
+
+    coords = [(0, 0, 0), (1, 0, 1)]
+    fig = reaction_volume_figure(
+        [("control", coords, [0.0, 1.0]), ("disease", coords, [1.0, 2.0])],
+        "R -> P", gene_text="COMT, EC 2.7.8.27", z_spacing_um=20.0,
+    )
+    assert fig is not None
+    assert len(fig.data) == 2        # one 3D scene per stack (tiled)
+
+
+def test_compare_stack_reactions_structure():
+    from lipidmaps.data.utils.spatial import compare_stack_reactions
+    from lipidmaps.data.models.reaction import ReactionData, CompoundComponent
+
+    samples = [
+        SampleMetadata(sample_name=f"{g}:{i}", group=g, coordinates=PixelCoordinate(x=i, y=0))
+        for g in ("ctrl", "dis") for i in range(3)
+    ]
+    react = QuantifiedLipid(input_name="R", lm_id="LM_R",
+                            values={s.sample_name: 10.0 for s in samples})
+    prod = QuantifiedLipid(input_name="P", lm_id="LM_P",
+                           values={s.sample_name: (30.0 if s.group == "dis" else 10.0) for s in samples})
+    rx = ReactionData(reaction_name="R -> P",
+                      reactants=[CompoundComponent(compound_lm_id="LM_R")],
+                      products=[CompoundComponent(compound_lm_id="LM_P")])
+    ds = LipidDataset(samples=samples, lipids=[react, prod], reactions=[rx])
+
+    result = compare_stack_reactions(ds, "ctrl", "dis", threshold=0.05)
+    assert set(result) == {"rows", "graph"}
+    assert "nodes" in result["graph"] and "edges" in result["graph"]
+    for r in result["rows"]:
+        assert {"reaction", "z_score", "direction", "significant"} <= set(r)
 
 
 def test_ion_display_name_prefers_resolved_name():

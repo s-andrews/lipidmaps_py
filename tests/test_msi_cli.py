@@ -117,6 +117,24 @@ def test_resolve_db_env_and_cache_and_error(tmp_path, monkeypatch):
     assert db_provision.resolve_metabolome_db(None) == envdb
 
 
+def test_unique_out_dir(tmp_path):
+    base = tmp_path / "run_out"
+    assert msi_cli._unique_out_dir(base) == base   # free → unchanged
+    base.mkdir()
+    assert msi_cli._unique_out_dir(base) == tmp_path / "run_out1"
+    (tmp_path / "run_out1").mkdir()
+    assert msi_cli._unique_out_dir(base) == tmp_path / "run_out2"
+
+
+def test_parse_stacks():
+    stacks = msi_cli._parse_stacks(["control=a.imzML", "disease=b.imzML,c.imzML"])
+    assert list(stacks.keys()) == ["control", "disease"]
+    assert stacks["control"] == ["a.imzML"]
+    assert stacks["disease"] == ["b.imzML", "c.imzML"]
+    with pytest.raises(ValueError):
+        msi_cli._parse_stacks(["noequals"])
+
+
 def test_find_maf(tmp_path):
     from lipidmaps.data.annotation import db_provision  # noqa: F401 (ensure package import ok)
 

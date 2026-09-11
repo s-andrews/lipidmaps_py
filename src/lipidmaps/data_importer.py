@@ -651,6 +651,97 @@ def import_imzml_stack(
     return lipid_data
 
 
+def import_imzml_groups(
+    groups: Dict[str, List[Union[str, Path]]],
+    annotation_path: Optional[Union[str, Path, List[IonAnnotation]]] = None,
+    database: Optional[Union[str, Path, Any]] = None,
+    mz_tolerance_ppm: float = 5.0,
+    bbox: Optional[tuple] = None,
+    adducts: Optional[list] = None,
+    top_n_peaks: Optional[int] = None,
+    stride: int = 1,
+    z_spacing_um: Optional[float] = None,
+    progress=None,
+    use_refmet: Optional[bool] = None,
+    use_headgroups: bool = True,
+    fetch_reactions: bool = True,
+) -> LipidData:
+    """Load several labelled MSI **stacks** into one dataset for between-stack comparison.
+
+    ``groups`` maps a stack label (e.g. ``"control"``/``"disease"``) to its imzML files
+    (each group may be a multi-file 3D stack). Every pixel becomes a sample tagged with
+    its stack label as ``SampleMetadata.group``, with a **group-prefixed** sample name
+    (``"<label>:px_x..._y..._z.."``) so identical coordinates across stacks don't collide.
+    Ions are unioned by label; standardization + reactions run **once** over the merged
+    dataset. The result has ≥2 ``group``s — the shape BioPAN's reaction comparison
+    (``BioPANPathwayExporter.build_reaction_*`` with disease/control groups) consumes, so
+    reaction changes between stacks can be scored/displayed with the existing machinery.
+    """
+    if not groups:
+        raise ValueError("import_imzml_groups requires at least one labelled group.")
+
+    samples: List[SampleMetadata] = []
+    merged_values: Dict[str, Dict[str, Optional[float]]] = {}
+    candidates: Dict[str, list] = {}
+    ordered_labels: List[str] = []
+    pixel_size = None
+    ingestion = ImzMLIngestion()
+
+    for label, paths in groups.items():
+        file_list = [Path(p).expanduser() for p in (paths or [])]
+        for layer, path in enumerate(file_list):
+            def _p(phase, done, total, _label=label, _path=path):
+                if progress:
+                    progress(f"{_label}:{Path(_path).name}:{phase}", done, total)
+
+            result = ingestion.read(
+                path, annotations=annotation_path, mz_tolerance_ppm=mz_tolerance_ppm,
+                bbox=bbox, database=database, adducts=adducts, top_n_peaks=top_n_peaks,
+                stride=stride, progress=_p,
+            )
+            if pixel_size is None and result.pixel_size is not None:
+                pixel_size = result.pixel_size
+            for ann in result.annotations:
+                if ann.name not in merged_values:
+                    merged_values[ann.name] = {}
+                    ordered_labels.append(ann.name)
+                    candidates[ann.name] = list(ann.candidates) if ann.candidates else None
+            for (name, x, y, _z) in result.pixels:
+                sn = f"{label}:{pixel_name(x, y, layer)}"
+                samples.append(SampleMetadata(
+                    sample_name=sn, group=label,
+                    coordinates=PixelCoordinate(x=x, y=y, z=layer),
+                ))
+                for ion in result.ion_values:
+                    merged_values[ion][sn] = result.ion_values[ion].get(name)
+
+    lipids = [
+        QuantifiedLipid(
+            input_name=label, values=merged_values[label],
+            annotation_candidates=candidates.get(label),
+        )
+        for label in ordered_labels
+    ]
+    dataset = LipidDataset(samples=samples, lipids=lipids)
+    if pixel_size is not None:
+        dataset.pixel_size_um = pixel_size
+    dataset.z_spacing_um = z_spacing_um
+
+    if use_refmet is None:
+        use_refmet = annotation_path is not None
+    manager = DataManager(
+        use_refmet=use_refmet, use_headgroups=use_headgroups, fetch_reactions=fetch_reactions,
+    )
+    manager._annotate_and_react(dataset)
+
+    lipid_data = LipidData(dataset=dataset, manager=manager)
+    logger.info(
+        "imzML groups import complete: %d ions across %d pixels in %d groups (%s)",
+        len(lipids), len(samples), len(groups), ", ".join(groups.keys()),
+    )
+    return lipid_data
+
+
 #TODO to implement in future
 def import_msdial(filename: Union[str, Path]) -> LipidData:
     """

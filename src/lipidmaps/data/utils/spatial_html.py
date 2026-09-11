@@ -107,6 +107,111 @@ def scatter3d_figure(coords: Sequence[Coord], values, title: str,
     return fig
 
 
+def reaction_volume_figure(panels, title: str, gene_text: Optional[str] = None,
+                           z_spacing_um: Optional[float] = None, cmap: str = "RdBu_r",
+                           midpoint: float = 0.0, color_mode: str = "global"):
+    """Tiled 3D reaction figure: one Scatter3d scene per panel, coloured by log2 ratio.
+
+    ``panels`` is a list of ``(panel_title, coords, values)``. One panel → a single 3D
+    volume (like the ion 3D view); two panels → stacks tiled side by side.
+    ``color_mode``: ``"global"`` colours all points on one diverging scale around
+    ``midpoint``; ``"section"`` colours each point **relative to the other points in its
+    own z-slice** (min-max within section, Viridis) so within-section structure shows.
+    ``gene_text`` (genes involved) is shown as a caption. Returns None if nothing to plot.
+    """
+    from plotly.subplots import make_subplots
+    from .spatial import normalize_per_section
+
+    section = color_mode == "section"
+    prepared = []
+    for ptitle, coords, values in panels:
+        color_vals = normalize_per_section(coords, values) if section else values
+        xs, ys, zs, cs, texts = [], [], [], [], []
+        for c, v, cv in zip(coords, values, color_vals):
+            if v is None or cv is None:
+                continue
+            x, y, z = (tuple(c) + (0, 0, 0))[:3]
+            xs.append(x)
+            ys.append(y)
+            zs.append(z * z_spacing_um if z_spacing_um else z)
+            cs.append(float(cv))
+            texts.append(f"pixel ({x}, {y}, {z})<br>log2(prod/react)={v:.3f}")
+        prepared.append((ptitle, xs, ys, zs, cs, texts))
+    if not any(p[4] for p in prepared):
+        return None
+
+    if section:
+        cmin, cmax, scale, bar = 0.0, 1.0, "Viridis", "rel. (per section)"
+    else:
+        allc = [c for p in prepared for c in p[4]]
+        extent = max((abs(c - midpoint) for c in allc), default=1.0) or 1.0
+        cmin, cmax, scale, bar = midpoint - extent, midpoint + extent, cmap, "log2(p/r)"
+    z_title = "z (µm)" if z_spacing_um else "z-slice"
+
+    n = len(prepared)
+    fig = make_subplots(rows=1, cols=n, specs=[[{"type": "scene"}] * n],
+                        subplot_titles=[p[0] for p in prepared])
+    for i, (ptitle, xs, ys, zs, cs, texts) in enumerate(prepared):
+        fig.add_trace(_go().Scatter3d(
+            x=xs, y=ys, z=zs, mode="markers",
+            marker=dict(size=3, color=cs, colorscale=scale, cmin=cmin, cmax=cmax,
+                        opacity=0.85, showscale=(i == n - 1), colorbar=dict(title=bar)),
+            hoverinfo="text", text=texts, name=ptitle,
+        ), row=1, col=i + 1)
+
+    scene = dict(xaxis_title="pixel x", yaxis_title="pixel y", zaxis_title=z_title)
+    layout = {"title": title, "margin": dict(l=0, r=0, t=60, b=40)}
+    for i in range(n):
+        layout["scene" if i == 0 else f"scene{i + 1}"] = scene
+    if gene_text:
+        layout["annotations"] = [dict(text=f"Genes: {gene_text}", showarrow=False,
+                                      xref="paper", yref="paper", x=0, y=-0.02,
+                                      xanchor="left", font=dict(size=12))]
+    fig.update_layout(**layout)
+    return fig
+
+
+def tile_delta_figure(delta_result: dict, title: str, gene_text: Optional[str] = None,
+                      z_spacing_um: Optional[float] = None):
+    """One cube of aligned-tile Δ: a marker per (z, tile) coloured by Δ log2(product/reactant).
+
+    Consumes :func:`lipidmaps.data.utils.spatial.tile_aligned_delta` output. Valid for
+    independent pixel grids because tiles align by relative grid position, not by pixel.
+    """
+    go = _go()
+    delta = delta_result.get("delta", {})
+    if not delta:
+        return None
+    xs, ys, zs, vs, texts = [], [], [], [], []
+    for (z, row, col), d in delta.items():
+        xs.append(col)
+        ys.append(row)
+        zs.append(z * z_spacing_um if z_spacing_um else z)
+        vs.append(float(d))
+        texts.append(f"tile (row {row}, col {col}) z={z}<br>Δ log2(p/r)={d:+.3f}")
+    extent = max((abs(v) for v in vs), default=1.0) or 1.0
+    fig = go.Figure(go.Scatter3d(
+        x=xs, y=ys, z=zs, mode="markers",
+        marker=dict(size=8, color=vs, colorscale="RdBu_r", cmin=-extent, cmax=extent,
+                    opacity=0.9, showscale=True, colorbar=dict(title="Δ log2(p/r)")),
+        hoverinfo="text", text=texts,
+    ))
+    layout = {"title": title, "margin": dict(l=0, r=0, t=60, b=40),
+              "scene": dict(xaxis_title="tile col", yaxis_title="tile row",
+                            zaxis_title="z (µm)" if z_spacing_um else "z-slice")}
+    if gene_text:
+        layout["annotations"] = [dict(text=f"Genes: {gene_text}", showarrow=False,
+                                      xref="paper", yref="paper", x=0, y=-0.02,
+                                      xanchor="left", font=dict(size=12))]
+    fig.update_layout(**layout)
+    return fig
+
+
+def _go():
+    import plotly.graph_objects as go
+    return go
+
+
 def voronoi_figure(coords: Sequence[Coord], values, z: int, title: str,
                    pixel_size_um: Optional[Tuple[float, float]] = None,
                    cmap: str = "Viridis", midpoint: Optional[float] = None):

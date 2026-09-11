@@ -65,6 +65,12 @@ def render_spatial_explorer(dataset, tab_key_prefix: str = "spatial") -> None:
     st.caption(
         f"{dims} · {len(dataset.spatial_samples())} pixels · {len(dataset.lipids)} annotated ions"
     )
+    groups = sorted({s.group for s in dataset.samples if s.group})
+    if len(groups) > 1:
+        st.info(
+            f"Multiple stacks/groups detected ({', '.join(groups)}). Open the **BioPAN** tab "
+            "to compare reactions between them (ranked z-score table + network)."
+        )
 
     options = _ion_options(dataset)
     if not options:

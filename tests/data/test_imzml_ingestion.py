@@ -193,6 +193,35 @@ def test_import_imzml_stack_builds_3d(tmp_path):
     assert a.values[pixel_name(1, 1, 1)] == 30.0
 
 
+def test_import_imzml_groups_two_stacks(tmp_path):
+    """Two labelled stacks merge into one dataset with distinct groups."""
+    from lipidmaps import import_imzml_groups
+
+    mz_axis = [700.5000, 810.6000]
+    da = tmp_path / "a"
+    da.mkdir()
+    db = tmp_path / "b"
+    db.mkdir()
+    pa = _write_imzml(da, mz_axis, [([10.0, 5.0], (1, 1, 1)), ([20.0, 5.0], (2, 1, 1))])
+    pb = _write_imzml(db, mz_axis, [([30.0, 5.0], (1, 1, 1)), ([40.0, 5.0], (2, 1, 1))])
+    anns = [IonAnnotation(name="A", mz=700.5), IonAnnotation(name="B", mz=810.6)]
+
+    data = import_imzml_groups(
+        {"control": [pa], "disease": [pb]}, annotation_path=anns,
+        use_refmet=False, use_headgroups=False, fetch_reactions=False,
+    )
+    ds = data.dataset
+    assert ds.is_spatial
+    assert {s.group for s in ds.samples} == {"control", "disease"}
+    assert len(ds.samples) == 4
+    # Group-prefixed sample names keep both stacks' identical coords distinct.
+    assert all(s.sample_name.startswith(("control:", "disease:")) for s in ds.samples)
+    a = next(lp for lp in ds.lipids if lp.input_name == "A")
+    # z in the sample name is the file's layer index within the group (0 here), not the imzML z.
+    assert a.values["control:" + pixel_name(1, 1, 0)] == 10.0
+    assert a.values["disease:" + pixel_name(1, 1, 0)] == 30.0
+
+
 def test_import_imzml_auto_annotation_end_to_end():
     from lipidmaps import import_imzml
 

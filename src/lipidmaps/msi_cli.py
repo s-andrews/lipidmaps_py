@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import logging
 import sys
 from pathlib import Path
@@ -27,12 +28,21 @@ def build_parser() -> argparse.ArgumentParser:
         prog="lipidmaps-msi",
         description="Process an imzML MSI dataset into a LipidDataset, summaries, and images.",
     )
-    parser.add_argument("imzml", nargs="+", help="Path(s) to .imzML file(s), each with its .ibd alongside. Multiple files are stacked as z-slices (one section per file) into a 3D dataset.")
+    parser.add_argument("imzml", nargs="*", help="Path(s) to .imzML file(s), each with its .ibd alongside. Multiple files are stacked as z-slices (one section per file) into a 3D dataset.")
+    parser.add_argument("--stack", action="append", metavar="LABEL=PATH[,PATH...]",
+                        help="A labelled stack for BETWEEN-STACK reaction comparison, e.g. "
+                             "--stack control=a.imzML --stack disease=b.imzML,c.imzML. Repeat for each stack; "
+                             "give two or more to compare reactions across stacks.")
     parser.add_argument("--z-spacing", type=float, help="Section thickness in µm between stacked slices (3D metadata)")
     parser.add_argument("--annotations", help="Optional annotation CSV (name, mz[, adduct]); takes precedence over --database")
     parser.add_argument("--database", help="Molecule DB (CoreMetabolome-style id,name,formula) for auto-annotation")
     parser.add_argument("--database-url", help="Download the molecule DB from this URL and cache it, if no DB is found")
     parser.add_argument("--ppm", type=float, default=5.0, help="m/z match tolerance in ppm (default: 5)")
+    parser.add_argument("--threshold", type=float, default=0.05, help="Significance threshold for stack comparison (default: 0.05)")
+    parser.add_argument("--replicate-by", choices=["pixel", "section", "tile"], default="pixel",
+                        help="Replicate unit for the between-stack t-test: pixel (default; inflates "
+                             "significance), section (per z-slice), or tile (spatial grid).")
+    parser.add_argument("--tiles", type=int, default=16, help="Number of tiles per stack for --replicate-by tile (default: 16)")
     parser.add_argument("--bbox", nargs=4, type=int, metavar=("X0", "Y0", "X1", "Y1"), help="Inclusive pixel crop")
     parser.add_argument("--stride", type=int, default=1, help="Keep every Nth pixel (subsample large datasets; default: 1)")
     parser.add_argument("--top-n-peaks", type=int, help="Cap ions (ranked by intensity) for auto-annotation")
@@ -45,8 +55,168 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-images", dest="render_images", action="store_false", default=True, help="Skip rendering (data files only)")
     parser.add_argument("--html", dest="render_html", action="store_true", default=False, help="Also write interactive HTML maps (hover for pixel x,y,z + value)")
     parser.add_argument("--max-images", type=int, default=20, help="Max ion maps to render, ranked by total intensity (default: 20)")
+    parser.add_argument("--top-reactions", type=int, default=6, help="How many most-prominent/most-changed reactions to render as 3D HTML (default: 6)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
     return parser
+
+
+def _unique_out_dir(base: Path) -> Path:
+    """Return ``base`` if free, else ``base1``, ``base2``, … so runs stay distinct."""
+    if not base.exists():
+        return base
+    i = 1
+    while True:
+        cand = base.with_name(f"{base.name}{i}")
+        if not cand.exists():
+            return cand
+        i += 1
+
+
+def _parse_stacks(entries):
+    """Parse repeated ``--stack LABEL=path[,path...]`` into an ordered {label: [paths]}."""
+    stacks = {}
+    for entry in entries or []:
+        if "=" not in entry:
+            raise ValueError(f"--stack must be LABEL=path[,path...]; got {entry!r}")
+        label, rest = entry.split("=", 1)
+        paths = [p.strip() for p in rest.split(",") if p.strip()]
+        if not label.strip() or not paths:
+            raise ValueError(f"--stack must be LABEL=path[,path...]; got {entry!r}")
+        stacks[label.strip()] = paths
+    return stacks
+
+
+def _run_comparison(args) -> int:
+    """Load ≥2 labelled stacks and compare reactions between them (control vs condition)."""
+    try:
+        stacks = _parse_stacks(args.stack)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if len(stacks) < 2:
+        print("error: --stack given fewer than 2 stacks; need at least two to compare.", file=sys.stderr)
+        return 2
+
+    all_paths = [Path(p).expanduser() for paths in stacks.values() for p in paths]
+    for p in all_paths:
+        if not p.exists():
+            print(f"error: imzML not found: {p}", file=sys.stderr)
+            return 2
+        if not p.with_suffix(".ibd").exists():
+            print(f"warning: no .ibd beside {p.name}; pyimzml may fail to read spectra.", file=sys.stderr)
+
+    base_out = Path(args.out).expanduser() if args.out else all_paths[0].with_name(all_paths[0].stem + "_compare_out")
+    out_dir = _unique_out_dir(base_out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    annotation_path = args.annotations
+    if not annotation_path:
+        maf = _find_maf(all_paths[0].parent)
+        if maf is not None:
+            annotation_path = str(maf)
+            print(f"  using MAF annotation: {maf.name}", file=sys.stderr)
+    database = None
+    if not annotation_path:
+        from .data.annotation.db_provision import resolve_metabolome_db
+        try:
+            database = str(resolve_metabolome_db(args.database, download_url=args.database_url))
+        except FileNotFoundError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+    labels = list(stacks.keys())
+    control, condition = labels[0], labels[1]
+    print(f"Comparing reactions: control={control} vs condition={condition} "
+          f"({len(stacks)} stacks) -> {out_dir}/", file=sys.stderr)
+
+    from . import import_imzml_groups
+    from .data.utils.spatial import (
+        aggregate_replicates, compare_stack_reactions, reaction_effect_sizes,
+    )
+
+    data = import_imzml_groups(
+        stacks, annotation_path=annotation_path, database=database,
+        mz_tolerance_ppm=args.ppm, top_n_peaks=args.top_n_peaks, stride=args.stride,
+        progress=_make_progress(), fetch_reactions=True,
+    )
+    dataset = data.dataset
+    print(f"  merged: {len(dataset.lipids)} ions, {len(dataset.spatial_samples())} pixels, "
+          f"groups={labels}", file=sys.stderr)
+
+    # Replicate unit for the t-test (pixel by default; section/tile avoid pixel inflation).
+    compare_ds = dataset
+    if args.replicate_by != "pixel":
+        compare_ds = aggregate_replicates(dataset, args.replicate_by, args.tiles)
+        counts = {}
+        for s in compare_ds.samples:
+            counts[s.group] = counts.get(s.group, 0) + 1
+        print(f"  replicate-by {args.replicate_by}: {counts}", file=sys.stderr)
+        for g, n in counts.items():
+            if n < 2:
+                print(f"warning: group '{g}' has {n} replicate(s); z-score needs >=2 "
+                      f"(try --replicate-by tile or more sections).", file=sys.stderr)
+
+    comparison = compare_stack_reactions(compare_ds, control, condition, threshold=args.threshold)
+    rows = comparison["rows"]
+    with (out_dir / "reaction_comparison.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["reaction", "source", "target", "z_score", "direction", "significant"])
+        for r in rows:
+            w.writerow([r["reaction"], r["source"], r["target"], f"{r['z_score']:.4g}",
+                        r["direction"], r["significant"]])
+    (out_dir / "reaction_comparison_graph.json").write_text(
+        json.dumps(comparison["graph"], indent=2), encoding="utf-8")
+
+    effects = reaction_effect_sizes(compare_ds, control, condition)
+    with (out_dir / "reaction_effect_sizes.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["reaction", "reactant", "product",
+                    f"mean_log2ratio_{control}", f"mean_log2ratio_{condition}", "effect_size_delta"])
+        for e in effects:
+            w.writerow([e["reaction"], e["reactant"], e["product"],
+                        e.get(f"mean_log2ratio_{control}"), e.get(f"mean_log2ratio_{condition}"),
+                        e["effect_size_delta"]])
+
+    # 3D HTML for the most-changed reactions, with genes. Per reaction we write:
+    #  - <reaction>.html         : per-stack cubes, coloured relative to each section
+    #  - <reaction>_tilediff.html: one cube of aligned-tile Δ between the stacks
+    n_r3d = 0
+    if args.top_reactions and effects:
+        import math
+        from .data.utils.spatial import reaction_ratio_cloud, tile_aligned_delta
+        from .data.utils import spatial_html as html
+        r3d_dir = out_dir / "reactions3d"
+        r3d_dir.mkdir(parents=True, exist_ok=True)
+        zsp = getattr(dataset, "z_spacing_um", None)
+        n_tiles = max(2, int(round(math.sqrt(max(4, args.tiles)))))
+        for e in effects[:args.top_reactions]:
+            if e["effect_size_delta"] is None:
+                continue
+            base = _safe(e["reaction"])
+            ca, va = reaction_ratio_cloud(dataset, e["reactant"], e["product"], group=control)
+            cb, vb = reaction_ratio_cloud(dataset, e["reactant"], e["product"], group=condition)
+            title = f"{e['reaction']}  (Δlog2 ratio {e['effect_size_delta']:+.2f})"
+            fig = html.reaction_volume_figure(
+                [(control, ca, va), (condition, cb, vb)], title,
+                gene_text=e.get("genes"), z_spacing_um=zsp, color_mode="section",
+            )
+            if fig is not None:
+                fig.write_html(str(r3d_dir / f"{base}.html"),
+                               include_plotlyjs="directory", full_html=True)
+                n_r3d += 1
+            delta = tile_aligned_delta(dataset, e["reactant"], e["product"], control, condition, n=n_tiles)
+            tfig = html.tile_delta_figure(delta, f"{title} — aligned-tile Δ ({condition}−{control})",
+                                          gene_text=e.get("genes"), z_spacing_um=zsp)
+            if tfig is not None:
+                tfig.write_html(str(r3d_dir / f"{base}_tilediff.html"),
+                                include_plotlyjs="directory", full_html=True)
+                n_r3d += 1
+
+    sig = sum(1 for r in rows if r["significant"])
+    print(f"Done: {len(rows)} reaction edges ({sig} significant at p<{args.threshold}); "
+          f"{len(effects)} effect sizes; {n_r3d} reaction 3D files. Output in {out_dir}/",
+          file=sys.stderr)
+    return 0
 
 
 def _find_maf(directory: Path) -> Optional[Path]:
@@ -173,6 +343,24 @@ def _render_images(dataset, out_dir: Path, max_images: int, render_html: bool = 
                 images / f"rxn_{label}_ratio.html",
             )
         written += 1
+
+    # For a true 3D volume, also render the most-prominent reactions as 3D HTML (+genes).
+    if is_3d and html is not None:
+        from .data.utils.spatial import (
+            prominent_reactions, reaction_gene_labels, reaction_ratio_cloud,
+        )
+        zsp = getattr(dataset, "z_spacing_um", None)
+        for rx, react_ions, prod_ions, _score in prominent_reactions(dataset, top=max_images):
+            coords3d, ratio3d = reaction_ratio_cloud(dataset, react_ions[0], prod_ions[0])
+            rtitle = rx.reaction_name or "reaction"
+            fig = html.reaction_volume_figure(
+                [("log2(product/reactant)", coords3d, ratio3d)], rtitle,
+                gene_text=", ".join(reaction_gene_labels(rx)), z_spacing_um=zsp,
+                color_mode="section",
+            )
+            if fig is not None:
+                _write_html(fig, images / f"rxn3d_{_safe(rtitle)}.html")
+                written += 1
     return written
 
 
@@ -212,6 +400,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not args.verbose:
         logging.getLogger("lipidmaps").setLevel(logging.INFO)
 
+    # Between-stack reaction comparison mode.
+    if args.stack:
+        return _run_comparison(args)
+    if not args.imzml:
+        print("error: give an imzML file (or use --stack LABEL=... twice to compare stacks).",
+              file=sys.stderr)
+        return 2
+
     paths = [Path(p).expanduser() for p in args.imzml]
     for p in paths:
         if not p.exists():
@@ -222,10 +418,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                   file=sys.stderr)
     stacked = len(paths) > 1
     if args.out:
-        out_dir = Path(args.out).expanduser()
+        base_out = Path(args.out).expanduser()
     else:
         suffix = "_stack_out" if stacked else "_out"
-        out_dir = paths[0].with_name(paths[0].stem + suffix)
+        base_out = paths[0].with_name(paths[0].stem + suffix)
+    out_dir = _unique_out_dir(base_out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Annotation source precedence: explicit --annotations, else a sibling MetaboLights
