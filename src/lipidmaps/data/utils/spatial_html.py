@@ -73,6 +73,40 @@ def grid_figure(coords: Sequence[Coord], values, z: int, title: str,
     return fig
 
 
+def scatter3d_figure(coords: Sequence[Coord], values, title: str,
+                     cmap: str = "Viridis", midpoint: Optional[float] = None,
+                     z_spacing_um: Optional[float] = None):
+    """Volumetric point cloud across all z-slices, coloured by value (plotly Scatter3d).
+
+    Only pixels with a value are plotted. Use for stacked 3D datasets; returns None if
+    there is nothing to show.
+    """
+    _px, go = _plotly()
+    xs, ys, zs, vs, texts = [], [], [], [], []
+    for c, v in zip(coords, values):
+        if v is None:
+            continue
+        x, y, z = (tuple(c) + (0, 0, 0))[:3]
+        xs.append(x)
+        ys.append(y)
+        zs.append(z * z_spacing_um if z_spacing_um else z)
+        vs.append(float(v))
+        texts.append(f"pixel ({x}, {y}, {z})<br>{_sample_name(x, y, z)}<br>value={v}")
+    if not xs:
+        return None
+    marker = dict(size=3, color=vs, colorscale=cmap, showscale=True,
+                  colorbar=dict(title="value"), opacity=0.8)
+    if midpoint is not None:
+        extent = max(abs(min(vs) - midpoint), abs(max(vs) - midpoint)) or 1.0
+        marker.update(cmin=midpoint - extent, cmax=midpoint + extent)
+    fig = go.Figure(go.Scatter3d(x=xs, y=ys, z=zs, mode="markers", marker=marker,
+                                 hoverinfo="text", text=texts))
+    z_title = "z (µm)" if z_spacing_um else "z-slice"
+    fig.update_layout(title=title, margin=dict(l=0, r=0, t=40, b=0),
+                      scene=dict(xaxis_title="pixel x", yaxis_title="pixel y", zaxis_title=z_title))
+    return fig
+
+
 def voronoi_figure(coords: Sequence[Coord], values, z: int, title: str,
                    pixel_size_um: Optional[Tuple[float, float]] = None,
                    cmap: str = "Viridis", midpoint: Optional[float] = None):

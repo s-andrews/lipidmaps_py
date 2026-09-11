@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, PrivateAttr, computed_field, ConfigDict
 
 from .data.data_manager import DataManager
 from .data.models.sample import LipidDataset, QuantifiedLipid, SampleMetadata, PixelCoordinate
-from .data.ingestion.imzml_reader import ImzMLIngestion, IonAnnotation
+from .data.ingestion.imzml_reader import ImzMLIngestion, IonAnnotation, pixel_name
 from .data.quantitation import (
     QuantitationAnalyzer,
     QuantitationConfig,
@@ -547,6 +547,106 @@ def import_imzml(
     lipid_data = LipidData(dataset=dataset, manager=manager)
     logger.info(
         f"imzML import complete: {len(lipids)} ions across {len(samples)} pixels"
+    )
+    return lipid_data
+
+
+def import_imzml_stack(
+    imzml_paths: List[Union[str, Path]],
+    annotation_path: Optional[Union[str, Path, List[IonAnnotation]]] = None,
+    database: Optional[Union[str, Path, Any]] = None,
+    mz_tolerance_ppm: float = 5.0,
+    bbox: Optional[tuple] = None,
+    adducts: Optional[list] = None,
+    top_n_peaks: Optional[int] = None,
+    stride: int = 1,
+    z_values: Optional[List[int]] = None,
+    z_spacing_um: Optional[float] = None,
+    progress=None,
+    group: str = "tissue",
+    use_refmet: Optional[bool] = None,
+    use_headgroups: bool = True,
+    fetch_reactions: bool = True,
+) -> LipidData:
+    """Stack several imzML files (one per serial tissue section) into a 3D dataset.
+
+    Each file becomes one **z-layer** (``z_values[i]`` or the file order), overriding
+    the per-file z (which is usually a meaningless constant of 1). Pixels merge into a
+    single ``LipidDataset`` whose ``sample_name`` encodes (x, y, layer), so the whole
+    volume shares one ion table, standardization run, and reaction set. Ions are unioned
+    by their ``formula [adduct]`` (or annotation) label across files.
+
+    Assumptions/limits: sections are treated as **already x/y-aligned** (no automatic
+    image registration), and the same annotation source is applied to every file so ion
+    labels line up. Provide ``z_spacing_um`` (section thickness) for a true physical z.
+
+    Returns a ``LipidData`` whose ``dataset.is_3d`` is True (``z_slice_count`` == number
+    of files).
+    """
+    paths = [Path(p).expanduser() for p in imzml_paths]
+    if not paths:
+        raise ValueError("import_imzml_stack requires at least one imzML path.")
+    layers = z_values if z_values is not None else list(range(len(paths)))
+    if len(layers) != len(paths):
+        raise ValueError("z_values must have one entry per imzML path.")
+
+    samples: List[SampleMetadata] = []
+    merged_values: Dict[str, Dict[str, Optional[float]]] = {}
+    candidates: Dict[str, list] = {}
+    ordered_labels: List[str] = []
+    pixel_size = None
+    ingestion = ImzMLIngestion()
+
+    for i, path in enumerate(paths):
+        layer = int(layers[i])
+
+        def _p(phase, done, total, _layer=layer, _i=i):
+            if progress:
+                progress(f"file {_i + 1}/{len(paths)}:{phase}", done, total)
+
+        result = ingestion.read(
+            path, annotations=annotation_path, mz_tolerance_ppm=mz_tolerance_ppm,
+            bbox=bbox, database=database, adducts=adducts, top_n_peaks=top_n_peaks,
+            stride=stride, progress=_p,
+        )
+        if pixel_size is None and result.pixel_size is not None:
+            pixel_size = result.pixel_size
+        for ann in result.annotations:
+            if ann.name not in merged_values:
+                merged_values[ann.name] = {}
+                ordered_labels.append(ann.name)
+                candidates[ann.name] = list(ann.candidates) if ann.candidates else None
+        for (name, x, y, _z) in result.pixels:
+            sn = pixel_name(x, y, layer)
+            samples.append(SampleMetadata(
+                sample_name=sn, group=group, coordinates=PixelCoordinate(x=x, y=y, z=layer),
+            ))
+            for label in result.ion_values:
+                merged_values[label][sn] = result.ion_values[label].get(name)
+
+    lipids = [
+        QuantifiedLipid(
+            input_name=label, values=merged_values[label],
+            annotation_candidates=candidates.get(label),
+        )
+        for label in ordered_labels
+    ]
+    dataset = LipidDataset(samples=samples, lipids=lipids)
+    if pixel_size is not None:
+        dataset.pixel_size_um = pixel_size
+    dataset.z_spacing_um = z_spacing_um
+
+    if use_refmet is None:
+        use_refmet = annotation_path is not None
+    manager = DataManager(
+        use_refmet=use_refmet, use_headgroups=use_headgroups, fetch_reactions=fetch_reactions,
+    )
+    manager._annotate_and_react(dataset)
+
+    lipid_data = LipidData(dataset=dataset, manager=manager)
+    logger.info(
+        "imzML stack import complete: %d ions across %d pixels in %d z-slices",
+        len(lipids), len(samples), dataset.z_slice_count,
     )
     return lipid_data
 

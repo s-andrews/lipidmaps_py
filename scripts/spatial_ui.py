@@ -13,6 +13,8 @@ from typing import List
 import streamlit as st
 
 from lipidmaps.data.utils.spatial import (
+    ion_display_full,
+    ion_display_name,
     lipid_spatial_series,
     ratio_series,
     spatial_reactions,
@@ -20,7 +22,7 @@ from lipidmaps.data.utils.spatial import (
 )
 # Plotly figure builders live in the package so the Streamlit app and the CLI's HTML
 # output render identically (rich hover, z labels, µm scale bar).
-from lipidmaps.data.utils.spatial_html import grid_figure, voronoi_figure
+from lipidmaps.data.utils.spatial_html import grid_figure, scatter3d_figure, voronoi_figure
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +60,10 @@ def _render_series(coords, values, z, mode_is_grid, title, key,
 
 def render_spatial_explorer(dataset, tab_key_prefix: str = "spatial") -> None:
     st.subheader("Spatial ion maps")
+    dims = (f"3D: {dataset.z_slice_count} z-slices" if dataset.is_3d
+            else "2D (single z-slice)")
     st.caption(
-        f"{len(dataset.spatial_samples())} pixels · {len(dataset.lipids)} annotated ions"
+        f"{dims} · {len(dataset.spatial_samples())} pixels · {len(dataset.lipids)} annotated ions"
     )
 
     options = _ion_options(dataset)
@@ -67,10 +71,18 @@ def render_spatial_explorer(dataset, tab_key_prefix: str = "spatial") -> None:
         st.info("No annotated ions with intensity were found in this dataset.")
         return
 
-    lipid_name = st.selectbox("Lipid / ion", options, key=f"{tab_key_prefix}_lipid")
+    # Show the friendliest name (resolved molecule name when known), keep input_name
+    # as the value so lookups still work.
+    by_name = {lp.input_name: lp for lp in dataset.lipids}
+    label_map = {n: ion_display_full(by_name[n]) for n in options}
+    lipid_name = st.selectbox(
+        "Lipid / ion", options, key=f"{tab_key_prefix}_lipid",
+        format_func=lambda n: label_map.get(n, n),
+    )
+    selected = by_name.get(lipid_name)
+    title = ion_display_full(selected) if selected else lipid_name
 
     # For auto-annotated (formula+adduct) ions, surface the candidate molecule names.
-    selected = next((lp for lp in dataset.lipids if lp.input_name == lipid_name), None)
     candidates = getattr(selected, "annotation_candidates", None) if selected else None
     if candidates:
         lm = getattr(selected, "lm_id", None)
@@ -86,22 +98,29 @@ def render_spatial_explorer(dataset, tab_key_prefix: str = "spatial") -> None:
         "z-slice", slices, key=f"{tab_key_prefix}_z"
     )
 
-    mode = st.radio(
-        "Render mode",
-        ["Ion image (grid)", "Voronoi (irregular pixels)"],
-        horizontal=True,
-        key=f"{tab_key_prefix}_mode",
-    )
-    mode_is_grid = mode.startswith("Ion")
+    modes = ["Ion image (grid)", "Voronoi (irregular pixels)"]
+    if dataset.is_3d:
+        modes.append("3D volume")
+    mode = st.radio("Render mode", modes, horizontal=True, key=f"{tab_key_prefix}_mode")
     ps = getattr(dataset, "pixel_size_um", None)
     if ps:
         st.caption(f"Pixel size: {ps[0]:g} × {ps[1]:g} µm · hover a tile for pixel (x,y,z) + value")
     else:
         st.caption("Hover a tile for pixel (x, y, z) + value (no pixel size in file metadata)")
-    _render_series(
-        *lipid_spatial_series(dataset, lipid_name, z=z), z, mode_is_grid,
-        f"{lipid_name}", key=f"{tab_key_prefix}_single", pixel_size_um=ps,
-    )
+
+    if mode == "3D volume":
+        coords_all, values_all = lipid_spatial_series(dataset, lipid_name)  # all z
+        fig = scatter3d_figure(coords_all, values_all, f"{title} (3D)",
+                               z_spacing_um=getattr(dataset, "z_spacing_um", None))
+        if fig is None:
+            st.caption("no values to plot in 3D")
+        else:
+            st.plotly_chart(fig, use_container_width=True, key=f"{tab_key_prefix}_single3d")
+    else:
+        _render_series(
+            *lipid_spatial_series(dataset, lipid_name, z=z), z, mode.startswith("Ion"),
+            title, key=f"{tab_key_prefix}_single", pixel_size_um=ps,
+        )
 
     # --- Reaction spatial explorer: click a found reaction -> reactant vs product
     # vs product/reactant ratio, mapped over the tissue (grid or Voronoi). ---
@@ -128,26 +147,33 @@ def render_spatial_explorer(dataset, tab_key_prefix: str = "spatial") -> None:
         "Reactant ion", reactant_ions, key=f"{tab_key_prefix}_rxn_reactant_sel")
     product_name = product_ions[0] if len(product_ions) == 1 else st.selectbox(
         "Product ion", product_ions, key=f"{tab_key_prefix}_rxn_product_sel")
-    st.caption(f"{reactant_name}  →  {product_name}")
+
+    def _lbl(name):
+        lp = by_name.get(name)
+        return ion_display_name(lp) if lp else name
+
+    st.caption(f"{_lbl(reactant_name)}  →  {_lbl(product_name)}")
+    # The reaction maps use grid unless the user explicitly picked Voronoi.
+    rxn_grid = not mode.startswith("Voronoi")
 
     c_react, c_prod, c_ratio = st.columns(3)
     with c_react:
         st.markdown("**Reactant**")
         _render_series(
-            *lipid_spatial_series(dataset, reactant_name, z=z), z, mode_is_grid,
-            f"{reactant_name}", key=f"{tab_key_prefix}_rxn_react_map", pixel_size_um=ps,
+            *lipid_spatial_series(dataset, reactant_name, z=z), z, rxn_grid,
+            _lbl(reactant_name), key=f"{tab_key_prefix}_rxn_react_map", pixel_size_um=ps,
         )
     with c_prod:
         st.markdown("**Product**")
         _render_series(
-            *lipid_spatial_series(dataset, product_name, z=z), z, mode_is_grid,
-            f"{product_name}", key=f"{tab_key_prefix}_rxn_prod_map", pixel_size_um=ps,
+            *lipid_spatial_series(dataset, product_name, z=z), z, rxn_grid,
+            _lbl(product_name), key=f"{tab_key_prefix}_rxn_prod_map", pixel_size_um=ps,
         )
     with c_ratio:
         st.markdown("**log2(product / reactant)**")
         rc, rvals = ratio_series(dataset, reactant_name, product_name, z)
         _render_series(
-            rc, rvals, z, mode_is_grid, "reaction activity",
+            rc, rvals, z, rxn_grid, "reaction activity",
             key=f"{tab_key_prefix}_rxn_ratio_map", cmap="RdBu_r", midpoint=0.0,
             pixel_size_um=ps,
         )

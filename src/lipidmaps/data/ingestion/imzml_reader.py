@@ -69,17 +69,24 @@ def pixel_name(x: int, y: int, z: int = 0) -> str:
 
 
 def parse_annotation_csv(path: str | Path) -> List[IonAnnotation]:
-    """Parse a companion annotation CSV into :class:`IonAnnotation` rows.
+    """Parse a companion annotation table into :class:`IonAnnotation` rows.
 
-    Expects at least ``name`` and ``mz`` columns (case-insensitive); ``adduct``,
-    ``formula`` and ``lm_id`` are optional. Rows without a usable name+mz are
-    skipped. Column matching is lenient so METASPACE-style headers can be mapped
-    by the demo fetcher into this simple schema.
+    Accepts a simple ``name,mz`` CSV, a METASPACE-style export, or a **MetaboLights
+    MAF** (Metabolite Assignment File, ``m_MTBLS..._maf.tsv``) -- column matching is
+    lenient and the delimiter (tab or comma) is sniffed. Needs a name column
+    (``name``/``metabolite_identification``/...) and an m/z column
+    (``mz``/``mass_to_charge``/...); ``adduct``, ``chemical_formula`` and an id
+    (``database_identifier``/``lm_id``) are optional. Rows without a usable name+mz
+    are skipped.
     """
     path = Path(path)
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        first = handle.readline()
+    delimiter = "\t" if first.count("\t") >= first.count(",") else ","
+
     annotations: List[IonAnnotation] = []
     with path.open(newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
+        reader = csv.DictReader(handle, delimiter=delimiter)
         # Case-insensitive header lookup.
         field_map = {(name or "").strip().lower(): name for name in (reader.fieldnames or [])}
 
@@ -89,15 +96,16 @@ def parse_annotation_csv(path: str | Path) -> List[IonAnnotation]:
                     return field_map[cand]
             return None
 
-        name_col = col("name", "molecule", "molecule_name", "moleculenames")
-        mz_col = col("mz", "m/z", "mz_value")
+        name_col = col("name", "metabolite_identification", "molecule", "molecule_name", "moleculenames")
+        mz_col = col("mz", "mass_to_charge", "m/z", "mz_value")
         adduct_col = col("adduct", "ion")
-        formula_col = col("formula", "sumformula", "ion_formula")
-        lmid_col = col("lm_id", "lmid", "moleculeids", "molecule_ids")
+        formula_col = col("formula", "chemical_formula", "sumformula", "ion_formula")
+        lmid_col = col("lm_id", "database_identifier", "lmid", "moleculeids", "molecule_ids")
 
         if name_col is None or mz_col is None:
             raise ValueError(
-                f"Annotation CSV {path} must have 'name' and 'mz' columns; "
+                f"Annotation file {path} must have a name column "
+                f"(name/metabolite_identification) and an m/z column (mz/mass_to_charge); "
                 f"found {reader.fieldnames}"
             )
 
@@ -110,13 +118,17 @@ def parse_annotation_csv(path: str | Path) -> List[IonAnnotation]:
                 mz = float(raw_mz)
             except ValueError:
                 continue
+            # Only treat the id column as an lm_id when it is a LIPID MAPS id; MAF's
+            # database_identifier is often a HMDB/ChEBI id, which we ignore here.
+            raw_id = (row.get(lmid_col) or "").strip() if lmid_col else ""
+            lm_id = raw_id if raw_id.upper().startswith("LM") else None
             annotations.append(
                 IonAnnotation(
                     name=name,
                     mz=mz,
                     adduct=(row.get(adduct_col) or "").strip() or None if adduct_col else None,
                     formula=(row.get(formula_col) or "").strip() or None if formula_col else None,
-                    lm_id=(row.get(lmid_col) or "").strip() or None if lmid_col else None,
+                    lm_id=lm_id,
                 )
             )
     return annotations

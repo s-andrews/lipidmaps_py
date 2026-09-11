@@ -192,7 +192,7 @@ def main():
             uploaded_file = st.file_uploader("Or upload CSV", type=["csv", "tsv"])
             uploaded_imzml_files = st.file_uploader(
                 "Or upload imzML (select the .imzML, its .ibd, and an annotations .csv together)",
-                type=["imzml", "ibd", "csv"],
+                type=["imzml", "ibd", "csv", "tsv"],
                 accept_multiple_files=True,
                 key="imzml_uploader",
                 help="imzML needs its matching .ibd. A CSV is optional: without one, "
@@ -217,25 +217,28 @@ def main():
                 # .ibd (and any annotation sits beside the imzML). Without a CSV, ions
                 # are auto-annotated against the CoreMetabolome database.
                 imzml_dir = tempfile.mkdtemp()
-                imzml_path = None
+                imzml_paths = []
                 for uf in uploaded_imzml_files:
                     dest = os.path.join(imzml_dir, uf.name)
                     with open(dest, "wb") as fh:
                         fh.write(uf.read())
                     low = uf.name.lower()
                     if low.endswith(".imzml"):
-                        imzml_path = dest
-                    elif low.endswith(".csv"):
+                        imzml_paths.append(dest)
+                    elif low.endswith((".csv", ".tsv")):  # name,mz CSV or MetaboLights MAF
                         annotation_file_to_use = dest
-                if imzml_path is None:
-                    st.warning("imzML upload must include a .imzML file (with its .ibd).")
-                elif not os.path.exists(os.path.splitext(imzml_path)[0] + ".ibd"):
-                    st.warning("Missing the .ibd file for this imzML; upload both together.")
-                    imzml_path = None
-                if imzml_path:
-                    file_to_use = imzml_path
-                    file_name = os.path.basename(imzml_path)
+                # Keep only imzML files that have their matching .ibd alongside.
+                imzml_paths = [p for p in imzml_paths
+                               if os.path.exists(os.path.splitext(p)[0] + ".ibd")]
+                if not imzml_paths:
+                    st.warning("imzML upload must include a .imzML file with its matching .ibd.")
+                else:
+                    file_to_use = sorted(imzml_paths)[0]
+                    file_name = os.path.basename(file_to_use)
                     selected_file = "(none)"
+                    st.session_state["imzml_stack_paths"] = sorted(imzml_paths)
+                    if len(imzml_paths) > 1:
+                        st.caption(f"{len(imzml_paths)} imzML files → stacked as z-slices (3D).")
                     if annotation_file_to_use is None:
                         st.caption("No annotation CSV — ions will be auto-annotated from CoreMetabolome.")
             elif uploaded_file:
@@ -462,27 +465,30 @@ def main():
             if os.path.splitext(fp)[1].lower() == ".imzml":
                 # MSI path. If the user uploaded an annotation CSV, use it; otherwise
                 # auto-annotate observed peaks against the CoreMetabolome database.
-                # The shared standardization/reaction pipeline runs after either way.
-                from lipidmaps import import_imzml
+                # Multiple uploaded imzML files are stacked as z-slices (3D). The shared
+                # standardization/reaction pipeline runs after either way.
+                from lipidmaps import import_imzml, import_imzml_stack
 
                 annotation_fp = st.session_state.get("annotation_file_to_use")
                 db_path = os.path.abspath(os.path.join(dir_path, "../tests/data/core_metabolome_v3.csv"))
                 ppm = float(st.session_state.get("msi_ppm_tol", 5.0))
-                if annotation_fp:
-                    status.update(label="Reading imzML + supplied annotations...", state="running")
-                    dataset = import_imzml(
-                        fp, annotation_fp, mz_tolerance_ppm=ppm,
-                        use_refmet=use_refmet, use_headgroups=use_headgroups,
+                stack_paths = st.session_state.get("imzml_stack_paths") or []
+                use_db = None if annotation_fp else db_path
+                if len(stack_paths) > 1 and fp in stack_paths:
+                    status.update(label=f"Stacking {len(stack_paths)} imzML files as z-slices (3D)...", state="running")
+                    dataset = import_imzml_stack(
+                        stack_paths, annotation_path=annotation_fp, database=use_db,
+                        mz_tolerance_ppm=ppm, use_headgroups=use_headgroups,
                         fetch_reactions=fetch_reactions,
                     ).dataset
                 else:
                     status.update(
-                        label=f"Reading imzML and auto-annotating from CoreMetabolome (±{ppm:.0f} ppm)...",
-                        state="running",
+                        label=f"Reading imzML (±{ppm:.0f} ppm)...", state="running",
                     )
                     dataset = import_imzml(
-                        fp, annotation_path=None, database=db_path, mz_tolerance_ppm=ppm,
-                        use_headgroups=use_headgroups, fetch_reactions=fetch_reactions,
+                        fp, annotation_path=annotation_fp, database=use_db,
+                        mz_tolerance_ppm=ppm, use_headgroups=use_headgroups,
+                        fetch_reactions=fetch_reactions,
                     ).dataset
                 resolved = sum(1 for lp in dataset.lipids if lp.lm_id)
                 status.write(

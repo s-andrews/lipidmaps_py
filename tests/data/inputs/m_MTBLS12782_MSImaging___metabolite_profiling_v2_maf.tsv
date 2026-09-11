@@ -1,0 +1,368 @@
+database_identifier	chemical_formula	smiles	inchi	metabolite_identification	mass_to_charge	fragmentation	modifications	charge	retention_time	taxid	species	database	database_version	reliability	uri	search_engine	search_engine_score	smallmolecule_abundance_sub	smallmolecule_abundance_stdev_sub	smallmolecule_abundance_std_error_sub	PDAC_7	PDAC_17	PDAC_28	PDAC_29	PDAC_32	PDAC_33	PDAC_37	PDAC_40	PDAC_98	PDAC_5
+	C27H42O11			Cortolone-3-glucuronide	525.3386																									
+	C4H4N2OS			2-Thiouracil	145.9975																									
+	C19H21N5O3S			Oxmetidine	400.0585																									
+	C6H6O4			5-Hydroxymethyl-2-furancarboxylic acid	124.9992																									
+	C14H8O5			Purpurin	256.9808																									
+	C11H18O2			Decahydronaphthalene-2-carboxylic acid	147.1142																									
+	C53H95NO10P			PC(DiMe(11,5)/MonoMe(13,5))	919.6654																									
+	C8H11N5			1-Phenylbiguanide	178.1337																									
+	C9H8O3			4-Hydroxycinnamic acid	146.9812																									
+	C42H79O10P			1,2-Dioleoyl-sn-glycero-3-phospho-rac-1-glycerol	797.5285																									
+	C11H17N3O8			Tetrodotoxin	320.0888																									
+	C23H28ClN3O5S			Glyburide	516.2845																									
+	C17H12O6			Dihydrodemethylsterigmatocystin	313.0518																									
+	C5H15NO4P			Phosphocholine	184.0733																									
+	C7H5N3O2			7-Nitroindazole	164.0083																									
+	C27H21NO11			11-O-Demethylpradimicinone I	536.0771																									
+	C45H94NO6P			2-azaniumylethyl [(2S)-2,3-bis[(3R,7R,11R)-3,7,11,15-tetramethylhexadecoxy]propyl] phosphate	798.6638																									
+	C21H27NO4			DL-Laudanosine	375.0609																									
+	C14H14O3			Pindone	213.0749																									
+	C5H4N4S			6-Mercaptopurine	153.0649																									
+	C13H10N2O5			Thalidomide arene oxide	275.0083																									
+	C7H13NO4			2-Aminoheptanedioic acid	158.0923																									
+	C22H24Cl2N2O8			Chlortetracycline HCl	537.0805																									
+	C13H18N2O5			Thr-Tyr	283.1286																									
+	C54H74N2O10			Cephalostatin 1	911.4666																									
+	C45H76NO7P			PE(P-18:1(9Z)/22:6(4Z,7Z,10Z,13Z,16Z,19Z))	796.5242																									
+	C11H6O4			Xanthotoxol	203.0524																									
+	C19H35N			Perhexiline	278.2837																									
+	C37H63N5O7			Microcolin C	707.5443																									
+	C37H70O5			1-Palmitoyl-2-oleoyl-sn-glycerol	577.5185																									
+	C14H9NO2			Trisphaeridine	224.1043																									
+	C45H72O16			Dioscin	937.4819																									
+	C22H28O2			Etonogestrel	325.1783																									
+	C6H14NO8P			alpha-D-Galactosamine 1-phosphate	281.9920																									
+	C27H46O			Cholesterol	369.2092																									
+	C17H17NO3			Paprazine	284.1007																									
+	C8H11NO2			Dopamine	136.0479																									
+	C46H76D8NO8P			1-Stearoyl-2-Arachidonoyl PC-d8	782.6770																									
+	C6H12O6			(S)-O-Desmethyl Naproxen	199.0919																									
+	C22H32O2			Neogrifolin	329.0858																									
+	C41H73NO8			Bacteriohopanetetrol cyclitol ether	708.5461																									
+	C60H116O17P2			CL(i-14:0/i-12:0/i-12:0/i-13:0)	1193.7676																									
+	C34H66O5			DG(15:0/16:0/0:0)	537.4875																									
+	C37H66O8			Purpureacin-1	661.4655																									
+	C49H93O8P			PA(22:1(13Z)/24:1(15Z))	805.6445																									
+	C18H14F3NO2			Flurtamone	356.0864																									
+	C46H48N2O8			Michellamine B	757.5542																									
+	C13H18O2			Methyl p-tert-butylphenylacetate	207.0585																									
+	C9H17N4O9P			5-Amino-6-(5'-phosphoribitylamino)uracil	339.0698																									
+	C9H16O4			Diethyl Glutarate	189.1606																									
+	C12H7NO3			Resorufin	213.9637																									
+	C41H71O8P			PA(22:5(4Z,7Z,10Z,13Z,16Z)/16:0)	723.4925																									
+	C45H73N5O10S3			Hoiamide B	940.4584																									
+	C40H79NO3			Cer(d18:1/22:0)	644.5954																									
+	C22H30N4O6			Carbamic acid,N-[4-[3-[[[7-(hydroxyamino)-7-oxoheptyl]amino]carbonyl]-5-isoxazolyl]phenyl]-,1,1-dimethylethyl ester	429.2387																									
+	C48H92NO8P			1,2-Dieicosenoyl-sn-glycero-3-phosphocholine	910.6239																									
+	C33H66NO9P			1-Hexadecyl-2-azelaoyl-sn-glycero-3-phosphocholine	690.4736																									
+	C25H38O3			Luffariellolide	795.5053																									
+	C48H78O19			Madecassol	941.4652																									
+	C57H110O17P2			CL(i-12:0/i-12:0/i-12:0/i-12:0)	1093.7088																									
+	C37H69O8P			1-Palmitoyl-2-linoleoyl-sn-glycero-3-phosphate	695.4612																									
+	C21H40O4			Stearoyllactic acid	321.2786																									
+	C16H12O3			Anisindione	235.2418																									
+	C10H6O3			Juglone	174.9791																									
+	C10H6O2			1,4-Naphthoquinone	159.0274																									
+	C55H72MgN4O5			Chlorophyll a	875.5370																									
+	C44H80NO7P			Eicosapentaenoyl PAF C-16	783.5678																									
+	C24H28O2			Bexarotene	697.4757																									
+	C45H91N2O6P			N-Docosanoyl-4-sphingenyl-1-O-phosphorylcholine	825.6224																									
+	C46H82NO8P			PC(16:0/22:5(4Z,7Z,10Z,13Z,16Z))	846.5379																									
+	C10H11NO2			5-Hydroxytryptophol	178.0081																									
+	C19H18O11			Mangiferin	423.0914																									
+	C20H30N6O4			Pro-Arg-Phe	419.2556																									
+	C18H22O12			6-[1-(6,7-dimethoxy-2H-1,3-benzodioxol-5-yl)-3-oxopropoxy]-3,4,5-trihydroxyoxane-2-carboxylic acid	413.1572																									
+	C24H44N8O9			Ala-Asn-Lys-Glu-Lys	553.3111																									
+	C44H58N8O6			L-Altritol,1,2,5,6-tetradeoxy-2,5-bis(((2S)-3-methyl-2-(((methyl(2-pyrimidinylmethyl)amino)carbonyl)amino)-1-oxobutyl)amino)-1,6-diphenyl-	759.4334																									
+	C52H90NO12P			PS(DiMe(11,5)/DiMe(13,5))	952.6331																									
+	C55H96O6			TG(16:1(9Z)/18:1(9Z)/18:3(9Z,12Z,15Z))	875.7100																									
+	C42H80NO8P			1-Palmitoyl-2-linoleoyl-sn-glycero-3-phosphocholine	758.5662																									
+	C59H98O6			TG(18:2(9Z,12Z)/18:2(9Z,12Z)/20:4(5Z,8Z,11Z,14Z))	903.7384																									
+	C21H18O6			Wampetin	451.1346																									
+	C57H86O4			3-[(2E,6E,10E,14E,18E,22E,26E,30E,34E)-3,7,11,15,19,23,27,31,35,39-decamethyltetraconta-2,6,10,14,18,22,26,30,34,38-decaenyl]-4,5-dihydroxybenzoic acid	817.6485																									
+	C15H20O2			Isoalantolactone	215.2228																									
+	C19H24ClNO6			Acutumine	398.1418																									
+	C33H64NO10P			1-Palmitoyl-2-azelaoylphosphatidylcholine	688.3949																									
+	C6H10N2O2			Ectoine	143.1541																									
+	C44H84NO8P			1,2-Dioleoyl PC	808.5824																									
+	C11H10Cl2F2N4O3S			Sulfentrazone	409.0320																									
+	C58H91O4-			5-[(2E,6E,10E,14E,18E,22E,26E,30E,34E)-3,7,11,15,19,23,27,31,35,39-decamethyltetraconta-2,6,10,14,18,22,26,30,34,38-decaenyl]-3,6-dihydroxy-2-methoxy-4-methylcyclohexa-1,4-dien-1-olate	852.6955																									
+	C15H14O3			Lapachol	243.1458																									
+	C22H46NO7P			LPC(0:0/14:0)	506.3588																									
+	C16H10O6			3',4'-Methylenedioxyorobol	366.9611																									
+	C28H57NO7P			LPC(20:1/0:0)	1139.7163																									
+	C11H10O			1-Naphthalenemethanol	141.1382																									
+	C22H32N4O4S1			Leu-Trp-Met	431.1962																									
+	C45H76O7P2			all-trans-Nonaprenyl diphosphate	791.5377																									
+	C14H20N2O7			Palythenic acid	351.1166																									
+	C61H96O6			TG(20:4(5Z,8Z,11Z,14Z)/20:4(5Z,8Z,11Z,14Z)/18:3(9Z,12Z,15Z))	963.6806																									
+	C35H66O8			Donhexocin	615.4833																									
+	C21H28O5			7-Methylrosmanol	361.2737																									
+	C36H58O9			Soyasapogenol B 3-O-b-D-glucuronide	617.5100																									
+	C49H84O2			CE(22:2(13Z,16Z))	727.6354																									
+	C16H15O7-			(3R,4R,5R)-3,4-dihydroxy-5-[(E)-3-(4-hydroxyphenyl)prop-2-enoyl]oxycyclohexene-1-carboxylate	342.0710																									
+	C33H45NO10			Hypaconitine	616.4982																									
+	C34H70O11			Decapropylene glycol monobutyl ether	677.4801																									
+	C40H65N9O26P2			UDPMurNAc(oyl-L-Ala-D-gamma-Glu-L-Lys-D-Ala-D-Ala)	1172.3460																									
+	C11H14ClNO3S			Lorcaserin sulfamate	276.1312																									
+	C29H36O4			Umbelliferyl Arachidonate	935.4217																									
+	C51H79NO14			(1R,16Z,27Z,29Z)-1,18-dihydroxy-12-[1-(4-hydroxy-3-methoxycyclohexyl)propan-2-yl]-19,31-dimethoxy-15,17,21,23,30,36-hexamethyl-11,25,37-trioxa-4-azatetracyclo[31.3.1.0(2),(2)]heptatriaconta-16,27,29-triene-2,3,10,14,20-pentone	912.4561																									
+	C7H7NO2S			Thiobenzamide S,S-dioxide	253.9180																									
+	C52H103O8P			PA(a-25:0/i-24:0)	909.7273																									
+	C25H44N6O11			Glu-Ile-Asp-Thr-Lys	605.2765																									
+	C15H25N3O			Triapenthenol	264.2687																									
+	C53H102NO8P			PE(24:1(15Z)/24:1(15Z))	876.7132																									
+	C18H32O2			Stearolic acid	263.2367																									
+	C45H90NO8P			PE(18:0/22:0)	804.6521																									
+	C42H84NO7P			PC(o-18:1(9Z)/16:0)	746.6042																									
+	C43H78NO8P			2-Arachidonoyl-1-stearoyl-sn-glycero-3-phosphoethanolamine	790.5331																									
+	C32H37NO8			Alpha-Hydroxy-tamoxifen-O-glucuronide	564.3660																									
+	C40H56O4			7-Methylxanthine	167.0924																									
+	C57H96O6			TG(16:0/18:2(9Z,12Z)/20:5(5Z,8Z,11Z,14Z,17Z))	877.7242																									
+	C6H10O7			D-Glucoronic Acid	278.9636																									
+	C31H64NO6PS			1-O-Hexadecyl-2-deoxy-2-thio-R-(heptanoyl)-sn-glyceryl-3-phosphocholine	610.3700																									
+	C48H82O2			[(3S,5R,10S,13R,14R,17R)-4,4,10,13,14-pentamethyl-17-[(2R)-6-methylhept-5-en-2-yl]-2,3,5,6,7,11,12,15,16,17-decahydro-1H-cyclopenta[a]phenanthren-3-yl] (Z)-octadec-9-enoate	673.6295																									
+	C14H10N6O9			2,2',6,6'-Tetranitro-4,4'-azoxytoluene	407.1120																									
+	C16H10O7			11,14-dihydroxy-6,8,19-trioxapentacyclo[10.7.0.0(2),.0(3),.0(1)(3),(1)]nonadeca-1(12),2(9),4,10,13(17)-pentaene-16,18-dione	296.9745																									
+	C61H99NO8P-			[(2S,3R,4S,5S)-5-formamido-3,4-dihydroxyoxan-2-yl] [(2Z,6Z,10Z,14Z,18Z,22Z,26Z,30Z,34E,38E)-3,7,11,15,19,23,27,31,35,39,43-undecamethyltetratetraconta-2,6,10,14,18,22,26,30,34,38,42-undecaenyl] phosphate	1027.7038																									
+	C10H13N3O			4-Hydroxydebrisoquine	192.0242																									
+	C55H102N2O21			Ganglioside GM3(d18:0/14:0)	1127.7161																									
+	C13H12O7S			{[(3E)-4-(5-hydroxy-1-oxo-1H-isochromen-3-yl)but-3-en-1-yl]oxy}sulfonic acid	350.9876																									
+	C16H10O2			4,5-Dihydroxypyrene	235.0566																									
+	C18H13NNa2O8S2			Sodium Picosulfate	445.9004																									
+	C8H20NO6P			Sn-Glycero-3-Phosphocholine	240.1230																									
+	C55H90O6			TG(16:0/18:4(6Z,9Z,12Z,15Z)/18:4(6Z,9Z,12Z,15Z))	811.6628																									
+	C21H23D11O2			-CP 47,497-d11	294.3151																									
+	C44H80NO8P			1,2-Dilinoleoyl-sn-glycero-3-phosphocholine	820.5235																									
+	C12H18O4			Tuberonic acid	227.2235																									
+	C43H80O6			Glycerol 1-(9Z-octadecenoate) 2-octanoate 3-tetradecanoate	657.5776																									
+	C12H9ClOS2			5-(4-Chloro-3-hydroxy-1-butynyl)-2,2'-bithiophene	268.9004																									
+	C38H76NO8P			1-Myristoyl-2-palmitoyl-sn-glycero-3-phosphocholine	728.5201																									
+	C29H45N5O6			Pro-Ala-Leu-Phe-Leu	560.5007																									
+	C33H48N8O7			Trp-His-Thr-Ile-Ile	669.4442																									
+	C42H70O17S			Hoffmanniolide	861.5710																									
+	C11H21NO5			3-Hydroxybutyrylcarnitine	270.0943																									
+	C6H3Cl4N			Nitrapyrin	229.9378																									
+	C39H68O5			1,2-Dilinoleoylglycerol	639.4944																									
+	C48H80O13P2			PGP(22:6(4Z,7Z,10Z,13Z,16Z,19Z)/20:2(11Z,14Z))	965.4626																									
+	C31H38O12			6-(4-{3-[3,4-dihydroxy-5-(3-methylbut-2-en-1-yl)phenyl]-2-hydroxypropanoyl}-5-hydroxy-2-(3-methylbut-2-en-1-yl)phenoxy)-3,4,5-trihydroxyoxane-2-carboxylic acid	603.2733																									
+	C46H80NO8P			1-Palmitoyl-2-docosahexaenoyl-sn-glycero-3-phosphocholine	844.5234																									
+	C54H102NO8P			PC(22:2(13Z,16Z)/24:1(15Z))	924.7444																									
+	C39H72O5			1,3-Dielaidin	643.5262																									
+	C54H106NO8P			PC(22:0/24:1(15Z))	950.7631																									
+	C2Cl4			Tetrachloroethylene	164.9297																									
+	C8H9NO3			Oxfenicine	150.0134																									
+	C5H5N5O			2-Hydroxy-6-Aminopurine	152.0317																									
+	C39H71O8P-2			2,3-bis[[(Z)-octadec-9-enoyl]oxy]propyl phosphate	721.4768																									
+	C11H8O			1-Naphthaldehyde	157.1081																									
+	C2H4O2			Acetic acid	438.2790																									
+	C26H32N4O5			Tyr-Trp-Leu	481.2313																									
+	C32H64NO7P			LysoPC(24:1(15Z))	606.2002																									
+	C12H7Cl2NO2			2,6-Dichloroindophenol	267.8933																									
+	C42H78NO7P			PC(18:3(9Z,12Z,15Z)/P-16:0)	740.5163																									
+	C55H90O8P-			[(2Z,6Z,10Z,14Z,18Z,22Z,26Z,30Z,34E)-3,7,11,15,19,23,27,31,35,39-decamethyltetraconta-2,6,10,14,18,22,26,30,34,38-decaenyl] [(2S,3S,4S,5R)-3,4-dihydroxy-5-(hydroxymethyl)oxolan-2-yl] phosphate	892.6392																									
+	C55H100O6			1-Palmitoyl-2-oleoyl-3-linoleoyl-rac-glycerol	879.7387																									
+	C41H63NO14			Protoveratrine A	794.5096																									
+	C43H76O5			DG(20:2(11Z,14Z)/20:2(11Z,14Z)/0:0)	655.5636																									
+	C28H41N7O11			Asp-Asp-Phe-Gln-Lys	652.4668																									
+	C23H42N8O9			Lys-Asn-Asn-Thr-Val	575.2907																									
+	C41H83N2O6P			N-(Octadecanoyl)sphing-4-enine-1-phosphocholine	731.6064																									
+	C15H12O3			6-Hydroxyflavanone	222.9877																									
+	C37H74O4			DG(16:0e/18:0/0:0)	605.5489																									
+	C60H113NO18			Trihexosylceramide(d18:1/24:0)	1174.7606																									
+	C6H4Cl2			1,4-Dichlorobenzene	314.9625																									
+	C47H93O8P			PA(22:0/22:0)	799.6527																									
+	C58H89NO3			2-amino-5-[(2E,6E,10E,14E,18E,22E,26E,30E,34E)-3,7,11,15,19,23,27,31,35,39-decamethyltetraconta-2,6,10,14,18,22,26,30,34,38-decaenyl]-3-methoxy-6-methylcyclohexa-2,5-diene-1,4-dione	830.6741																									
+	C47H68O16			Pectenotoxin 7	889.4448																									
+	C12H16N3O3PS			Triazophos	382.0631																									
+	C8H5BrClN			5-Bromo-6-chloro-1H-indole	269.8911																									
+	C22H18N2O			7-[Anilino(phenyl)methyl]-8-quinolinol	365.1053																									
+	C15H13I2NO4			3,3'-Diiodo-L-thyronine	525.9418																									
+	C21H35N7O5			Lys-Tyr-Arg	466.3286																									
+	C46H78O4			3-Hexadecanoyloleanolic acid	733.5569																									
+	C57H104O6			Trielaidin	907.7690																									
+	C42H82NO6P			CerP(d18:1/24:1(15Z))	750.5773																									
+	C22H18N4OS			Axitinib	773.5189																									
+	C16H16O9			4-Methylumbelliferyl glucuronide	353.0875																									
+	C22H38O5			16,16-Dimethylprostaglandin E1	405.2395																									
+	C18H31N			2,4,6-Tri-tert-butylaniline	262.2534																									
+	C47H78O18			Hoduloside VII	913.4375																									
+	C39H64O16			Balagyptin	771.5026																									
+	C10H18N2O3S			Met-Pro	247.1403																									
+	C24H43N5O8S			Glu-Met-Leu-Val-Ala	600.2435																									
+	C55H79N13O14S2			Neurokinin B	1192.7623																									
+	C10H8N2O2S			2-(3-pyridyl)-4-methyl-Thiazole-5-Carboxylic Acid	305.0006																									
+	C26H45NO6S			Taurochenodesoxycholic Acid	464.3126																									
+	C14H25N5O6S1			Met-Asn-Gln	392.0898																									
+	C11H20N2O6			L-Saccharopine	277.1396																									
+	C11H8O3			Plumbagin	188.9933																									
+	C52H98NO7P			PC(o-24:0/20:4(8Z,11Z,14Z,17Z))	880.7422																									
+	C37H66O4			Montecristin	597.4857																									
+	C43H87N2O6P			SM(d18:1/20:0)	781.6191																									
+	C12H8Cl2O4S			2,2'-Sulfonylbis(4-chlorophenol)	340.9381																									
+	C8H7NO3			2-(Formylamino)Benzoic Acid	147.9851																									
+	C6H15O9P			Sorbitol 6-phosphate	300.9461																									
+	C36H58O11			Sericoside	689.4076																									
+	C26H37N5O12			Asp-Ser-Asp-Leu-Tyr	612.2513																									
+	C7H9ClO6P2S			Tiludronic Acid	318.9378																									
+	C25H41N7O6			Thr-Phe-Leu-Arg	536.3492																									
+	C59H106O6			TG(20:0/18:3(9Z,12Z,15Z)/18:1(9Z))	949.7582																									
+	C28H38N6O2			N-(1-benzylpiperidin-4-yl)-6,7-dimethoxy-2-(4-methyl-1,4-diazepan-1-yl)quinazolin-4-amine trihydrochloride	491.3691																									
+	C57H85O3-			3-[(2E,6E,10E,14E,18E,22E,26E,30E,34E)-3,7,11,15,19,23,27,31,35,39-decamethyltetraconta-2,6,10,14,18,22,26,30,34,38-decaenyl]-4-hydroxybenzoate	840.6413																									
+	C33H64O5			DG(15:0/0:0/15:0)	523.4717																									
+	C53H82O4			3-methoxy-5-methyl-6-[(2E,6E,10E,14E,18E,22E,26E,30E)-3,7,11,15,19,23,27,31,35-nonamethylhexatriaconta-2,6,10,14,18,22,26,30,34-nonaenyl]benzene-1,2,4-triol	747.6071																									
+	C5H10NS2Na			Sodium diethyldithiocarbamate	171.9815																									
+	C60H86O18			54-Deoxyciguatoxin	1095.7203																									
+	C37H72O11P2			1-Hexadecanoyl-2-(9Z-octadecenoyl)-sn-glycero-3-pyrophosphate	737.4514																									
+	C61H100NO8P			Undecaprenyl phosphate alpha-L-Ara4FN	1028.7166																									
+	C10H10O2S4			Bis(2-methyl-3-furanyl)tetrasulfide	290.9630																									
+	C24H39NO3			N-arachidonic acid-gamma-aminobutyric acid	390.3732																									
+	C41H72N10O11			IGPLGLSPK/1_0	845.5248																									
+	C8H7BrO2			4-Bromophenylacetic acid	196.8780																									
+	C47H55ClF3N5O6S3			Navitoclax	974.3931																									
+	C49H76O2			CE(22:6(4Z,7Z,10Z,13Z,16Z,19Z))	719.5728																									
+	C10H7NO3			2-Oxo-1,2-dihydroquinoline-4-carboxylate	189.9877																									
+	C37H72O4			1-O-Hexadecyl-2-(9Z-octadecenoyl)-sn-glycerol	563.5384																									
+	C10H26N4			Spermine	203.2230																									
+	C40H80NO8P			PC(16:0/16:0)	751.5217																									
+	C40H60O12			Avermectin B2b monosaccharide	733.4175																									
+	C23H25NO3			Dioncophylline C	364.1618																									
+	C24H45N5O6			Leu-Leu-Leu-Ala-Ala	500.3113																									
+	C57H102O6			Glycerol 1,3-di-(9Z-octadecenoate) 2-(9Z,12Z-octadecadienoate)	883.7639																									
+	C53H98NO8P			PE-NMe2(22:4(7Z,10Z,13Z,16Z)/24:0)	890.7020																									
+	C42H58O6			Fucoxanthin	659.4445																									
+	C35H66O3			Reticulatamol	535.5078																									
+	C43H86NO7P			PE(P-16:0/22:0)	724.5967																									
+	C47H93N2O6P			N-Nervonoyl-D-erythro-sphingosylphosphorylcholine	851.6388																									
+	C9H12N2O6			5-Hydroxy-2'-deoxyuridine	267.0588																									
+	C54H104NO8P			PC(22:1(13Z)/24:1(15Z))	948.7472																									
+	C8H5Cl3O3			2,4,5-Trichlorophenoxyacetic acid	254.9408																									
+	C54H90O6			TG(15:0/18:3(9Z,12Z,15Z)/18:4(6Z,9Z,12Z,15Z))	857.6684																									
+	C59H104O6			TG(20:0/18:3(9Z,12Z,15Z)/18:2(9Z,12Z))	947.7421																									
+	C21H27NO			Benproperine	310.1857																									
+	C55H98O6			TG(18:2(9Z,12Z)/16:0/18:2(9Z,12Z))	855.7386																									
+	C47H68O15			Pectenotoxin 3	873.5213																									
+	C57H100O6			TG(18:1(9Z)/18:1(9Z)/18:3(9Z,12Z,15Z))	881.7534																									
+	C21H25ClFNO2			Reduced haloperidol	378.0781																									
+	C63H98O8			Thermozeaxanthin-17	1021.6914																									
+	C54H77N13O17			Tyrosinase (192-200),human,mouse	1162.5541																									
+	C12H25N3O3			Ile-Lys-OH	368.1953																									
+	C26H26N4O3			3-[1-[3-(Dimethylamino)propyl]-5-methoxy-1H-indol-3-yl]-4-(1H-indol-3-yl)-1H-pyrrole-2,5-dione	443.2530																									
+	C12H23NOS2			Camelinin	262.0601																									
+	C14H27N3O5			Leu-Val-Ser	657.4329																									
+	C7H5N5O			7-Cyano-7-carbaguanine	176.0410																									
+	C20H17FO3S			Sulindac	357.1143																									
+	C49H95O8P			PA(22:0/24:1(15Z))	843.6793																									
+	C69H100O6			1,3-bis[[(4Z,7Z,10Z,13Z,16Z,19Z)-docosa-4,7,10,13,16,19-hexaenoyl]oxy]propan-2-yl (7Z,10Z,13Z,16Z,19Z)-docosa-7,10,13,16,19-pentaenoate	1007.7494																									
+	C53H92NO12P			PS(DiMe(13,5)/MonoMe(13,5))	948.6405																									
+	C23H46NO7P			1-Oleoyl-sn-glycero-3-phosphoethanolamine	518.0791																									
+	C48H93NO10			(E,2R)-N-[(2S,3S,4R)-3,4-Dihydroxy-1-[(2R,3R,4S,5S,6R)-3,4,5-trihydroxy-6-(hydroxymethyl)oxan-2-yl]oxyoctadecan-2-yl]-2-hydroxytetracos-4-enamide	826.6778																									
+	C12H22O2			Gamma-Dodecalactone	397.2709																									
+	C43H67N11O12S2			Atosiban Acetate	976.4293																									
+	C6H12N2O5			Ser-Ser	193.1074																									
+	C11H12N2O4			N'-Formylkynurenine	236.9926																									
+	C7H11NO4			N-Acetyl-L-hydroxyproline	174.0385																									
+	C42H85NO5			N-(2R-Hydroxytetracosanoyl)-phytoceramide	648.6286																									
+	C13H26O6			(x)-2-Heptanol glucoside	261.1693																									
+	C24H41N5O11			Leu-Leu-Glu-Ser-Asp	576.2263																									
+	C21H25ClN6O2			4-Piperidinecarboxamide,4-amino-N-[(1S)-1-(4-chlorophenyl)-3-hydroxypropyl]-1-(7H-pyrrolo[2,3-d]pyrimidin-4-yl)-	467.1361																									
+	C63H114N2O21			Ganglioside GM3(d18:1/22:1(13Z))	1257.7876																									
+	C34H36N2O6			y-Morphine	569.3301																									
+	C15H13N3O			7-Aminonitrazepam	252.0963																									
+	C18H28O3S			Piperonyl sulfoxide	289.1624																									
+	C9H7N			Isoquinoline	130.0969																									
+	C20H33NO15			4-O-(beta-L-Arabinofuranosyl-(1->2)-beta-L-arabinofuranosyl-(1->2)-beta-L-arabinofuranosyl)-(2S,4S)-4-hydroxyproline	550.1745																									
+	C22H38O7			L-Ascorbyl 6-palmitate	415.2209																									
+	C19H17Cl3N2S			Butoconazole	824.5539																									
+	C24H32O8			17beta-Estradiol 3-beta-D-glucuronide	471.1555																									
+	C18H19NO5			N-trans-Feruloyloctopamine	330.0547																									
+	C35H66O5			DG(16:0/16:1(9Z)/0:0)	549.4872																									
+	C16H12O5			Galangin 3-methyl ether	285.0961																									
+	C57H82O16			Ciguatoxin 3C	1023.7164																									
+	C45H88O9			(2E,6E)-3,7,11,15,19,23,27,31,35-Nonamethylhexatriaconta-2,6-diene-1,10,11,15,19,23,27,31,35-nonol	795.6366																									
+	C28H38O7			24,25-Epoxywithanolide D	487.2784																									
+	C52H104O2			Hexacosyl hexacosanoate	725.7969																									
+	C33H62O6			TG(10:0/10:0/10:0)	572.4729																									
+	C10H13N5O4			Adenosine	268.0929																									
+	C43H85O19P3			PIP2(16:0/18:0)	963.4758																									
+	C53H84O6			TG(14:1(9Z)/18:4(6Z,9Z,12Z,15Z)/18:4(6Z,9Z,12Z,15Z))	855.5889																									
+	C42H70O12			(20E)-Ginsenoside F4	749.5085																									
+	C37H70O6			Glycerol 1,3-didodecanoate 2-decanoate	575.5021																									
+	C16H11NO2			Dubamine	250.0932																									
+	C66H106O6			TG(22:4(7Z,10Z,13Z,16Z)/18:2(9Z,12Z)/22:5(7Z,10Z,13Z,16Z,19Z))	1033.7645																									
+	C28H48NO7P			LysoPC(20:5(5Z,8Z,11Z,14Z,17Z))	542.4904																									
+	C38H76NO8P			1,2-Dipentadecanoyl-sn-glycero-3-phosphocholine	706.5367																									
+	C7H13O8P			Valienol 7-phosphate	294.9375																									
+	C34H65NO3			N-(Eicosanoyl)-4E,6E-tetradecasphingadienine	500.4827																									
+	C56H110NO18P			Mannosyl-inositol-phosphorylceramide	1098.7404																									
+	C59H94O4			2-[(2E,6E,10E,14E,18E,22E,26E,30E,34E)-3,7,11,15,19,23,27,31,35,39-decamethyltetraconta-2,6,10,14,18,22,26,30,34,38-decaenyl]-5,6-dimethoxy-3-methylcyclohexa-2,5-diene-1,4-diol	889.6983																									
+	C23H48NO7P			LPC(15:0/0:0)	482.3226																									
+	C26H55N2O7P			Methylcarbamyl PAF C-16	1099.7490																									
+	C25H24O9			(3R)-9-[(2R,4R,5S,6R)-4,5-Dihydroxy-6-methyloxan-2-yl]-3,6,8-trihydroxy-3-methyl-2,4-dihydrobenzo[a]anthracene-1,7,12-trione	469.1514																									
+	C59H92O4			Ubiquinol-10	887.6810																									
+	C38H40N2O7			Calafatimine	637.3795																									
+	C7H11NS			2-(2-Methylpropyl)thiazole	142.0969																									
+	C53H96NO8P			PE-NMe2(22:4(7Z,10Z,13Z,16Z)/24:1(15Z))	888.6846																									
+	C10H13NO2			L-Homophenylalanine	180.0652																									
+	C30H35NO11			Pyrromycin	586.2319																									
+	C20H34O2			2alpha-Methyl-5alpha-androstane-3beta,17beta-diol	329.2430																									
+	C20H35NO3			N-cis-Hexadec-9-enoyl-L-homoserine lactone	338.3052																									
+	C30H33O15			Pyranocyanin A	672.1441																									
+	C19H16O5			2,3-Dehydro-UWM6	307.0440																									
+	C30H37N5O5			Ergosine	548.3098																									
+	C27H46O2			5,6 epoxy-cholesterol	367.2842																									
+	C45H78NO8P			2-Docosahexaenoyl-1-stearoyl-sn-glycero-3-phosphoethanolamine	814.5331																									
+	C26H54NO7P			enantio-PAF C-16	562.3253																									
+	C49H76O3			Tocoretinate	735.5714																									
+	C52H101N3O13P2			CDP-2,3-bis-(O-phytanyl)-sn-glycerol	1020.6856																									
+	C28H56NO8P			1,2-Bis(O-decanoyl)-sn-glyceryl-3-phosphorylcholine	650.4392																									
+	C39H80N2O6P			SM(d18:1/16:0)	686.5680																									
+	C12H6O4			Dibenzo[1,4]dioxin-2,3-dione	214.9712																									
+	C36H62O11			Monensin	693.4438																									
+	C25H52NO7P			LPC(17:0/0:0)	510.3545																									
+	C27H56NO7P			LysoPE(22:0/0:0)	538.3858																									
+	C6H14N4O2			L-Arginine	175.1187																									
+	C26H52NO8P			PC(16:0/2:0)	502.3291																									
+	C48H88NO7P			PC(22:4(7Z,10Z,13Z,16Z)/P-18:0)	822.5383																									
+	C26H54NO7P			1-O-Hexadecyl-2-O-acetyl-sn-glyceryl-3-phosphorylcholine	524.3702																									
+	C22H30N6O4S			Sildenafil	475.2225																									
+	C39H70O5			DG(18:1(9Z)/18:2(9Z,12Z)/0:0)	583.5093																									
+	C34H66ClN11O5			Furin Convertase Inhibitor (Chloromethylketone)	766.4850																									
+	C36H70O5			DG(16:0/17:0/0:0)	565.5185																									
+	C24H52NO7P			[(2R)-3-Hexadecoxy-2-hydroperoxypropyl] 2-(trimethylazaniumyl)ethyl phosphate	498.3465																									
+	C44H86NO8P			PC(18:0/18:1(9Z))	810.5962																									
+	C6H6N4O3			7-Methyluric Acid	200.0683																									
+	C19H15Br2N3O3			Glycine,N-2-naphthalenyl-,2-[(3,5-dibromo-2,4-dihydroxyphenyl)methylene]hydrazide	531.9120																									
+	C13H8O4			1,7-Dihydroxyxanthone	228.9873																									
+	C28H32O6			Dulciol A	465.2364																									
+	C56H108NO8P			1,2-Dinervonoyl-sn-glycero-3-phosphocholine	992.6517																									
+	C20H13N3O3			Violacein	344.1228																									
+	C13H12F3NO			3-{[4-(Trifluoromethyl)phenyl]amino}cyclohex-2-en-1-one	256.0938																									
+	C40H63N9O14S			Cyanopeptolin S	926.5332																									
+	C25H45N9O10			Asp-Arg-Val-Lys-Asp	670.2932																									
+	C27H44O8			20,26-dihydroxyecdysone	497.3433																									
+	C6H3Cl3			1,2,4-Trichlorobenzene	180.9040																									
+	C56H82O3			2-[(2E,10E,14E,18E,22E,26E,30E,34E)-36-hydroxy-3,7,11,15,19,23,27,31,35-nonamethylhexatriaconta-2,10,14,18,22,26,30,34-octaenyl]-3-methylnaphthalene-1,4-dione	767.6049																									
+	C40H80NO8P			1-Myristoyl-2-stearoyl-sn-glycero-3-phosphocholine	734.5681																									
+	C27H34O9			Verrucarin A	503.2530																									
+	C26H54NO6P			LysoPC(P-18:0)	508.3718																									
+	C25H54NO6P			1-O-Hexadecyl-2-O-methyl-sn-glyceryl-3-phosphorylcholine	534.2963																									
+	C20H37N5O7			Lys-Ala-Leu-Glu	460.2515																									
+	C30H42O8			Physapubescin	531.3644																									
+	K2HPO4			Potassium dibasic phosphate	212.8513																									
+	C27H38N2O4			Verapamil	455.2074																									
+	C27H30O16			2-(3,4-Dihydroxyphenyl)-5,7-dihydroxy-4-oxo-4H-chromen-3-yl 6-deoxy-4-O-beta-D-glucopyranosyl-alpha-L-mannopyranoside	611.2190																									
+	C9H6BrN			6-Bromoisoquinoline	207.9721																									
+	C26H53NO7P			LPC(18:1/0:0)	522.3553																									
+	C21H44NO7P			1-Palmitoyl-2-hydroxy-sn-glycero-3-phosphoethanolamine	476.2251																									
+	C29H27F3N6O			Ponatinib	497.2053																									
+	C30H30O7			Benzenepropanoic acid,5-(3-carboxybenzoyl)-2-[[(5E)-6-(4-methoxyphenyl)-5-hexen-1-yl]oxy]-	485.2628																									
+	C31H52N2O5S			Valnemulin	547.3566																									
+	C22H44NO6PS2			1,2-Bis(heptanoylthio) glycerophosphocholine	514.2299																									
+	C21H28N6O4S			N-Desmethyl sildenafil(UK-103,320)	461.2594																									
+	C16H16FN3O3S			Ulifloxacin	350.0902																									
+	C38H70O4			Polyoxyethylene dioleate	591.5347																									
+	C26H52NO7P			1-Oleoyl-sn-glycero-3-phosphocholine	560.3115																									
+	C26H39N9O5			Phe-Val-His-Arg	558.2952																									
+	C25H22O11			3,4-Dicaffeoyl-1,5-quinolactone	499.2218																									

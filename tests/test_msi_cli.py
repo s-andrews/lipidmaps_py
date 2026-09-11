@@ -117,6 +117,15 @@ def test_resolve_db_env_and_cache_and_error(tmp_path, monkeypatch):
     assert db_provision.resolve_metabolome_db(None) == envdb
 
 
+def test_find_maf(tmp_path):
+    from lipidmaps.data.annotation import db_provision  # noqa: F401 (ensure package import ok)
+
+    assert msi_cli._find_maf(tmp_path) is None
+    maf = tmp_path / "m_MTBLS999_metabolite_profiling_maf.tsv"
+    maf.write_text("metabolite_identification\tmass_to_charge\nGlucose\t181.07\n", encoding="utf-8")
+    assert msi_cli._find_maf(tmp_path) == maf
+
+
 def test_resolve_db_repo_fallback_is_real():
     # In the source tree the repo fallback should find the committed DB.
     assert db_provision._repo_fallback() == DB_PATH

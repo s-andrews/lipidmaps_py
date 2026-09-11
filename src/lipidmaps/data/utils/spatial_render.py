@@ -153,6 +153,45 @@ def save_ratio_png(
     return _save(fig, out_path)
 
 
+def save_scatter3d_png(
+    coords: Sequence[Coord],
+    values: Sequence[Optional[float]],
+    out_path: str | Path,
+    title: str,
+    cmap: str = "viridis",
+    midpoint: Optional[float] = None,
+    z_spacing_um=None,
+) -> Optional[Path]:
+    """Save a 3D scatter (all z-slices) coloured by value; None if nothing to plot."""
+    plt = _plt()
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 (registers 3d projection)
+
+    xs, ys, zs, vs = [], [], [], []
+    for c, v in zip(coords, values):
+        if v is None:
+            continue
+        x, y, z = (tuple(c) + (0, 0, 0))[:3]
+        xs.append(x)
+        ys.append(y)
+        zs.append(z * z_spacing_um if z_spacing_um else z)
+        vs.append(float(v))
+    if not xs:
+        return None
+    fig = plt.figure(figsize=(5.5, 4.5))
+    ax = fig.add_subplot(111, projection="3d")
+    kw = {}
+    if midpoint is not None:
+        extent = max(abs(min(vs) - midpoint), abs(max(vs) - midpoint)) or 1.0
+        kw = dict(vmin=midpoint - extent, vmax=midpoint + extent)
+    sc = ax.scatter(xs, ys, zs, c=vs, cmap=cmap, s=6, depthshade=True, **kw)
+    ax.set_title(title, fontsize=10)
+    ax.set_xlabel("pixel x")
+    ax.set_ylabel("pixel y")
+    ax.set_zlabel("z (µm)" if z_spacing_um else "z-slice")
+    fig.colorbar(sc, ax=ax, shrink=0.7, label="value")
+    return _save(fig, out_path)
+
+
 def _save(fig, out_path: str | Path) -> Path:
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

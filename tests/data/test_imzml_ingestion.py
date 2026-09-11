@@ -55,6 +55,27 @@ def test_parse_annotation_csv_requires_name_and_mz(tmp_path):
         parse_annotation_csv(bad)
 
 
+def test_parse_metabolights_maf(tmp_path):
+    """A tab-delimited MetaboLights MAF parses via its standard column names."""
+    maf = tmp_path / "m_MTBLS1_maf.tsv"
+    maf.write_text(
+        "database_identifier\tchemical_formula\tmetabolite_identification\tmass_to_charge\n"
+        "\tC27H42O11\tCortolone-3-glucuronide\t525.3386\n"
+        "LMFA00000001\tC4H4N2OS\t2-Thiouracil\t145.9975\n"
+        "CHEBI:1234\tC6H6O4\tSomeAcid\t124.9992\n"
+        "\t\tNoMz\t\n",  # skipped (no mz)
+        encoding="utf-8",
+    )
+    anns = parse_annotation_csv(maf)
+    assert len(anns) == 3
+    by_name = {a.name: a for a in anns}
+    assert by_name["Cortolone-3-glucuronide"].mz == 525.3386
+    assert by_name["Cortolone-3-glucuronide"].formula == "C27H42O11"
+    # database_identifier used as lm_id only when it's a LIPID MAPS id.
+    assert by_name["2-Thiouracil"].lm_id == "LMFA00000001"
+    assert by_name["SomeAcid"].lm_id is None  # ChEBI id ignored
+
+
 def test_reader_extracts_ion_within_tolerance(tmp_path):
     mz_axis = [700.5000, 810.6000]
     # 2x1 pixels: intensities differ by x for the first ion.
@@ -140,6 +161,36 @@ def test_reader_without_annotation_or_database_errors(tmp_path):
     path = _write_imzml(tmp_path, [700.5], [([1.0], (1, 1, 1))])
     with pytest.raises(ValueError):
         ImzMLIngestion().read(path)  # no annotations, no database
+
+
+def test_import_imzml_stack_builds_3d(tmp_path):
+    """Two imzML files stack into one 3D dataset with distinct z-layers."""
+    from lipidmaps import import_imzml_stack
+
+    mz_axis = [700.5000, 810.6000]
+    # Two 2x1 'sections', each its own imzML file in its own dir.
+    d1 = tmp_path / "a"
+    d1.mkdir()
+    d2 = tmp_path / "b"
+    d2.mkdir()
+    p1 = _write_imzml(d1, mz_axis, [([10.0, 5.0], (1, 1, 1)), ([20.0, 5.0], (2, 1, 1))])
+    p2 = _write_imzml(d2, mz_axis, [([30.0, 5.0], (1, 1, 1)), ([40.0, 5.0], (2, 1, 1))])
+    anns = [IonAnnotation(name="A", mz=700.5), IonAnnotation(name="B", mz=810.6)]
+
+    data = import_imzml_stack(
+        [p1, p2], annotation_path=anns, z_spacing_um=15.0,
+        use_refmet=False, use_headgroups=False, fetch_reactions=False,
+    )
+    ds = data.dataset
+    assert ds.is_3d and ds.z_slice_count == 2
+    assert ds.z_layers() == [0, 1]
+    assert len(ds.spatial_samples()) == 4  # 2 pixels × 2 layers
+    assert ds.z_spacing_um == 15.0
+    # Sample names are unique across layers (encode the layer z).
+    assert len({s.sample_name for s in ds.samples}) == 4
+    a = next(lp for lp in ds.lipids if lp.input_name == "A")
+    # Layer-1 pixel (from file b) carries its value under the layer-encoded name.
+    assert a.values[pixel_name(1, 1, 1)] == 30.0
 
 
 def test_import_imzml_auto_annotation_end_to_end():

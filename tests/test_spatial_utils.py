@@ -98,3 +98,38 @@ def test_dataset_without_coordinates_is_not_spatial():
     )
     assert ds.is_spatial is False
     assert ds.spatial_samples() == []
+
+
+def test_single_layer_is_not_3d():
+    samples = [SampleMetadata(sample_name=f"px{i}", group="t",
+                              coordinates=PixelCoordinate(x=i, y=0, z=1)) for i in range(3)]
+    ds = LipidDataset(samples=samples, lipids=[])
+    assert ds.z_layers() == [1]
+    assert ds.z_slice_count == 1
+    assert ds.is_3d is False
+
+
+def test_multi_layer_is_3d():
+    samples = [SampleMetadata(sample_name=f"px{z}_{i}", group="t",
+                              coordinates=PixelCoordinate(x=i, y=0, z=z))
+               for z in (0, 1, 2) for i in range(2)]
+    ds = LipidDataset(samples=samples, lipids=[])
+    assert ds.z_layers() == [0, 1, 2]
+    assert ds.z_slice_count == 3
+    assert ds.is_3d is True
+
+
+def test_ion_display_name_prefers_resolved_name():
+    from lipidmaps.data.utils.spatial import ion_display_full, ion_display_name
+
+    resolved = QuantifiedLipid(input_name="C42H82NO8P [M+H]+", standardized_name="PC 34:1", values={})
+    assert ion_display_name(resolved) == "PC 34:1"
+    assert ion_display_full(resolved) == "PC 34:1 (C42H82NO8P [M+H]+)"
+
+    only_cand = QuantifiedLipid(input_name="C6H12O6 [M+H]+", values={},
+                                annotation_candidates=[{"name": "Glucose", "id": "H1"}])
+    assert ion_display_name(only_cand) == "Glucose"
+
+    plain = QuantifiedLipid(input_name="PC 34:1", values={})
+    assert ion_display_name(plain) == "PC 34:1"
+    assert ion_display_full(plain) == "PC 34:1"

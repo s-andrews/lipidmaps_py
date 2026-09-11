@@ -37,6 +37,27 @@ def nice_length(value: float) -> float:
     return nice * (10 ** exp)
 
 
+def ion_display_name(lipid) -> str:
+    """Friendliest name for an ion: standardized_name > first candidate > input_name.
+
+    Auto-annotated MSI ions are labeled ``formula [adduct]`` in ``input_name``; this
+    surfaces the resolved molecule name when one exists.
+    """
+    name = getattr(lipid, "standardized_name", None)
+    if name:
+        return name
+    candidates = getattr(lipid, "annotation_candidates", None)
+    if candidates and candidates[0].get("name"):
+        return candidates[0]["name"]
+    return lipid.input_name
+
+
+def ion_display_full(lipid) -> str:
+    """``name (formula [adduct])`` when a molecule name is known, else the label."""
+    name = ion_display_name(lipid)
+    return name if name == lipid.input_name else f"{name} ({lipid.input_name})"
+
+
 def lipid_spatial_series(
     dataset, lipid, z: Optional[int] = None
 ) -> Tuple[List[Coord], List[Optional[float]]]:

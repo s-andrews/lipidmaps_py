@@ -317,6 +317,8 @@ class LipidDataset(LipidmapsBaseModel):
     quantitation_notes: Optional[str] = None
     # MSI pixel size in micrometres (x, y), from imzML metadata when available.
     pixel_size_um: Optional[Tuple[float, float]] = None
+    # Spacing between z-slices in micrometres for a stacked 3D volume (section thickness).
+    z_spacing_um: Optional[float] = None
 
     def set_quantitation_info(
         self,
@@ -359,6 +361,24 @@ class LipidDataset(LipidmapsBaseModel):
     def spatial_samples(self) -> List[SampleMetadata]:
         """Return only the samples that have pixel coordinates (MSI pixels)."""
         return [s for s in self.samples if s.coordinates is not None]
+
+    def z_layers(self) -> List[int]:
+        """Sorted distinct z values across spatial samples ([] if not spatial)."""
+        return sorted({s.coordinates.z for s in self.samples if s.coordinates is not None})
+
+    @property
+    def z_slice_count(self) -> int:
+        """Number of distinct z-slices (1 = single-layer/2D acquisition)."""
+        return len(self.z_layers())
+
+    @property
+    def is_3d(self) -> bool:
+        """True only when the MSI data spans more than one z-slice (a real volume).
+
+        Single-layer datasets (z constant at 0/1, or missing) report False — they are
+        2D even though coordinates are 3-tuples. Multi-section stacks report True.
+        """
+        return self.z_slice_count > 1
 
     def get_sample_conditions(self) -> SampleConditions:
         """Return the current sample_name -> condition mapping."""

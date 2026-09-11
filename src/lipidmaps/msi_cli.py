@@ -27,7 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="lipidmaps-msi",
         description="Process an imzML MSI dataset into a LipidDataset, summaries, and images.",
     )
-    parser.add_argument("imzml", help="Path to the .imzML file (its .ibd must sit alongside)")
+    parser.add_argument("imzml", nargs="+", help="Path(s) to .imzML file(s), each with its .ibd alongside. Multiple files are stacked as z-slices (one section per file) into a 3D dataset.")
+    parser.add_argument("--z-spacing", type=float, help="Section thickness in µm between stacked slices (3D metadata)")
     parser.add_argument("--annotations", help="Optional annotation CSV (name, mz[, adduct]); takes precedence over --database")
     parser.add_argument("--database", help="Molecule DB (CoreMetabolome-style id,name,formula) for auto-annotation")
     parser.add_argument("--database-url", help="Download the molecule DB from this URL and cache it, if no DB is found")
@@ -46,6 +47,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-images", type=int, default=20, help="Max ion maps to render, ranked by total intensity (default: 20)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
     return parser
+
+
+def _find_maf(directory: Path) -> Optional[Path]:
+    """Find a MetaboLights MAF (``m_MTBLS*..._maf.tsv``) in ``directory``, if any."""
+    for pattern in ("m_*_maf.tsv", "*_maf.tsv", "*maf.tsv"):
+        matches = sorted(directory.glob(pattern))
+        if matches:
+            return matches[0]
+    return None
 
 
 def _ion_total(lipid) -> float:
@@ -100,9 +110,19 @@ def _write_html(fig, path: Path) -> None:
         fig.write_html(str(path), include_plotlyjs="directory", full_html=True)
 
 
+def _ion_filebase(lipid) -> str:
+    """Filename stem for an ion: molecule name + formula label (keeps uniqueness)."""
+    from .data.utils.spatial import ion_display_name
+
+    name = ion_display_name(lipid)
+    if name and name != lipid.input_name:
+        return f"{_safe(name)}__{_safe(lipid.input_name)}"
+    return _safe(lipid.input_name)
+
+
 def _render_images(dataset, out_dir: Path, max_images: int, render_html: bool = False) -> int:
     from .data.utils.spatial import (
-        lipid_spatial_series, ratio_series, spatial_reactions, z_slices,
+        ion_display_full, lipid_spatial_series, ratio_series, spatial_reactions, z_slices,
     )
     from .data.utils import spatial_render as sr
     html = None
@@ -110,6 +130,8 @@ def _render_images(dataset, out_dir: Path, max_images: int, render_html: bool = 
         from .data.utils import spatial_html as html
 
     ps = getattr(dataset, "pixel_size_um", None)
+    zsp = getattr(dataset, "z_spacing_um", None)
+    is_3d = dataset.is_3d
     images = out_dir / "images"
     ranked = sorted(dataset.lipids, key=_ion_total, reverse=True)
     written = 0
@@ -117,17 +139,24 @@ def _render_images(dataset, out_dir: Path, max_images: int, render_html: bool = 
         coords, values = lipid_spatial_series(dataset, lp.input_name)
         if not coords:
             continue
-        z = (z_slices(coords) or [0])[0]  # render the first acquired z-slice
-        safe = _safe(lp.input_name)
-        sr.save_ion_grid_png(coords, values, images / f"ion_{safe}_grid.png",
-                             lp.input_name, z=z, pixel_size_um=ps)
-        sr.save_voronoi_png(coords, values, images / f"ion_{safe}_voronoi.png",
-                            f"{lp.input_name} (Voronoi)", z=z, pixel_size_um=ps)
+        z = (z_slices(coords) or [0])[0]  # first acquired z-slice for the 2D maps
+        base = _ion_filebase(lp)
+        title = ion_display_full(lp)  # molecule name (formula [adduct]) when known
+        sr.save_ion_grid_png(coords, values, images / f"ion_{base}_grid.png",
+                             title, z=z, pixel_size_um=ps)
+        sr.save_voronoi_png(coords, values, images / f"ion_{base}_voronoi.png",
+                            f"{title} (Voronoi)", z=z, pixel_size_um=ps)
         if html is not None:
-            _write_html(html.grid_figure(coords, values, z, lp.input_name, pixel_size_um=ps),
-                        images / f"ion_{safe}_grid.html")
-            _write_html(html.voronoi_figure(coords, values, z, f"{lp.input_name} (Voronoi)",
-                                            pixel_size_um=ps), images / f"ion_{safe}_voronoi.html")
+            _write_html(html.grid_figure(coords, values, z, title, pixel_size_um=ps),
+                        images / f"ion_{base}_grid.html")
+            _write_html(html.voronoi_figure(coords, values, z, f"{title} (Voronoi)",
+                                            pixel_size_um=ps), images / f"ion_{base}_voronoi.html")
+        if is_3d:  # volumetric point cloud across all z-slices
+            sr.save_scatter3d_png(coords, values, images / f"ion_{base}_3d.png",
+                                  f"{title} (3D)", z_spacing_um=zsp)
+            if html is not None:
+                _write_html(html.scatter3d_figure(coords, values, f"{title} (3D)", z_spacing_um=zsp),
+                            images / f"ion_{base}_3d.html")
         written += 1
 
     # Reaction ratio maps for reactions with measured reactant+product.
@@ -183,19 +212,33 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not args.verbose:
         logging.getLogger("lipidmaps").setLevel(logging.INFO)
 
-    imzml = Path(args.imzml).expanduser()
-    if not imzml.exists():
-        print(f"error: imzML not found: {imzml}", file=sys.stderr)
-        return 2
-    if not imzml.with_suffix(".ibd").exists():
-        print(f"warning: no .ibd beside {imzml.name}; pyimzml may fail to read spectra.",
-              file=sys.stderr)
-    out_dir = Path(args.out).expanduser() if args.out else imzml.with_name(imzml.stem + "_out")
+    paths = [Path(p).expanduser() for p in args.imzml]
+    for p in paths:
+        if not p.exists():
+            print(f"error: imzML not found: {p}", file=sys.stderr)
+            return 2
+        if not p.with_suffix(".ibd").exists():
+            print(f"warning: no .ibd beside {p.name}; pyimzml may fail to read spectra.",
+                  file=sys.stderr)
+    stacked = len(paths) > 1
+    if args.out:
+        out_dir = Path(args.out).expanduser()
+    else:
+        suffix = "_stack_out" if stacked else "_out"
+        out_dir = paths[0].with_name(paths[0].stem + suffix)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resolve the annotation source: explicit CSV wins; else provision a molecule DB.
+    # Annotation source precedence: explicit --annotations, else a sibling MetaboLights
+    # MAF next to the imzML, else auto-annotate from the provisioned molecule DB.
+    annotation_path = args.annotations
+    if not annotation_path:
+        maf = _find_maf(paths[0].parent)
+        if maf is not None:
+            annotation_path = str(maf)
+            print(f"  using MAF annotation: {maf.name}", file=sys.stderr)
+
     database = None
-    if not args.annotations:
+    if not annotation_path:
         from .data.annotation.db_provision import resolve_metabolome_db
         try:
             database = str(resolve_metabolome_db(args.database, download_url=args.database_url))
@@ -204,24 +247,28 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
 
-    from . import import_imzml
-
-    print(f"Processing {imzml.name} -> {out_dir}/", file=sys.stderr)
+    common = dict(
+        annotation_path=annotation_path, database=database, mz_tolerance_ppm=args.ppm,
+        bbox=tuple(args.bbox) if args.bbox else None, top_n_peaks=args.top_n_peaks,
+        stride=args.stride, progress=_make_progress(),
+        use_headgroups=args.use_headgroups, fetch_reactions=args.fetch_reactions,
+    )
     if args.stride > 1:
         print(f"  subsampling: every {args.stride}th pixel", file=sys.stderr)
-    data = import_imzml(
-        imzml,
-        annotation_path=args.annotations,
-        database=database,
-        mz_tolerance_ppm=args.ppm,
-        bbox=tuple(args.bbox) if args.bbox else None,
-        top_n_peaks=args.top_n_peaks,
-        stride=args.stride,
-        progress=_make_progress(),
-        use_headgroups=args.use_headgroups,
-        fetch_reactions=args.fetch_reactions,
-    )
+
+    if stacked:
+        from . import import_imzml_stack
+        print(f"Stacking {len(paths)} imzML files as z-slices -> {out_dir}/", file=sys.stderr)
+        data = import_imzml_stack(paths, z_spacing_um=args.z_spacing, **common)
+    else:
+        from . import import_imzml
+        print(f"Processing {paths[0].name} -> {out_dir}/", file=sys.stderr)
+        data = import_imzml(paths[0], **common)
     dataset = data.dataset
+
+    dims = (f"3D volume: {dataset.z_slice_count} z-slices" if dataset.is_3d
+            else "2D (single z-slice)")
+    print(f"  {dims}", file=sys.stderr)
 
     if args.write_json:
         print("  writing processed_dataset.json ...", file=sys.stderr)
@@ -234,12 +281,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     n_img = 0
     if args.render_images:
         kind = "PNG + interactive HTML" if args.render_html else "PNG"
-        print(f"  rendering up to {args.max_images} ion/reaction diagrams ({kind}) ...", file=sys.stderr)
+        extra = " + 3D" if dataset.is_3d else ""
+        print(f"  rendering up to {args.max_images} ion/reaction diagrams ({kind}{extra}) ...",
+              file=sys.stderr)
         n_img = _render_images(dataset, out_dir, args.max_images, render_html=args.render_html)
 
     resolved = sum(1 for lp in dataset.lipids if lp.lm_id or lp.generic_lm_id)
     print(
-        f"Done: {n_ions} ions ({resolved} with LM IDs) across "
+        f"Done [{dims}]: {n_ions} ions ({resolved} with LM IDs) across "
         f"{len(dataset.spatial_samples())} pixels; {n_rx} spatial reactions; "
         f"{n_img} images. Output in {out_dir}/",
         file=sys.stderr,
